@@ -629,19 +629,22 @@ def jc_label(level): return f"{level}레벨" + (" 관문" if level == 12 else ""
 
 
 @bot.tree.command(name="공성", description="성지 레벨의 정철이 모이면 알려 줍니다")
-@app_commands.describe(레벨="목표 성지(관문) 레벨", 연결안됨="아군 성지/관문과 관로로 연결되지 않음(추가 소모)", 타진영="타 진영 시작 지역 성지(총량 +50%)")
+@app_commands.describe(레벨="목표 성지(관문) 레벨", 연결안됨="아군 성지/관문과 관로로 연결되지 않음(추가 소모)", 타진영="타 진영 시작 지역 성지(총량 +50%)", 이어서="내가 앞서 걸어 둔 일정이 있으면 그 필요량에 이번 필요량을 더해 계산(기본 켜짐)")
 @app_commands.choices(레벨=[app_commands.Choice(name=jc_label(k), value=k) for k in sorted(COST)])
-async def siege(it: discord.Interaction, 레벨: app_commands.Choice[int], 연결안됨: bool = False, 타진영: bool = False):
-    st = jc_load(); lv = 레벨.value; need = jc_need(lv, 연결안됨, 타진영)
+async def siege(it: discord.Interaction, 레벨: app_commands.Choice[int], 연결안됨: bool = False, 타진영: bool = False, 이어서: bool = True):
+    st = jc_load(); lv = 레벨.value; own = jc_need(lv, 연결안됨, 타진영)
+    st["timers"] = [t for t in st["timers"] if not (t["user"] == it.user.id and t["level"] == lv)]       # 같은 레벨은 덮어씀
+    prior = max((t["need"] for t in st["timers"] if t["user"] == it.user.id), default=0) if 이어서 else 0   # 앞선 일정의 누적 필요량
+    need = prior + own
     cur = jc_stock_now(st); rem = need - cur; eta = jc_eta(st, need)
     tags = ("연결 안 됨 " if 연결안됨 else "") + ("타 진영 " if 타진영 else "")
+    chain = f"앞선 일정 {prior:,} + 이번 {own:,} = 합계 " if prior else "필요 정철 "
     if rem <= 0:
         return await it.response.send_message(f"✅ {tags}{jc_label(lv)} 필요 정철 **{need:,}**개, 지금 보유 **{int(cur):,}**개로 이미 충분합니다.")
-    st["timers"] = [t for t in st["timers"] if not (t["user"] == it.user.id and t["level"] == lv)]
-    st["timers"].append({"user": it.user.id, "channel": it.channel_id, "level": lv, "need": need, "tags": tags, "soon": False})
+    st["timers"].append({"user": it.user.id, "channel": it.channel_id, "level": lv, "need": need, "own": own, "prior": prior, "tags": tags, "soon": False})
     jc_save(st)
     await it.response.send_message(
-        f"⏳ {tags}**{jc_label(lv)}** 필요 정철 **{need:,}**개 · 보유 {int(cur):,}개 · 부족 **{int(rem + 0.999):,}**개\n"
+        f"⏳ {tags}**{jc_label(lv)}** {chain}**{need:,}**개 · 보유 {int(cur):,}개 · 부족 **{int(rem + 0.999):,}**개\n"
         f"5분마다 13·13·14개 지급(시간당 160개) 기준 **{fmt_dur((eta - time.time()) / 3600)}** 뒤 도달 → <t:{int(eta)}:t> (<t:{int(eta)}:R>)\n"
         f"도달 {ALERT_MIN}분 전과 도달했을 때 이 채널에서 {it.user.mention}님을 불러 드립니다.")
 
@@ -685,7 +688,7 @@ async def jc_loop():
             ch = bot.get_channel(t["channel"])
             try:
                 if rem <= 0:
-                    if ch: await ch.send(f"🔔 <@{t['user']}> {t['tags']}**{jc_label(t['level'])}** 정철이 모였습니다! (필요 {t['need']:,}개 · 현재 약 {int(cur):,}개)")
+                    if ch: await ch.send(f"🔔 <@{t['user']}> {t['tags']}**{jc_label(t['level'])}** 정철이 모였습니다! ({'누적 ' if t.get('prior') else '필요 '}{t['need']:,}개 · 현재 약 {int(cur):,}개)")
                     changed = True; continue                      # 알림 후 제거
                 if not t["soon"] and left <= ALERT_MIN * 60:
                     if ch: await ch.send(f"⏰ <@{t['user']}> {t['tags']}**{jc_label(t['level'])}** 정철이 곧 모입니다. 약 {fmt_dur(left / 3600)} 남았습니다. (부족 {int(rem + 0.999):,}개)")
