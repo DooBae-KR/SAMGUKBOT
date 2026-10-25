@@ -2,7 +2,7 @@
 - 신규 입장자에게 [인증하기] 버튼 안내 → UID/직업/닉네임 입력 폼(모달)
 - UID를 엑셀 명단과 대조해 검증 → 별명을 [직업]닉네임 으로 변경 → 역할(동맹원/간부) 부여
 """
-import urllib.parse
+import urllib.parse, hmac, hashlib
 import os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue
 from aiohttp import web
 from pathlib import Path
@@ -401,9 +401,51 @@ async def web_index(request):
     return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store"})
 
 
+# ---------- 도감(보유 장수·전법) 페이지 ----------
+TIER_SECRET = os.environ.get("TIER_SECRET") or os.environ.get("DISCORD_TOKEN", "")
+PUBLIC_URL = (os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL") or f"http://localhost:{WEB_PORT}").rstrip("/")
+DEX_DIR = Path(os.environ.get("DEX_DIR", "dex"))
+
+
+def tier_token(cid): return f"{cid}.{hmac.new(TIER_SECRET.encode(), f'dex:{cid}'.encode(), hashlib.sha256).hexdigest()[:20]}"
+
+
+def tier_cid(t):
+    cid, _, sig = (t or "").partition(".")
+    return cid if cid and hmac.compare_digest(sig, tier_token(cid).partition(".")[2]) else None
+
+
+def dex_path(cid): return DEX_DIR / f"{re.sub(r'[^0-9A-Za-z]', '', cid)}.json"
+
+
+async def web_tier(request):
+    cid = tier_cid(request.query.get("t"))
+    if not cid: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /도감 으로 새 링크를 받으세요.")
+    info = roster.by_uid.get(cid) or {}
+    dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
+    cfg = {"t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", [])}
+    tpl = (Path(__file__).parent / "tier_template.html").read_text("utf-8")
+    return web.Response(text=tpl.replace("__CFG__", json.dumps(cfg, ensure_ascii=False)), content_type="text/html", headers={"Cache-Control": "no-store"})
+
+
+async def web_dex_save(request):
+    try: b = await request.json()
+    except Exception: return web.json_response({"ok": False, "error": "형식 오류"}, status=400)
+    cid = tier_cid(b.get("t"))
+    if not cid: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
+    clean = lambda v: sorted({str(x)[:30] for x in v if isinstance(x, str)})[:600] if isinstance(v, list) else []
+    info = roster.by_uid.get(cid) or {}
+    data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")),
+            "at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")}
+    DEX_DIR.mkdir(exist_ok=True)
+    store_set(f"dex_{cid}", dex_path(cid), data)
+    return web.json_response({"ok": True})
+
+
 async def start_web():
     if not WEB_PORT: return
     app = web.Application(); app.router.add_get("/", web_index)
+    app.router.add_get("/tier", web_tier); app.router.add_post("/api/dex", web_dex_save)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()
@@ -454,6 +496,13 @@ async def reload(it: discord.Interaction):
     roster.mtime = 0
     try: roster.load(); await it.response.send_message(f"명단 {len(roster.by_uid)}명 로드, 직업: {', '.join(roster.jobs) or '-'}", ephemeral=True)
     except Exception as e: await it.response.send_message(f"실패: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="도감", description="내 보유 장수·전법을 체크하는 개인 링크를 받습니다(시트에 자동 저장)")
+async def dex_link(it: discord.Interaction):
+    cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(it.user.id)), None)
+    if not cid: return await it.response.send_message("먼저 인증(CID 등록)을 완료해 주세요.", ephemeral=True)
+    await it.response.send_message(f"🔗 내 도감 링크 (다른 사람에게 공유하지 마세요)\n{PUBLIC_URL}/tier?t={tier_token(cid)}\n장수·전법을 체크하면 자동으로 시트에 저장됩니다.", ephemeral=True)
 
 
 @bot.tree.command(name="인증해제", description="CID의 인증 기록을 지웁니다(재인증 허용)")

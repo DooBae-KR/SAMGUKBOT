@@ -37,6 +37,14 @@ function _mirror(name, data, now) {
     var out = [['캐릭터 ID', '디스코드 ID(인증자)', '갱신']];
     Object.keys(data.uid || {}).forEach(function (k) { out.push([k, String(data.uid[k]), now]); });
     sh.getRange(1, 1, out.length, 3).setValues(out);
+  } else if (name.indexOf('dex_') === 0) {
+    var s3 = _sheet('도감선택');
+    if (s3.getLastRow() === 0) s3.appendRow(['CID', '닉네임', '보유 장수 수', '보유 장수', '보유 전법 수', '보유 전법', '갱신']);
+    var vals = s3.getRange(1, 1, s3.getLastRow(), 1).getValues(), r = -1;
+    for (var j = 1; j < vals.length; j++) if (String(vals[j][0]) === String(data.cid)) { r = j + 1; break; }
+    if (r < 0) r = s3.getLastRow() + 1;
+    s3.getRange(r, 1).setNumberFormat('@');
+    s3.getRange(r, 1, 1, 7).setValues([[String(data.cid), data.name, (data.own || []).length, (data.own || []).join(', '), (data.ownsk || []).length, (data.ownsk || []).join(', '), data.at]]);
   } else if (name === 'jungchul') {
     var s2 = _sheet('봇_정철'); s2.clear();
     var t = (data.timers || []).map(function (x) { return [x.level, x.need, String(x.user)]; });
