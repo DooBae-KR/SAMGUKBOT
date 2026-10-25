@@ -397,10 +397,10 @@ skdex(){
 },
 dogam(){
   const names=Object.keys(HERO).sort();
-  const used=names.filter(n=>DECKS.some(d=>d.heroes.some(h=>h.n===n)||(d.cand||[]).includes(n))).sort((x,y)=>{const o='촉위오군',f=n=>{const i=o.indexOf((HD[n]||{}).nation);return i<0?9:i};return f(x)-f(y)||x.localeCompare(y,'ko')});
+  const used=names.slice().sort((x,y)=>{const o='촉위오군',f=n=>{const i=o.indexOf((HD[n]||{}).nation);return i<0?9:i};return f(x)-f(y)||x.localeCompare(y,'ko')});
   const rows=DECKS.map(d=>({d,s:stat(d)})).sort((a,b)=>b.s.tp-a.s.tp||(b.s.sp||0)-(a.s.sp||0));
-  return `<h1>장수 도감</h1><p class="sub">가지고 있는 장수를 눌러 켜세요. 장수 전용 전법은 장수를 가지면 자동 보유입니다. 그 외 학습 전법은 전법 도감에서 따로 눌러야 하고, 덱 진행도(%)는 장수 + 전용 전법 + 학습 전법을 모두 합쳐 계산합니다. 선택은 이 브라우저에 저장됩니다.</p>
-  <div class="bar"><b>보유 ${[...OWN].length}명 · 직접 고른 전법 ${OWNSK.size}개</b><button data-all>영상 등장 장수 전체</button><button data-clear>초기화</button></div>
+  return `<h1>장수 도감</h1><p class="sub">가지고 있는 장수를 눌러 켜세요. 장수 전용 전법은 장수를 가지면 자동 보유입니다. 그 외 학습 전법은 전법 도감에서 따로 눌러야 하고, 덱 진행도(%)는 장수 + 전용 전법 + 학습 전법을 모두 합쳐 계산합니다. 선택은 자동으로 저장됩니다.</p>
+  <div class="bar"><b>보유 ${[...OWN].length}명 · 직접 고른 전법 ${OWNSK.size}개</b><button data-all>전체 선택</button><button data-clear>초기화</button></div>
   <div class="dogam">${used.map(n=>{const on=OWN.has(n);const sk=EXCL[n]?['전용: '+EXCL[n]]:[];
     return `<div class="dg ${on?'on':''}" data-own="${n}"><img src="${IMG(n)}"><b>${n}</b><span>${on?(sk.length?sk.join(' · '):'전용 전법 미확인'):'미보유'}</span></div>`}).join('')}</div>
   ${recHTML()}
@@ -512,7 +512,7 @@ document.addEventListener('click',e=>{
   if(e.target.closest('[data-close]')||e.target.id==='det'){document.getElementById('det').style.display='none';return}
   const os=e.target.closest('[data-ownsk]');if(os){const n=os.dataset.ownsk;OWNSK.has(n)?OWNSK.delete(n):OWNSK.add(n);saveOwn();const y=scrollY;render();scrollTo(0,y);return}
   const ow=e.target.closest('[data-own]');if(ow){const n=ow.dataset.own;OWN.has(n)?OWN.delete(n):OWN.add(n);saveOwn();const y=scrollY;render();scrollTo(0,y);return}
-  if(e.target.closest('[data-all]')){Object.keys(HERO).forEach(n=>{if(DECKS.some(d=>d.heroes.some(h=>h.n===n)||(d.cand||[]).includes(n)))OWN.add(n)});saveOwn();render();return}
+  if(e.target.closest('[data-all]')){Object.keys(HERO).forEach(n=>OWN.add(n));saveOwn();render();return}
   if(e.target.closest('[data-clear]')){OWN.clear();OWNSK.clear();saveOwn();render();return}
   const o=e.target.closest('[data-open]');if(o)openDet(o.dataset.open);
 });
