@@ -1,0 +1,313 @@
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>연맹 인사 상황판</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@600;800&display=swap');
+:root{color-scheme:dark;--bg:#0e1716;--raise:#14211f;--raise2:#1a2a27;--line:#263a36;--text:#e8e3d3;--mute:#93a49e;
+--jade:#5ecfb1;--gold:#e0b65a;--verm:#ea5a42;--blue:#7fa6d1;--ash:#78857f;
+--serif:'Noto Serif KR','Nanum Myeongjo','Batang',serif;--sans:'Noto Sans KR','Pretendard','Malgun Gothic','Apple SD Gothic Neo',sans-serif}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:radial-gradient(1200px 500px at 85% -10%,#1b3330 0,transparent 60%),var(--bg);color:var(--text);font:15px/1.6 var(--sans);font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{padding:44px 0 18px}
+h1{margin:0;font:800 clamp(30px,5vw,48px)/1.1 var(--serif);letter-spacing:-.02em}
+.sub{margin:10px 0 0;color:var(--mute);font-size:13px;max-width:70ch}
+nav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;gap:6px;overflow:auto}
+nav button{background:none;border:0;color:var(--mute);font:500 14px var(--sans);padding:13px 14px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+nav button:hover{color:var(--text)}nav button.on{color:var(--text);border-color:var(--gold)}
+main{padding:28px 0 90px}.tab{display:none}.tab.on{display:block}
+h2{font:700 20px/1.3 var(--serif);margin:0 0 4px}.lead{color:var(--mute);font-size:13px;margin:0 0 16px;max-width:75ch}
+section.blk{margin-bottom:44px}
+.strip{display:flex;flex-wrap:wrap;gap:18px 0;margin:4px 0 40px}
+.stat{padding:0 28px;border-left:1px solid var(--line)}.stat:first-child{padding-left:0;border:0}
+.stat b{display:block;font:800 34px/1.1 var(--serif)}.stat span{color:var(--mute);font-size:12.5px}
+.seg{display:inline-flex;background:var(--raise);border:1px solid var(--line);border-radius:99px;padding:3px;margin-bottom:14px;flex-wrap:wrap}
+.seg button{border:0;background:none;color:var(--mute);font:500 13px var(--sans);padding:5px 14px;border-radius:99px;cursor:pointer}
+.seg button.on{background:var(--text);color:var(--bg)}
+.waffle{display:flex;flex-wrap:wrap;gap:26px 34px;background:var(--raise);border-radius:18px;padding:26px 28px}
+.grp h4{margin:0 0 8px;font:600 13px var(--sans);display:flex;gap:8px;align-items:baseline}.grp h4 em{font-style:normal;color:var(--mute);font-weight:400}
+.grp h4 i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.cells{display:grid;grid-template-columns:repeat(var(--cols,10),15px);gap:4px}
+.cells i{width:15px;height:15px;border-radius:4px;display:block;transition:transform .12s}
+.cells i:hover,.dot:hover{transform:scale(1.55);outline:2px solid var(--text);z-index:2;position:relative}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:44px}
+@media(max-width:820px){.cols2{grid-template-columns:1fr;gap:34px}.stat{padding:0 18px}}
+.bar{display:grid;grid-template-columns:78px 1fr 46px;gap:10px;align-items:center;padding:3px 6px;margin:0 -6px;border-radius:8px;font-size:13.5px;cursor:default}
+.bar:hover{background:var(--raise)}.bar i{display:block;height:12px;border-radius:6px;min-width:2px}.bar em{font-style:normal;text-align:right;color:var(--mute)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
+input,select{font:14px var(--sans);padding:7px 11px;border:1px solid var(--line);border-radius:99px;background:var(--raise);color:var(--text)}
+input:focus,select:focus,button:focus-visible,.chip:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.btn{font:500 13px var(--sans);padding:7px 14px;border:1px solid var(--line);border-radius:99px;background:var(--raise);color:var(--text);cursor:pointer}.btn:hover{border-color:var(--gold)}
+.tw{overflow:auto;border-radius:14px;background:var(--raise);max-height:72vh}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:9px 14px;text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--raise2);color:var(--mute);font-weight:500;font-size:12.5px;cursor:pointer;user-select:none;z-index:1}
+tbody tr{border-top:1px solid var(--line)}tbody tr:hover{background:var(--raise2)}td.n,th.n{text-align:right}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px}.tag:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c)}
+.grade{font:700 13px var(--serif)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--raise);border-left:3px solid var(--c,var(--ash));padding:3px 11px;border-radius:4px 99px 99px 4px;font-size:13.5px;cursor:default}.chip:hover{background:var(--raise2)}
+.issue{margin-bottom:34px}.issue h3{margin:0;font:700 17px var(--serif);display:flex;gap:10px;align-items:baseline}.issue h3 em{font:400 13px var(--sans);color:var(--mute);font-style:normal}
+.issue p{margin:2px 0 12px;color:var(--mute);font-size:13px}
+.hm td{text-align:center;padding:0}.hm td div{padding:10px 8px;min-width:58px}.hm th:first-child{text-align:left}.hm tbody tr:hover{background:none}
+.hm td div:hover{outline:2px solid var(--text);outline-offset:-2px;border-radius:6px}
+.rowh{cursor:default}
+svg text{fill:var(--mute);font-size:11px;font-family:var(--sans)}.dot{transition:transform .12s;transform-box:fill-box;transform-origin:center}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--mute)}.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+.rules td:first-child{padding-right:20px;vertical-align:top}.rules td{white-space:normal}
+.adm{margin:16px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--raise);display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;font-size:13px}
+.adm[hidden]{display:none}.adm b{font:700 14px var(--serif)}.adm label{display:flex;gap:6px;align-items:center;color:var(--mute)}
+.adm input[type=file]{border-radius:8px;max-width:100%;font-size:12.5px}.adm .btn.pri{background:var(--gold);color:#17201e;border-color:var(--gold);font-weight:700}
+textarea{font:13px var(--sans);padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);resize:vertical}
+.adm .btn[disabled]{opacity:.45;cursor:default}#amsg{flex-basis:100%;color:var(--mute);min-height:1.4em}#amsg.err{color:var(--verm)}#amsg.ok{color:var(--jade)}
+.live{display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:12px;color:var(--mute)}.live i{width:7px;height:7px;border-radius:50%;background:var(--ash)}.live.on i{background:var(--jade)}
+#tip{position:fixed;z-index:20;pointer-events:none;max-width:340px;background:#f1ecdc;color:#17201e;border-radius:12px;padding:10px 13px;font-size:13px;line-height:1.5;box-shadow:0 12px 34px rgba(0,0,0,.45);opacity:0}
+#tip.on{opacity:1}#tip b{font:700 14px var(--serif)}#tip .t{color:#4b5a56;font-size:12px}#tip .nm{display:flex;flex-wrap:wrap;gap:3px 8px;margin-top:5px}
+#tip .kv{display:grid;grid-template-columns:auto auto;gap:1px 14px;margin-top:6px;font-size:12.5px}#tip .kv span:nth-child(odd){color:#4b5a56}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<header><div class="wrap"><h1>연맹 인사 상황판</h1><p class="sub"><span id="meta"></span><span class="live" id="live"><i></i><span>시트 기준</span></span></p>
+<div class="adm" id="adm" hidden><b>명단 업데이트</b><label>명단 엑셀 <input type="file" id="fr" accept=".xlsx,.xls,.csv"></label><button class="btn" id="aprev" disabled>확인</button><button class="btn pri" id="aapply" disabled>적용</button><span id="amsg"></span><label style="flex-basis:100%;display:block">톡방 참여자 <span class="lead" style="margin:0">(스프레드시트 톡방참여자 탭의 닉네임 열을 복사해 붙여넣으세요)</span><textarea id="tk" rows="3" style="display:block;width:100%;margin-top:6px"></textarea></label><button class="btn" id="atk">톡방 적용</button><span id="tmsg" style="color:var(--mute)"></span></div></div></header>
+<nav><div class="wrap" id="nav"></div></nav>
+<main><div class="wrap">
+<section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section>
+</div></main>
+<div id="tip"></div>
+<script>
+let D=__D__, CFG=__CFG__;
+const med=a=>{if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),n=s.length;return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2};
+const pctr=a=>{const s=[...a].sort((x,y)=>x-y);return v=>{let lo=0,eq=0;for(const x of s){if(x<v)lo++;else if(x===v)eq++}return (lo+eq/2)/s.length*100}};
+const q=(a,p)=>{const s=[...a].sort((x,y)=>x-y);return s[Math.floor((s.length-1)*p)]};
+const f=n=>Math.round(n).toLocaleString('ko-KR'), P=(a,b)=>b?Math.round(a/b*100):0;
+let medM,p10c,rb,rc,rm,graceEnd;
+let TALK=null;
+function prep(){if(TALK)D.forEach(d=>d.t=TALK.has(d.n)?1:0);D.forEach((d,i)=>d.i=i);medM=med(D.map(d=>d.m));p10c=q(D.map(d=>d.c),.1);rb=pctr(D.map(d=>d.p));rc=pctr(D.map(d=>d.c));rm=pctr(D.map(d=>d.m));graceEnd=new Date(CFG.graceEnd+'T00:00:00+09:00')}
+const SEG=['이탈위험','핵심 전력','성실 공성','간헐 참여','휴면'];
+const SEGC={'이탈위험':'--verm','핵심 전력':'--gold','성실 공성':'--jade','간헐 참여':'--blue','휴면':'--ash'};
+const STC={'액티브(톡방)':'--jade','정상':'--blue','재기':'--gold','비액티브 후보(유예)':'--verm','비액티브':'--verm'};
+const PAL=['--jade','--gold','--blue','--verm','--ash','#b48ad6','#e08fb0','#9bd36c'];
+const W={s:40,c:30,m:20,p:10,talk:10};
+let graceOff=false,ST=[];
+const inGrace=()=>!graceOff&&new Date()<graceEnd;
+const cv=c=>c.startsWith('--')?`var(${c})`:c;
+function derive(){
+  D.forEach(d=>{
+    d.jaegi=!d.reg;
+    d.seg=(d.s===0&&d.m===0&&d.c<=p10c&&!d.t)?'이탈위험':(d.s>=5&&d.m>0)?'핵심 전력':d.s>=4?'성실 공성':d.s>=1?'간헐 참여':'휴면';
+    if(d.t&&d.seg==='휴면')d.seg='간헐 참여';
+    d.score=Math.round((d.s/6*W.s+rc(d.c)/100*W.c+rm(d.m)/100*W.m+rb(d.p)/100*W.p+(d.t?W.talk:0))*10)/10;
+    d.st=d.t?'액티브(톡방)':(d.jaegi&&d.m<=medM)?(inGrace()?'비액티브 후보(유예)':'비액티브'):d.jaegi?'재기':'정상';
+  });
+  const sc=D.map(d=>d.score),t=[q(sc,.9),q(sc,.7),q(sc,.3)];
+  D.forEach(d=>d.grade=d.score>=t[0]?'S':d.score>=t[1]?'A':d.score>=t[2]?'B':'C');
+  ST=['액티브(톡방)','정상','재기',inGrace()?'비액티브 후보(유예)':'비액티브'];
+}
+const W_=a=>a.map(d=>d.i).join(',');
+const tag=(label,c)=>`<span class="tag" style="--c:${cv(c)}">${label}</span>`;
+const stTag=s=>tag(s,STC[s]), segTag=s=>tag(s,SEGC[s]);
+const bar=(label,n,mx,color,who)=>`<div class="bar" data-w="${who}" data-t="${label}"><span>${label}</span><i style="width:${n/mx*100}%;background:${cv(color)}"></i><em>${n}</em></div>`;
+// ---------- 툴팁 ----------
+const tip=document.getElementById('tip');
+function tipHTML(el){
+  const ids=el.dataset.w?el.dataset.w.split(',').filter(x=>x!=='').map(Number):[];
+  if(!ids.length)return el.dataset.t?`<b>${el.dataset.t}</b><div class="t">해당 유저 없음</div>`:'';
+  if(ids.length===1){const d=D[ids[0]];
+    return `<b>${d.n}</b><div class="t">${d.st} · ${d.seg} · 등급 ${d.grade}</div><div class="kv"><span>직업</span><span>${d.j}</span><span>직위 / 조</span><span>${d.r} / ${d.g}</span><span>번영</span><span>${f(d.p)}</span><span>주간 무훈</span><span>${f(d.m)}</span><span>주간 공헌</span><span>${f(d.c)}</span><span>공성</span><span>${d.s}회</span><span>지역</span><span>${d.reg||'재기'}</span><span>톡방</span><span>${d.t?'참여':'미참여'}</span></div>`;}
+  const L=ids.map(i=>D[i]).sort((a,b)=>b.score-a.score),MAX=36;
+  return `${el.dataset.t?`<b>${el.dataset.t}</b>`:''}<div class="t">${ids.length}명 (점수 높은 순)</div><div class="nm">${L.slice(0,MAX).map(d=>`<span>${d.n}</span>`).join('')}</div>${L.length>MAX?`<div class="t" style="margin-top:4px">외 ${L.length-MAX}명</div>`:''}`;
+}
+function place(e){const w=tip.offsetWidth,h=tip.offsetHeight;let x=e.clientX+16,y=e.clientY+16;if(x+w>innerWidth-8)x=e.clientX-w-16;if(y+h>innerHeight-8)y=Math.max(8,e.clientY-h-16);tip.style.left=Math.max(8,x)+'px';tip.style.top=y+'px'}
+document.addEventListener('mouseover',e=>{const el=e.target.closest('[data-w]');if(!el){tip.classList.remove('on');return}tip.innerHTML=tipHTML(el);tip.classList.add('on');place(e)});
+document.addEventListener('mousemove',e=>{if(tip.classList.contains('on'))place(e)});
+document.addEventListener('mouseleave',()=>tip.classList.remove('on'));
+document.addEventListener('focusin',e=>{const el=e.target.closest&&e.target.closest('[data-w]');if(!el)return;tip.innerHTML=tipHTML(el);tip.classList.add('on');const r=el.getBoundingClientRect();place({clientX:r.left,clientY:r.bottom})});
+document.addEventListener('focusout',()=>tip.classList.remove('on'));
+// ---------- 현황 ----------
+let GROUP='세그먼트';
+const groupers={'세그먼트':{k:d=>d.seg,order:SEG,col:k=>SEGC[k]},'활동상태':{k:d=>d.st,get order(){return ST},col:k=>STC[k]},'직업':{k:d=>d.j,col:(k,i)=>PAL[i%PAL.length]},'조':{k:d=>d.g,col:(k,i)=>PAL[i%PAL.length]}};
+function waffle(){
+  const g=groupers[GROUP];let keys=g.order?[...g.order]:[...new Set(D.map(g.k))].sort((a,b)=>D.filter(d=>g.k(d)===b).length-D.filter(d=>g.k(d)===a).length);
+  document.getElementById('wf').innerHTML=keys.map((k,i)=>{const m=D.filter(d=>g.k(d)===k).sort((a,b)=>b.score-a.score);if(!m.length)return '';const c=cv(g.col(k,i));
+    const cols=Math.min(10,Math.max(4,Math.ceil(Math.sqrt(m.length*1.6))));
+    return `<div class="grp"><h4 data-w="${W_(m)}" data-t="${k}"><i style="background:${c}"></i>${k}<em>${m.length}명</em></h4><div class="cells" style="--cols:${cols}">${m.map(d=>`<i data-w="${d.i}" style="background:${c}"></i>`).join('')}</div></div>`}).join('');
+  document.querySelectorAll('#gseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===GROUP));
+}
+function tabSummary(){
+  const n=D.length,act=D.filter(d=>d.s>=1),hi=D.filter(d=>d.s>=4),un=D.filter(d=>d.g==='미편성'),jg=D.filter(d=>d.jaegi),tk=D.filter(d=>d.t),rk=D.filter(d=>d.seg==='이탈위험'||d.seg==='휴면');
+  const S=(b,l,a)=>`<div class="stat" data-w="${a?W_(a):''}" data-t="${l}"><b>${b}</b><span>${l}</span></div>`;
+  const sp=[0,1,2,3,4,5,6].map(v=>[v,D.filter(d=>d.s===v)]),mxs=Math.max(...sp.map(x=>x[1].length));
+  const jobs=[...new Set(D.map(d=>d.j))].map(j=>[j,D.filter(d=>d.j===j)]).sort((a,b)=>b[1].length-a[1].length),mxj=jobs[0][1].length;
+  document.getElementById('t0').innerHTML=`
+  <div class="strip">${S(n,'전체 인원',D)}${S(P(act.length,n)+'%','공성 참여 ('+act.length+'명)',act)}${S(P(hi.length,n)+'%','공성 4회 이상 ('+hi.length+'명)',hi)}${S(P(un.length,n)+'%','미편성 ('+un.length+'명)',un)}${S(jg.length,'재기 상태',jg)}${S(tk.length,'톡방 참여 (액티브)',tk)}${S(rk.length,'이탈위험과 휴면',rk)}</div>
+  <section class="blk"><h2>진영도</h2><p class="lead">네모 하나가 연맹원 한 명입니다. 묶는 기준을 바꿔 보고, 칸에 마우스를 올리면 누구인지 나옵니다. 각 묶음 안에서는 점수가 높은 사람이 앞에 옵니다.</p>
+   <div class="seg" id="gseg">${Object.keys(groupers).map(k=>`<button data-g="${k}">${k}</button>`).join('')}</div><div class="waffle" id="wf"></div></section>
+  <div class="cols2"><section><h2>주 공성 횟수</h2><p class="lead">막대에 마우스를 올리면 해당 유저가 나옵니다.</p>${sp.map(([v,a])=>bar(v+'회',a.length,mxs,v>=5?'--jade':v>=1?'--blue':'--verm',W_(a))).join('')}</section>
+  <section><h2>직업</h2><p class="lead">직업별 인원입니다.</p>${jobs.map(([j,a],i)=>bar(j,a.length,mxj,PAL[i%PAL.length],W_(a))).join('')}</section></div>`;
+  document.querySelectorAll('#gseg button').forEach(b=>b.onclick=()=>{GROUP=b.dataset.g;waffle()});waffle();
+}
+// ---------- 명부 ----------
+const COLS=[
+ {h:'닉네임',s:d=>d.n,f:d=>`<b>${d.n}</b>`},{h:'직위',s:d=>d.r,f:d=>d.r},{h:'직업',s:d=>d.j,f:d=>d.j},{h:'조',s:d=>d.g,f:d=>d.g},
+ {h:'활동상태',s:d=>d.st,f:d=>stTag(d.st)},{h:'세그먼트',s:d=>d.seg,f:d=>segTag(d.seg)},{h:'등급',s:d=>d.score,f:d=>`<span class="grade">${d.grade}</span>`},
+ {h:'점수',n:1,s:d=>d.score,f:d=>d.score.toFixed(1)},{h:'번영',n:1,s:d=>d.p,f:d=>f(d.p)},{h:'주간 무훈',n:1,s:d=>d.m,f:d=>f(d.m)},{h:'주간 공헌',n:1,s:d=>d.c,f:d=>f(d.c)},
+ {h:'공성',n:1,s:d=>d.s,f:d=>d.s},{h:'지역',s:d=>d.reg||'재기',f:d=>d.reg||'재기'},{h:'톡방',s:d=>d.t,f:d=>d.t?'참여':''}];
+let M={q:'',j:'',g:'',st:'',seg:'',t:'',smin:0};
+function tabRoster(){
+  const opt=(l,a)=>`<option value="">${l}</option>`+a.map(x=>`<option>${x}</option>`).join('');
+  const u=k=>[...new Set(D.map(d=>d[k]))];
+  document.getElementById('t1').innerHTML=`<h2>멤버 명부</h2><p class="lead">열 제목을 누르면 정렬됩니다. 캐릭터 ID는 이 화면에 없습니다.</p><div class="filters">
+   <input id="q" placeholder="닉네임 검색" size="14" aria-label="닉네임 검색">
+   <select id="fj">${opt('직업 전체',u('j'))}</select><select id="fg">${opt('조 전체',u('g'))}</select>
+   <select id="fst">${opt('활동상태 전체',['액티브(톡방)','정상','재기','비액티브 후보(유예)','비액티브'])}</select>
+   <select id="fseg">${opt('세그먼트 전체',SEG)}</select>
+   <select id="ft"><option value="">톡방 전체</option><option value="1">톡방 참여</option><option value="0">톡방 미참여</option></select>
+   <select id="fs"><option value="0">공성 전체</option>${[1,2,3,4,5,6].map(i=>`<option value="${i}">공성 ${i}회 이상</option>`).join('')}</select>
+   <button class="btn" id="csv">CSV로 저장</button><span class="lead" style="margin:0" id="cn"></span></div><div class="tw"><table id="rtab"><thead><tr>${COLS.map((c,i)=>`<th class="${c.n?'n':''}" data-i="${i}">${c.h}</th>`).join('')}</tr></thead><tbody id="rb"></tbody></table></div>`;
+  const rows=[...D];let view=[],col=6,dir=-1;
+  const render=()=>{
+    view=rows.filter(d=>(!M.q||d.n.toLowerCase().includes(M.q))&&(!M.j||d.j===M.j)&&(!M.g||d.g===M.g)&&(!M.st||d.st===M.st)&&(!M.seg||d.seg===M.seg)&&(M.t===''||String(d.t)===M.t)&&d.s>=M.smin);
+    view.sort((a,b)=>{const x=COLS[col].s(a),y=COLS[col].s(b);return (x>y?1:x<y?-1:0)*dir});
+    document.getElementById('rb').innerHTML=view.map(d=>`<tr>${COLS.map(c=>`<td class="${c.n?'n':''}">${c.f(d)}</td>`).join('')}</tr>`).join('');
+    document.getElementById('cn').textContent=`${view.length}명`;};
+  document.querySelectorAll('#rtab th').forEach(th=>th.onclick=()=>{const i=+th.dataset.i;dir=col===i?-dir:(COLS[i].n||i===6?-1:1);col=i;render()});
+  const bind=(id,k,fn)=>document.getElementById(id).oninput=e=>{M[k]=fn?fn(e.target.value):e.target.value;render()};
+  bind('q','q',v=>v.trim().toLowerCase());bind('fj','j');bind('fg','g');bind('fst','st');bind('fseg','seg');bind('ft','t');bind('fs','smin',Number);
+  document.getElementById('csv').onclick=()=>{const strip=s=>String(s).replace(/<[^>]+>/g,'').replace(/,/g,'');
+    const body=view.map(d=>COLS.map(c=>strip(c.f(d))).join(',')).join('\n');
+    const text='﻿'+COLS.map(c=>c.h).join(',')+'\n'+body;const blob=new Blob([text],{type:'text/csv'});if(typeof claude!=='undefined'&&claude.use){claude.use('downloads').then(dl=>{if(dl)dl.save({filename:'연맹_명단.csv',data:blob}).catch(()=>{})}).catch(()=>{})}else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='연맹_명단.csv';a.click()}};
+  render();
+}
+// ---------- 인사 이슈 ----------
+function tabIssues(){
+  const I=[
+   ['즉시 편성 대상','미편성이면서 공성 3회 이상이거나 공헌 1만 이상입니다.',D.filter(d=>d.g==='미편성'&&(d.s>=3||d.c>=10000))],
+   ['편성 여부 확인','미편성이면서 이번 주 공성 0회입니다. 톡방 참여자는 뺐습니다.',D.filter(d=>d.g==='미편성'&&d.s===0&&!d.t)],
+   ['발탁 후보','일반 멤버, 기본 조, 공성 5회 이상, 무훈 보유입니다. 4주 중 3주 충족하면 확정합니다.',D.filter(d=>d.r==='일반 멤버'&&d.g==='기본 조'&&d.s>=5&&d.m>0)],
+   [inGrace()?'비액티브 후보 (유예 중)':'비액티브',`재기 상태이고 무훈이 중앙값(${f(medM)}) 이하이며 톡방 미참여입니다.`+(inGrace()?` ${CFG.graceEnd}부터 판정합니다.`:''),D.filter(d=>d.st.startsWith('비액'))],
+   ['이탈 위험','공성 0, 무훈 0, 공헌 하위 10%입니다. 톡방 참여자는 뺐습니다.',D.filter(d=>d.seg==='이탈위험')],
+   ['재기 중이지만 활동 있음','지역이 없지만 무훈이 있습니다. 이주를 안내할 대상입니다.',D.filter(d=>d.st==='재기')]];
+  document.getElementById('t2').innerHTML=`<h2>인사 이슈</h2><p class="lead">한 주 수치만으로 불이익을 주지 않습니다. 연속 주수로 확정하세요. 이름에 마우스를 올리면 상세가 나옵니다. 왼쪽 색은 활동상태입니다.</p>`+
+   I.map(([t,desc,rows])=>`<div class="issue"><h3>${t}<em>${rows.length}명</em></h3><p>${desc}</p><div class="chips">${rows.sort((a,b)=>b.score-a.score).map(d=>`<span class="chip" tabindex="0" data-w="${d.i}" style="--c:${cv(STC[d.st])}">${d.n}</span>`).join('')||'<span class="lead">해당하는 유저가 없습니다.</span>'}</div></div>`).join('');
+}
+// ---------- 분석 ----------
+function matrix(title,desc,rKeys,cKeys,rf,cf,rcol){
+  const cell=(r,c)=>D.filter(d=>rf(d)===r&&cf(d)===c);
+  const mx=Math.max(1,...rKeys.flatMap(r=>cKeys.map(c=>cell(r,c).length)));
+  return `<section class="blk"><h2>${title}</h2><p class="lead">${desc}</p><div class="tw"><table class="hm"><thead><tr><th></th>${cKeys.map(c=>`<th class="n" style="text-align:center;cursor:default">${c}</th>`).join('')}<th class="n" style="cursor:default">합계</th></tr></thead><tbody>${rKeys.map(r=>{const all=D.filter(d=>rf(d)===r);return `<tr><th class="rowh" style="cursor:default;position:static;background:none;color:var(--text)" data-w="${W_(all)}" data-t="${r}">${rcol?tag(r,rcol(r)):r}</th>${cKeys.map(c=>{const a=cell(r,c);return `<td><div data-w="${W_(a)}" data-t="${r} / ${c}" style="background:color-mix(in srgb,var(--gold) ${a.length/mx*65}%,transparent)">${a.length||'<span style="color:var(--mute)">0</span>'}</div></td>`}).join('')}<td class="n">${all.length}</td></tr>`}).join('')}</tbody></table></div></section>`;
+}
+function tabAnalysis(){
+  const rows=ST.map(s=>({s,a:D.filter(d=>d.st===s)})).filter(r=>r.a.length);
+  const sumRow=(label,a,c)=>`<tr data-w="${W_(a)}" data-t="${label}"><td>${c?tag(label,c):label}</td><td class="n">${a.length}</td><td class="n">${P(a.length,D.length)}%</td><td class="n">${f(med(a.map(d=>d.p)))}</td><td class="n">${f(med(a.map(d=>d.c)))}</td><td class="n">${(a.reduce((x,d)=>x+d.s,0)/a.length).toFixed(1)}</td><td class="n">${P(a.filter(d=>d.m>0).length,a.length)}%</td><td class="n">${P(a.filter(d=>d.g==='기본 조').length,a.length)}%</td></tr>`;
+  const W0=640,H0=330,pad=38,mx=Math.max(...D.map(d=>d.p)),jit=i=>((i*37%11)-5)*0.035;
+  const dots=D.map(d=>`<circle class="dot" data-w="${d.i}" cx="${pad+d.p/mx*(W0-pad-12)}" cy="${H0-pad-(d.s+jit(d.i))/6*(H0-pad-14)}" r="${d.t?6:4.4}" fill="${cv(STC[d.st])}" fill-opacity=".82" ${d.t?'stroke="#fff" stroke-width="1.6"':''}/>`).join('');
+  const ax=[0,1,2,3,4,5,6].map(v=>`<text x="6" y="${H0-pad-v/6*(H0-pad-14)+4}">${v}회</text>`).join('')+[0,2e4,4e4,6e4,8e4].map(v=>`<text x="${pad+v/mx*(W0-pad-12)-10}" y="${H0-14}">${v/1e4}만</text>`).join('');
+  const regs=[...new Set(D.map(d=>d.reg||'재기'))].map(r=>[r,D.filter(d=>(d.reg||'재기')===r)]).sort((a,b)=>b[1].length-a[1].length);
+  const jobs=[...new Set(D.map(d=>d.j))];
+  document.getElementById('t3').innerHTML=`
+  <section class="blk"><h2>활동상태별 분석표</h2><p class="lead">누가 액티브이고 누가 아닌지를 한눈에 봅니다. 행에 마우스를 올리면 해당 유저가 나옵니다. 번영과 공헌은 중앙값, 공성은 평균입니다.</p>
+   <div class="tw"><table><thead><tr><th style="cursor:default">활동상태</th><th class="n" style="cursor:default">인원</th><th class="n" style="cursor:default">비율</th><th class="n" style="cursor:default">번영</th><th class="n" style="cursor:default">공헌</th><th class="n" style="cursor:default">공성</th><th class="n" style="cursor:default">무훈 보유</th><th class="n" style="cursor:default">기본 조</th></tr></thead><tbody>${rows.map(r=>sumRow(r.s,r.a,STC[r.s])).join('')}${sumRow('전체',D)}</tbody></table></div></section>
+  ${matrix('활동상태와 세그먼트','칸의 숫자는 인원입니다. 칸에 마우스를 올리면 해당 유저가 나옵니다.',rows.map(r=>r.s),SEG,d=>d.st,d=>d.seg,r=>STC[r])}
+  ${matrix('활동상태와 직업','어떤 직업에 액티브 유저가 몰려 있는지 봅니다.',rows.map(r=>r.s),jobs,d=>d.st,d=>d.j,r=>STC[r])}
+  <section class="blk"><h2>번영과 공성 횟수</h2><p class="lead">점 하나가 유저 한 명이고, 색은 활동상태입니다. 흰 테두리는 톡방 참여자입니다. 점에 마우스를 올리면 이름이 나옵니다.</p>
+   <div class="tw" style="padding:14px 10px"><svg viewBox="0 0 ${W0} ${H0}" width="100%" role="img" aria-label="번영과 공성 횟수 산점도">${ax}${dots}</svg></div>
+   <div class="legend">${ST.map(s=>`<span><i style="background:${cv(STC[s])}"></i>${s}</span>`).join('')}</div></section>
+  <section class="blk"><h2>지역별 현황</h2><p class="lead">재기는 지역명이 없는 유저입니다. 행에 마우스를 올리면 해당 유저가 나옵니다.</p>
+   <div class="tw"><table><thead><tr><th style="cursor:default">지역</th><th class="n" style="cursor:default">인원</th><th class="n" style="cursor:default">번영 중앙값</th><th class="n" style="cursor:default">공헌 중앙값</th><th class="n" style="cursor:default">공성 중앙값</th><th class="n" style="cursor:default">톡방 참여</th></tr></thead><tbody>${regs.map(([r,a])=>`<tr data-w="${W_(a)}" data-t="${r}"><td>${r}</td><td class="n">${a.length}</td><td class="n">${f(med(a.map(d=>d.p)))}</td><td class="n">${f(med(a.map(d=>d.c)))}</td><td class="n">${med(a.map(d=>d.s))}</td><td class="n">${a.filter(d=>d.t).length}</td></tr>`).join('')}</tbody></table></div></section>`;
+}
+// ---------- 기준표 ----------
+function tabRules(){
+  document.getElementById('t4').innerHTML=`<h2>기준표</h2><p class="lead">판정 기준을 숨기지 않고 그대로 적었습니다.</p>
+  <section class="blk"><h2 style="font-size:17px">활동상태</h2><div class="tw"><table class="rules"><tbody>
+   <tr><td>${stTag('액티브(톡방)')}</td><td>톡방 참여자입니다. 이탈위험, 휴면, 비액티브 판정에서 제외하고 점수에 +${W.talk}점을 줍니다.</td></tr>
+   <tr><td>${stTag('재기')}</td><td>주둔지에 지역명이 없는 유저입니다. 성지영역으로 아직 이주하지 않았거나 재기 중입니다.</td></tr>
+   <tr><td>${stTag(inGrace()?'비액티브 후보(유예)':'비액티브')}</td><td>재기 상태이고 무훈이 중앙값(${f(medM)}) 이하이며 톡방 미참여입니다. 아직 유저 간 전투가 없는 시기라 ${CFG.graceEnd}부터 판정합니다.
+   <label style="display:block;margin-top:8px"><input type="checkbox" id="gx" style="vertical-align:middle"> 유예를 풀고 적용 결과 미리 보기</label></td></tr>
+   <tr><td>${stTag('정상')}</td><td>그 외 유저입니다.</td></tr></tbody></table></div></section>
+  <section class="blk"><h2 style="font-size:17px">세그먼트</h2><p class="lead">위에서부터 먼저 해당하는 항목입니다.</p><div class="tw"><table class="rules"><tbody>
+   <tr><td>${segTag('이탈위험')}</td><td>공성 0, 무훈 0, 공헌 하위 10%(${f(p10c)} 이하), 톡방 미참여</td></tr>
+   <tr><td>${segTag('핵심 전력')}</td><td>공성 5회 이상, 무훈 보유</td></tr><tr><td>${segTag('성실 공성')}</td><td>공성 4회 이상</td></tr>
+   <tr><td>${segTag('간헐 참여')}</td><td>공성 1~3회 (톡방 참여자는 공성 0이어도 여기)</td></tr><tr><td>${segTag('휴면')}</td><td>그 외 (공성 0)</td></tr></tbody></table></div></section>
+  <section class="blk"><h2 style="font-size:17px">점수</h2><p class="lead">번영, 공헌, 공성은 서로 상관이 높아서 행동 지표인 공성에 가장 큰 비중을 뒀습니다. 등급은 점수 순위로 정합니다. 상위 10%는 S, 30%까지 A, 70%까지 B, 나머지는 C입니다.</p><div class="tw"><table class="rules"><tbody>
+   <tr><td>공성 횟수</td><td>${W.s}점 × (횟수 ÷ 6)</td></tr><tr><td>주간 공헌</td><td>${W.c}점 × 백분위</td></tr><tr><td>주간 무훈</td><td>${W.m}점 × 백분위</td></tr><tr><td>번영</td><td>${W.p}점 × 백분위</td></tr><tr><td>톡방 참여</td><td>+${W.talk}점</td></tr></tbody></table></div></section>`;
+  document.getElementById('gx').checked=graceOff;document.getElementById('gx').onchange=e=>{graceOff=e.target.checked;build();show(4)};
+}
+function build(){derive();tabSummary();tabRoster();tabIssues();tabAnalysis();tabRules()}
+const renderMeta=()=>{document.getElementById('meta').textContent=`명단 ${CFG.rosterFile}, 기준일 ${CFG.rosterDate}. 톡방 목록 ${CFG.talkFile}, 업데이트 ${CFG.talkDate}. 캐릭터 ID는 표시하지 않습니다.`};
+const NAMES=['현황','멤버 명부','인사 이슈','분석','기준표'];
+document.getElementById('nav').innerHTML=NAMES.map((n,i)=>`<button data-i="${i}">${n}</button>`).join('');
+function show(i){document.querySelectorAll('nav button,.tab').forEach(e=>e.classList.remove('on'));document.querySelector(`nav button[data-i="${i}"]`).classList.add('on');document.getElementById('t'+i).classList.add('on');tip.classList.remove('on')}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(+b.dataset.i));
+prep();renderMeta();build();show(0);
+// ---------- 실시간 데이터 / 업데이트 ----------
+function refresh(){const cur=document.querySelector('nav button.on');const i=cur?+cur.dataset.i:0;prep();renderMeta();build();show(i)}
+const $=id=>document.getElementById(id);
+const nz=v=>{if(typeof v==='number')return v;const n=Number(String(v).replace(/[,\s]/g,''));return isNaN(n)?0:n};
+async function sheetRows(file){const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''})}
+function parseRoster(rows){
+  const hi=rows.findIndex(r=>r.map(String).map(x=>x.trim()).includes('멤버'));
+  if(hi<0)throw new Error("'멤버' 열이 있는 머리글 행을 찾지 못했습니다.");
+  const H=rows[hi].map(x=>String(x).trim()),ix=n=>H.indexOf(n);
+  const need=['멤버','직업','조별','직위','번영','주간 무훈','주간 공헌','주 공성 횟수','주둔지'];
+  const miss=need.filter(n=>ix(n)<0);if(miss.length)throw new Error('빠진 열: '+miss.join(', '));
+  const out=[];
+  for(const r of rows.slice(hi+1)){
+    const n=String(r[ix('멤버')]).trim();if(!n)continue;
+    const m=String(r[ix('주둔지')]).match(/^\s*([^(]*)\(\s*(\d+)\s*,\s*(\d+)\s*\)/);
+    out.push({n,j:String(r[ix('직업')]).trim(),g:String(r[ix('조별')]).trim(),r:String(r[ix('직위')]).trim(),p:nz(r[ix('번영')]),m:nz(r[ix('주간 무훈')]),c:nz(r[ix('주간 공헌')]),s:nz(r[ix('주 공성 횟수')]),reg:m?m[1].trim():'',x:m?+m[2]:0,y:m?+m[3]:0,t:0});
+  }
+  if(!out.length)throw new Error('명단 행이 없습니다.');
+  const dup=out.map(d=>d.n).filter((n,i,a)=>a.indexOf(n)!==i);if(dup.length)throw new Error('닉네임이 겹칩니다: '+[...new Set(dup)].join(', '));
+  return out;
+}
+const todayKST=()=>new Date(Date.now()+9*3600e3).toISOString().slice(0,10);
+let PENDING=null;
+function msg(t,c){const m=$('amsg');m.textContent=t;m.className=c||''}
+function bindTalk(db){
+  $('atk').onclick=async()=>{
+    const names=[...new Set($('tk').value.split(/[\n\t,]+/).map(x=>x.trim()).filter(x=>x&&x!=='멤버'&&x!=='닉네임'))];
+    const tm=$('tmsg');
+    if(!names.length){tm.textContent='붙여넣은 닉네임이 없습니다.';return}
+    const have=new Set(D.map(d=>d.n)),miss=names.filter(n=>!have.has(n));
+    try{await db.doc('roster/talk').set({names,date:todayKST(),updatedAt:Date.now()});$('tk').value='';
+      tm.textContent=`톡방 ${names.length}명 적용`+(miss.length?`. 명단에 없는 이름 ${miss.length}명: ${miss.slice(0,8).join(', ')}${miss.length>8?' 외':''}`:'.')}
+    catch(e){tm.textContent='저장하지 못했습니다: '+(e.code||e.message)}
+  };
+}
+function bindAdmin(db){bindTalk(db);
+  const ref=db.doc('roster/current'),fr=$('fr'),pv=$('aprev'),ap=$('aapply');
+  fr.onchange=()=>{pv.disabled=!fr.files.length;ap.disabled=true;PENDING=null;msg('')};
+  pv.onclick=async()=>{
+    try{
+      const rows=parseRoster(await sheetRows(fr.files[0]));      const old=new Map(D.map(d=>[d.n,d]));
+      rows.forEach(d=>{d.t=TALK?(TALK.has(d.n)?1:0):(old.get(d.n)?old.get(d.n).t:0)});
+      const cfg={...CFG,rosterFile:fr.files[0].name,rosterDate:todayKST()};
+      const gone=D.filter(d=>!rows.some(x=>x.n===d.n)).length,fresh=rows.filter(d=>!old.has(d.n)).length;
+      PENDING={rows,cfg};ap.disabled=false;
+      msg(`${rows.length}명 확인. 신규 ${fresh}명, 빠진 사람 ${gone}명, 톡방 ${rows.filter(d=>d.t).length}명. 맞으면 [적용]을 누르세요.`);
+    }catch(e){PENDING=null;ap.disabled=true;msg(e.message,'err')}
+  };
+  ap.onclick=async()=>{
+    if(!PENDING)return;ap.disabled=true;
+    try{await ref.set({rows:PENDING.rows,cfg:PENDING.cfg,updatedAt:Date.now()});msg('적용했습니다. 열려 있는 모든 화면이 곧바로 바뀝니다.','ok');PENDING=null;fr.value='';pv.disabled=true}
+    catch(e){msg('저장하지 못했습니다: '+(e.code||e.message),'err');ap.disabled=false}
+  };
+}
+async function initLive(){
+  let db=null,user=null;
+  try{db=await claude.use('db');user=await claude.use('user')}catch(e){}
+  if(!db)return;
+  db.doc('roster/current').onSnapshot(snap=>{
+    $('live').classList.add('on');$('live').lastChild.textContent='실시간 연결됨';
+    if(!snap.exists)return;const v=snap.data();
+    if(v&&Array.isArray(v.rows)&&v.rows.length&&v.cfg){D=v.rows.map(r=>({...r}));CFG=v.cfg;refresh()}
+  },()=>{});
+  db.doc('roster/talk').onSnapshot(snap=>{
+    if(!snap.exists)return;const v=snap.data();
+    if(v&&Array.isArray(v.names)){TALK=new Set(v.names);CFG={...CFG,talkFile:'스프레드시트 톡방참여자 탭',talkDate:v.date||CFG.talkDate};refresh()}
+  },()=>{});
+  let can=false;try{can=user?await user.canEdit():false}catch(e){}
+  if(can){$('adm').hidden=false;bindAdmin(db)}
+}
+initLive();
+</script>

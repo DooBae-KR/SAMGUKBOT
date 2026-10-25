@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: sangukji-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: GUILD_ID
+        sync: false
+      - key: VERIFY_CHANNEL_ID
+        sync: false
+      - key: WEB_KEY
+        sync: false
+      - key: SAVE_URL
+        sync: false
+      - key: SAVE_KEY
+        sync: false
+      - key: SHEET_ID
+        value: 1UOtQR7PvI5qJwLeFbq-RErRRKBwl-JjXhsK53JXLzAA
+      - key: ROSTER_GID
+        value: "818075343"
+      - key: TALK_GID
+        value: "266611855"
+      - key: MEMBER_ROLE
+        value: 동맹원
+      - key: OFFICER_ROLE
+        value: 간부
+      - key: OFFICER_TITLES
+        sync: false
+      - key: COL_UID
+        value: 캐릭터 ID
+      - key: COL_NAME
+        value: 멤버
+      - key: COL_JOB
+        value: 직업
+      - key: COL_TITLE
+        value: 직위
+      - key: SYNC_MINUTES
+        value: "0"

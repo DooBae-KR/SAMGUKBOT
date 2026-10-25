@@ -1,0 +1,5 @@
+.env
+verified.json
+jungchul.json
+__pycache__/
+*.zip
