@@ -418,12 +418,70 @@ def tier_cid(t):
 def dex_path(cid): return DEX_DIR / f"{re.sub(r'[^0-9A-Za-z]', '', cid)}.json"
 
 
+def _cell(r, i): return re.sub(r"\s*\n\s*", " ", str(r[i])).strip() if i < len(r) and r[i] is not None else ""
+
+
+def parse_hd(rows):
+    """시트 '무장' 탭 → {장수: {...}}  (열 순서: 시즌,나라,진영,성향,(합쳐진 칸),이름,병종,전법유형,전법특성,고유전법,확률,설명,무력,지력,통솔,선공)"""
+    out = {}
+    for r in rows[1:]:
+        name = _cell(r, 5) or _cell(r, 4)
+        if not name: continue
+        out[name] = {"nation": _cell(r, 1), "pos": _cell(r, 2), "style": _cell(r, 3), "troop": _cell(r, 6), "sktype": _cell(r, 7),
+                     "sktrait": _cell(r, 8), "sk": _cell(r, 9), "rate": _cell(r, 10), "desc": (str(r[11]).strip() if len(r) > 11 else ""),
+                     "st": [_cell(r, i) for i in (12, 13, 14, 15)], "season": int(_cell(r, 0) or 1) if _cell(r, 0).isdigit() else 1}
+    return out
+
+
+def parse_skd(rows):
+    """시트 '전법' 탭 → {전법: {...}}  (열 순서: 그림,이름,유형,특성,발동률,설명,등급,시즌)"""
+    out = {}
+    for r in rows[1:]:
+        name = _cell(r, 1)
+        if not name: continue
+        out[name] = {"type": _cell(r, 2), "trait": _cell(r, 3), "rate": _cell(r, 4), "desc": _cell(r, 5), "grade": _cell(r, 6),
+                     "season": int(_cell(r, 7)) if _cell(r, 7).isdigit() else 1}
+    return out
+
+
+_tab_cache = {}
+
+
+def fetch_tab_rows(tab, ttl=300):
+    """시트 탭을 이름으로 읽음(5분 캐시). 실패하면 이전 값, 없으면 None."""
+    now = time.time(); c = _tab_cache.get(tab)
+    if c and now - c[0] < ttl: return c[1]
+    try:
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(tab)}"
+        with urllib.request.urlopen(url, timeout=20) as r: text = r.read().decode("utf-8-sig")
+        rows = list(csv.reader(io.StringIO(text)))
+        if len(rows) < 2: raise RuntimeError("빈 탭")
+        _tab_cache[tab] = (now, rows); return rows
+    except Exception as e:
+        log.warning("시트 탭 '%s' 읽기 실패: %s", tab, e); return c[1] if c else None
+
+
+def tier_sheet_cfg():
+    cfg = {}
+    if not SHEET_ID: return cfg
+    rows = fetch_tab_rows("무장")
+    if rows:
+        hd = parse_hd(rows)
+        if hd: cfg["hd"] = hd
+    rows = fetch_tab_rows("전법")
+    if rows:
+        skd = parse_skd(rows)
+        if skd: cfg["skd"] = skd
+    return cfg
+
+
 async def web_tier(request):
     cid = tier_cid(request.query.get("t"))
     if not cid: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /도감 으로 새 링크를 받으세요.")
     info = roster.by_uid.get(cid) or {}
     dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
-    cfg = {"t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", [])}
+    cfg = await asyncio.to_thread(tier_sheet_cfg)
+    cfg |= {"t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", [])}
     tpl = (Path(__file__).parent / "tier_template.html").read_text("utf-8")
     return web.Response(text=tpl.replace("__CFG__", json.dumps(cfg, ensure_ascii=False)), content_type="text/html", headers={"Cache-Control": "no-store"})
 
