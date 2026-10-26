@@ -628,74 +628,101 @@ def fmt_dur(hours):
 def jc_label(level): return f"{level}레벨" + (" 관문" if level == 12 else "")
 
 
-@bot.tree.command(name="공성", description="성지 레벨의 정철이 모이면 알려 줍니다")
-@app_commands.describe(레벨="목표 성지(관문) 레벨", 연결안됨="아군 성지/관문과 관로로 연결되지 않음(추가 소모)", 타진영="타 진영 시작 지역 성지(총량 +50%)", 이어서="내가 앞서 걸어 둔 일정이 있으면 그 필요량에 이번 필요량을 더해 계산(기본 켜짐)")
+def is_staff(it):
+    return isinstance(it.user, discord.Member) and (it.user.guild_permissions.administrator or any(r.name == OFFICER_ROLE for r in it.user.roles))
+
+
+def jc_plan(st):
+    """등록 순서대로 정철이 모이는 시각을 시뮬레이션. 앞선 공성에 쓴 정철은 차감하고 계산 → [(공성, 도달시각, 차감 후 잔여)]"""
+    cur = st["stock"]; n = _tick_n(st["at"]); t = st["at"]; out = []
+    for e in st.get("sieges", []):
+        while cur < e["cost"] and len(out) < 1000:
+            n += 1; cur += _tick_amt(n); t = JC_ANCHOR + n * JC_STEP
+        cur -= e["cost"]; out.append((e, t, cur))
+    return out
+
+
+def siege_name(e): return f"{e['tags']}{jc_label(e['level'])}"
+
+
+@bot.tree.command(name="공성등록", description="[간부] 공성 주둔지를 등록합니다. 정철이 모이면 자동으로 차감하고 알려 줍니다")
+@app_commands.describe(레벨="건설할 성지(관문) 레벨", 연결안됨="아군 성지/관문과 관로로 연결되지 않음(추가 소모)", 타진영="타 진영 시작 지역 성지(총량 +50%)")
 @app_commands.choices(레벨=[app_commands.Choice(name=jc_label(k), value=k) for k in sorted(COST)])
-async def siege(it: discord.Interaction, 레벨: app_commands.Choice[int], 연결안됨: bool = False, 타진영: bool = False, 이어서: bool = True):
-    st = jc_load(); lv = 레벨.value; own = jc_need(lv, 연결안됨, 타진영)
-    st["timers"] = [t for t in st["timers"] if not (t["user"] == it.user.id and t["level"] == lv)]       # 같은 레벨은 덮어씀
-    prior = max((t["need"] for t in st["timers"] if t["user"] == it.user.id), default=0) if 이어서 else 0   # 앞선 일정의 누적 필요량
-    need = prior + own
-    cur = jc_stock_now(st); rem = need - cur; eta = jc_eta(st, need)
+async def siege_add(it: discord.Interaction, 레벨: app_commands.Choice[int], 연결안됨: bool = False, 타진영: bool = False):
+    if not is_staff(it): return await it.response.send_message("간부 이상만 등록할 수 있습니다.", ephemeral=True)
+    st = jc_load(); lv = 레벨.value; cost = jc_need(lv, 연결안됨, 타진영)
     tags = ("연결 안 됨 " if 연결안됨 else "") + ("타 진영 " if 타진영 else "")
-    chain = f"앞선 일정 {prior:,} + 이번 {own:,} = 합계 " if prior else "필요 정철 "
-    if rem <= 0:
-        return await it.response.send_message(f"✅ {tags}{jc_label(lv)} 필요 정철 **{need:,}**개, 지금 보유 **{int(cur):,}**개로 이미 충분합니다.")
-    st["timers"].append({"user": it.user.id, "channel": it.channel_id, "level": lv, "need": need, "own": own, "prior": prior, "tags": tags, "soon": False})
-    jc_save(st)
+    st.setdefault("sieges", []).append({"user": it.user.id, "channel": it.channel_id, "level": lv, "cost": cost, "tags": tags, "soon": False})
+    st.pop("timers", None); jc_save(st)
+    n = len(st["sieges"]); e, eta, left = jc_plan(st)[-1]
     await it.response.send_message(
-        f"⏳ {tags}**{jc_label(lv)}** {chain}**{need:,}**개 · 보유 {int(cur):,}개 · 부족 **{int(rem + 0.999):,}**개\n"
-        f"5분마다 13·13·14개 지급(시간당 160개) 기준 **{fmt_dur((eta - time.time()) / 3600)}** 뒤 도달 → <t:{int(eta)}:t> (<t:{int(eta)}:R>)\n"
-        f"도달 {ALERT_MIN}분 전과 도달했을 때 이 채널에서 {it.user.mention}님을 불러 드립니다.")
+        f"📌 **{n}번** {siege_name(e)} 등록 — 필요 정철 **{cost:,}**개\n"
+        f"예상 도달 <t:{int(eta)}:f> (<t:{int(eta)}:R>) · 도달하면 보유 정철에서 {cost:,}개를 자동 차감하고, 도달 {ALERT_MIN}분 전과 도달했을 때 알려 드립니다.\n"
+        f"전체 일정은 `/공성`으로 확인하세요.")
 
 
-@bot.tree.command(name="정철설정", description="[간부] 현재 정철 보유량(과 시간당 생산량)을 맞춥니다")
-@app_commands.describe(보유량="지금 동맹 정철 보유량")
-async def jc_set(it: discord.Interaction, 보유량: int):
-    staff = isinstance(it.user, discord.Member) and (it.user.guild_permissions.administrator or any(r.name == OFFICER_ROLE for r in it.user.roles))
-    if not staff: return await it.response.send_message("간부 이상만 설정할 수 있습니다.", ephemeral=True)
-    if 보유량 < 0: return await it.response.send_message("0 이상의 숫자를 입력하세요.", ephemeral=True)
-    st = jc_load(); st["stock"] = 보유량; st["at"] = time.time()
-    jc_save(st)
-    await it.response.send_message(f"정철 보유량 **{보유량:,}**개로 설정했습니다.")
-
-
-@bot.tree.command(name="정철현황", description="현재 정철 보유량과 대기 중인 알림을 봅니다")
-async def jc_status(it: discord.Interaction):
-    st = jc_load(); cur = jc_stock_now(st)
-    lines = [f"현재 정철 약 **{int(cur):,}**개 (시간당 {st['rate']}개)"]
-    for t in st["timers"]:
-        rem = t["need"] - cur; eta = jc_eta(st, t["need"])
-        lines.append(f"· <@{t['user']}> {t['tags']}{jc_label(t['level'])} 필요 {t['need']:,}개 — " + ("도달" if rem <= 0 else f"{fmt_dur((eta - time.time()) / 3600)} 남음 (<t:{int(eta)}:t>)"))
-    if not st["timers"]: lines.append("대기 중인 알림이 없습니다.")
+@bot.tree.command(name="공성", description="현재 정철 개수와 진행 중인 공성 예상 일정을 봅니다")
+async def siege_view(it: discord.Interaction):
+    st = jc_load(); now = time.time(); cur = jc_stock_now(st, now)
+    nxt = JC_ANCHOR + (_tick_n(now) + 1) * JC_STEP
+    lines = [f"🪙 현재 정철 약 **{int(cur):,}**개 · 5분마다 13·13·14개 지급(시간당 160개) · 다음 지급 <t:{int(nxt)}:R>"]
+    plan = jc_plan(st)
+    if not plan: lines.append("등록된 공성이 없습니다. `/공성등록`으로 주둔지를 등록하세요.")
+    else:
+        lines.append("**예상 공성 일정** (등록 순서대로 정철 차감)")
+        for i, (e, eta, left) in enumerate(plan, 1):
+            lines.append(f"{i}. **{siege_name(e)}** 필요 {e['cost']:,}개 → <t:{int(eta)}:f> (<t:{int(eta)}:R>) · 건설 후 잔여 약 {int(left):,}개 · <@{e['user']}>")
+        lines.append(f"전체 필요 {sum(e['cost'] for e, _, _ in plan):,}개 · 마지막 도달 <t:{int(plan[-1][1])}:f>")
     await it.response.send_message("\n".join(lines))
 
 
-@bot.tree.command(name="공성취소", description="내가 걸어 둔 정철 알림을 모두 취소합니다")
-async def siege_cancel(it: discord.Interaction):
-    st = jc_load(); n = len(st["timers"]); st["timers"] = [t for t in st["timers"] if t["user"] != it.user.id]; jc_save(st)
-    await it.response.send_message(f"알림 {n - len(st['timers'])}개를 취소했습니다.", ephemeral=True)
+@bot.tree.command(name="공성취소", description="[간부] 등록한 공성을 취소합니다(번호 생략 시 마지막 등록)")
+@app_commands.describe(번호="/공성 목록의 번호", 전체="모두 취소")
+async def siege_cancel(it: discord.Interaction, 번호: int = 0, 전체: bool = False):
+    if not is_staff(it): return await it.response.send_message("간부 이상만 취소할 수 있습니다.", ephemeral=True)
+    st = jc_load(); sg = st.setdefault("sieges", [])
+    if 전체: n = len(sg); sg.clear(); msg = f"공성 {n}건을 모두 취소했습니다."
+    elif not sg: return await it.response.send_message("취소할 공성이 없습니다.", ephemeral=True)
+    else:
+        i = (번호 or len(sg)) - 1
+        if not 0 <= i < len(sg): return await it.response.send_message(f"1~{len(sg)} 사이의 번호를 입력하세요.", ephemeral=True)
+        e = sg.pop(i); msg = f"{i + 1}번 {siege_name(e)} 공성을 취소했습니다."
+    jc_save(st); await it.response.send_message(msg)
+
+
+@bot.tree.command(name="정철설정", description="[간부] 현재 정철 보유량을 맞춥니다")
+@app_commands.describe(보유량="지금 동맹 정철 보유량")
+async def jc_set(it: discord.Interaction, 보유량: int):
+    if not is_staff(it): return await it.response.send_message("간부 이상만 설정할 수 있습니다.", ephemeral=True)
+    if 보유량 < 0: return await it.response.send_message("0 이상의 숫자를 입력하세요.", ephemeral=True)
+    st = jc_load(); st["stock"] = 보유량; st["at"] = time.time()
+    jc_save(st)
+    await it.response.send_message(f"정철 보유량을 **{보유량:,}**개로 설정했습니다.")
+
+
+async def _say(ch_id, text):
+    ch = bot.get_channel(ch_id)
+    if ch:
+        try: await ch.send(text)
+        except Exception: log.exception("정철 알림 전송 실패")
 
 
 @tasks.loop(seconds=30)
 async def jc_loop():
     try:
-        st = jc_load()
-        if not st["timers"]: return
-        cur = jc_stock_now(st); keep = []; changed = False
-        for t in st["timers"]:
-            rem = t["need"] - cur; left = jc_eta(st, t["need"]) - time.time()
-            ch = bot.get_channel(t["channel"])
-            try:
-                if rem <= 0:
-                    if ch: await ch.send(f"🔔 <@{t['user']}> {t['tags']}**{jc_label(t['level'])}** 정철이 모였습니다! ({'누적 ' if t.get('prior') else '필요 '}{t['need']:,}개 · 현재 약 {int(cur):,}개)")
-                    changed = True; continue                      # 알림 후 제거
-                if not t["soon"] and left <= ALERT_MIN * 60:
-                    if ch: await ch.send(f"⏰ <@{t['user']}> {t['tags']}**{jc_label(t['level'])}** 정철이 곧 모입니다. 약 {fmt_dur(left / 3600)} 남았습니다. (부족 {int(rem + 0.999):,}개)")
-                    t["soon"] = True; changed = True
-            except Exception: log.exception("정철 알림 전송 실패")
-            keep.append(t)
-        if changed: st["timers"] = keep; jc_save(st)
+        st = jc_load(); sg = st.get("sieges", [])
+        if not sg: return
+        now = time.time(); changed = False
+        while sg and jc_stock_now(st, now) >= sg[0]["cost"]:          # 도달 → 자동 차감 후 알림
+            e = sg.pop(0); cur = jc_stock_now(st, now)
+            st["stock"] = cur - e["cost"]; st["at"] = now; changed = True
+            nxt = f"\n다음: **{siege_name(sg[0])}** {sg[0]['cost']:,}개 대기 중" if sg else ""
+            await _say(e["channel"], f"🔔 <@{e['user']}> **{siege_name(e)}** 정철이 모였습니다! 필요 {e['cost']:,}개를 차감했습니다. (남은 정철 약 {int(st['stock']):,}개){nxt}")
+        for e, eta, _ in jc_plan(st):                                   # 도달 직전 알림
+            if not e.get("soon") and eta - now <= ALERT_MIN * 60:
+                e["soon"] = True; changed = True
+                await _say(e["channel"], f"⏰ <@{e['user']}> **{siege_name(e)}** 정철이 곧 모입니다. 약 {fmt_dur((eta - now) / 3600)} 남았습니다. (<t:{int(eta)}:t>)")
+        if changed: jc_save(st)
     except Exception: log.exception("정철 타이머 오류")
 
 

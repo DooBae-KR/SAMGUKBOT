@@ -47,8 +47,8 @@ function _mirror(name, data, now) {
     s3.getRange(r, 1, 1, 7).setValues([[String(data.cid), data.name, (data.own || []).length, (data.own || []).join(', '), (data.ownsk || []).length, (data.ownsk || []).join(', '), data.at]]);
   } else if (name === 'jungchul') {
     var s2 = _sheet('봇_정철'); s2.clear();
-    var t = (data.timers || []).map(function (x) { return [x.level, x.need, String(x.user)]; });
-    s2.getRange(1, 1, 3, 2).setValues([['보유량(기준)', data.stock], ['기준 시각', Utilities.formatDate(new Date(data.at * 1000), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')], ['대기 알림 수', t.length]]);
-    if (t.length) s2.getRange(5, 1, t.length + 1, 3).setValues([['레벨', '필요량', '요청자 디스코드ID']].concat(t));
+    var t = (data.sieges || []).map(function (x, i) { return [i + 1, x.level, x.cost, String(x.user)]; });
+    s2.getRange(1, 1, 3, 2).setValues([['보유량(기준)', data.stock], ['기준 시각', Utilities.formatDate(new Date(data.at * 1000), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')], ['등록된 공성 수', t.length]]);
+    if (t.length) s2.getRange(5, 1, t.length + 1, 4).setValues([['순서', '레벨', '필요량', '등록자 디스코드ID']].concat(t));
   }
 }
