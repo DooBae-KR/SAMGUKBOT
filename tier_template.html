@@ -100,6 +100,9 @@ table.mini2{margin-top:8px;font-size:12px}table.mini2 th,table.mini2 td{padding:
 .rec .h.off{opacity:.3}.rec .h img{border-radius:6px}
 .s2{font-style:normal;font-size:9px;background:var(--gold);color:#000;border-radius:4px;padding:0 4px;vertical-align:middle}.dg .hi{display:block;margin-top:2px}
 .bar button.on{background:var(--jade);color:#04120c;border-color:var(--jade)}
+.mu{margin:0 0 10px;font-size:11px}.mur{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:4px}.mu b{min-width:30px;font-weight:700}
+.mu span{padding:1px 8px;border-radius:999px;border:1px solid var(--line)}.mu .w{color:var(--jade)}.mu .w span,.mu span.w{border-color:var(--jade)}
+.mu .l{color:#ff7a6b}.mu span.l{border-color:#ff7a6b}.mu .e{color:var(--mut)}.mu .mu0{color:var(--mut);border:none;padding:0}
 .s1t{margin:24px 0 10px;font-size:20px;font-weight:800;color:var(--gold)}.s1t small{margin-left:10px;font-size:12px;font-weight:400;color:var(--mut)}
 .s1g{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
 .s1d{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}.s1d h3{margin:0 0 6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:16px}
@@ -385,8 +388,14 @@ function renderNav(){
   document.getElementById('nav').innerHTML=NAV.map(([k,l])=>k==='grp'?`<div class="grp">${l}</div>`:
    `<button class="${cur===k?'on':''}" data-go="${k}">${l}${c[k]?`<span class="cnt">${c[k]}</span>`:''}</button>`).join('');
 }
+const MU={"s1:대황제":{"win":["견향궁을 뺀 대부분의 덱"],"lose":["견향궁"],"etc":["황개가 피해를 충분히 받아주는지가 변수"]},"s1:조곽순":{"etc":["곽가의 활약에 승패가 갈림"]},"s1:유장황":{"lose":["대황제","황룡기"],"etc":["성능 발휘는 비교적 안정적"]},"s1:유조초":{"lose":["허약을 거는 덱 (조금)"]},"s1:조제유":{"lose":["허약을 거는 덱 (조금)"]},"s1:유장서":{"etc":["제어가 얼마나 잘 들어가느냐"]},"s1:주손소":{"etc":["제어가 얼마나 잘 들어가느냐"]},"s1:삼손":{"etc":["제어가 얼마나 잘 들어가느냐"]},"s1:조전견":{"win":["손상향 덱 (매우 강함)","충의궁 (약간 우세)"],"etc":["수동 조작으로 병기 덱을 노리는 구성"]},"s1:연격 여포":{"etc":["성능 발휘가 불안정"]},"s1:장장장":{"etc":["전법 발동 여부에 승패가 갈림","성능 발휘가 불안정"]},"s1:서초웅":{"etc":["초원마(조원마)의 하위 대체 덱"]},"s1:하관등":{"etc":["준비완료가 사실상 필수"]},"s1:하하등":{"etc":["준비완료가 사실상 필수"]},"s1:하등곽":{"etc":["준비완료가 사실상 필수"]},"s2:조원마":{"win":["태원마 (맞대결 우세)","주유 계열","조감초 등장 전 대부분"],"lose":["조감초 (등장 이후)"],"etc":["마초를 기병으로 유지하면 미러전에 유리"]},"s2:주순악":{"win":["주태 덱","태원마 (저격용)"],"lose":["조운·사마의 덱","여포 (조금)"],"etc":["도화마가 많을수록 강함"]},"s2:여진악":{"win":["주태 덱 (덜 불리함)"],"etc":["운에 크게 좌우되는 극단적인 성능"]},"s2:태황유":{"win":["태원마 (소폭)","태X육 (소폭)"],"lose":["조운·사마의 덱"],"etc":["황개가 얼마나 버티느냐","고돌파가 저돌파를 압도"]},"s2:조감초":{"win":["병기 덱 대부분"],"lose":["육손·사마의 덱 (최고 세팅이면 승산 있음)"],"etc":["장서각이 있어야 운용 가능"]},"s2:조순사":{"win":["주유 계열 (비교적)","조운 계열 (비교적)","나머지 덱 대체로 5:5~소폭 우세"],"lose":["태원마 (강한 카운터)","마초·육손 계열"]},"s2:태원마":{"win":["사마의 덱 (매우 강함)"],"lose":["조원마","주유·조운 계열"],"etc":["1:1은 강하나 주태 피해 대행으로 연전에 약함"]},"s2:쌍황육":{"lose":["조운·사마의 같은 느린 강덱","주태","허실간파"],"etc":["육손을 기병/방패병으로 전환하면 가장 좋음"]},"s2:노손육":{"etc":["병종(3궁/3창/3기병)에 따라 저격 상대가 달라짐","공존용 덱"]},"s2:노손관":{"win":["육손·사마의 덱"],"lose":["속공 덱 (절대 만나면 안 됨)"]},"s2:답설기":{"lose":["주태 덱 (강한 카운터)"],"etc":["고돌파·풀돌파용 추격 속공"]},"s2:대금연":{"lose":["주태 덱 (강한 카운터)"]},"s2:대금마":{"win":["사마의 덱"],"lose":["주태 덱 (강한 카운터)"]},"s2:구태위":{"win":["여포","주유 계열"],"lose":["신태위 미러전","육손 계열","조운 덱 (부담)"]},"s2:조감태":{"win":["병기 속공 덱 (돌파 무관 9:1 수준)","마초·주유 계열 (동돌파 소폭)"],"lose":["다른 조운 계열 미러전"]},"s2:조감관":{"win":["액티브 전법 덱 (어느 정도 견제)"],"etc":["칠군수몰 발동과 제어에 크게 좌우"]},"s2:황황제":{"etc":["황개의 활약, 상대 전개에 크게 좌우"]},"s2:태황육":{"etc":["더 이상 추천하지 않음 (후반에는 사용 가능)"]},"s2:가태위":{"etc":["환경 변화로 성능·평가 하락"]}};
 function dsBar(){return `<div class="bar" style="margin-bottom:10px"><b>시즌</b><button data-ds="1" class="${DSEASON===1?'on':''}">시즌1</button><button data-ds="2" class="${DSEASON===2?'on':''}">시즌2 (시즌1 포함)</button></div>`}
-function tierView(D,title,sub){
+function muHTML(m){
+  if(!m)return '<div class="mu"><span class="mu0">상성 정보 없음</span></div>';
+  const row=(cls,lab,a)=>a&&a.length?`<div class="mur"><b class="${cls}">${lab}</b>${a.map(x=>`<span class="${cls}">${esc(x)}</span>`).join('')}</div>`:'';
+  return `<div class="mu">${row('w','유리',m.win)}${row('l','불리',m.lose)}${row('e','변수',m.etc)}</div>`;
+}
+function tierView(D,title,sub,pf){
   const tiers=[...new Set(D.map(d=>d.tier))];
   const lines=a=>a&&a.length?a.map(x=>`<div>${esc(x).replace(/&gt;/g,' › ')}</div>`).join(''):'<div class="mut">—</div>';
   const hero=(raw,i,d)=>{const alts=(raw||'').split('/').map(x=>x.trim()).filter(Boolean),n=alts[0]||'?',own=alts.some(a=>OWN.has(a));
@@ -396,7 +405,7 @@ function tierView(D,title,sub){
   ${tiers.map(tr=>`<div class="s1t">${tr}<small>${D.filter(d=>d.tier===tr).length}개 덱</small></div>
    <div class="s1g">${D.filter(d=>d.tier===tr).map(d=>{const have=OWN.size?d.heroes.filter(h=>h.split('/').some(a=>OWN.has(a.trim()))).length:null;
      return `<div class="s1d"><h3>${esc(d.name)}<span class="chip">${esc(d.form||'진형 미정')}</span>${have!==null?`<span class="chip ${have===3?'full':''}">보유 ${have}/3</span>`:''}</h3>
-      <p class="nt">${esc(d.note)||'&nbsp;'}</p><div class="s1h">${d.heroes.map((h,i)=>hero(h,i,d)).join('')}</div></div>`}).join('')}</div>`).join('')}
+      <p class="nt">${esc(d.note)||'&nbsp;'}</p>${muHTML((MU[pf+':'+d.name])||null)}<div class="s1h">${d.heroes.map((h,i)=>hero(h,i,d)).join('')}</div></div>`}).join('')}</div>`).join('')}
   <p class="note">출처: 은귀영 정리 시트(kdocs) · 정확하지 않을 수 있으니 원본과 함께 보세요.</p>`;
 }
 const V={
@@ -418,8 +427,8 @@ dev(){
    <div class="info">${d.heroes.map(h=>`<span class="pill">${h.n} · ${h.role.split(' (')[0].split(' · ')[0]}</span>`).join('')}
    <p>${d.sum}</p>${miniSk(d)}${d.link?`<p><a href="#pvp">→ PvP 0티어 덱과 같은 조합 (전법 비교)</a></p>`:''}</div></div></div>`).join('')}</div>`;
 },
-s1(){return tierView(S1,'시즌1 티어덱','시트 「시즌1 티어덱」 기준 '+S1.length+'개 덱')},
-s2(){return tierView(S2,'시즌2 티어덱 (풍운재기)','시트 「시즌2 티어덱」 기준 '+S2.length+'개 덱 · 시즌2에서는 시즌1 장수와 전법도 그대로 쓸 수 있습니다(장수 도감에서 보유 체크)')},
+s1(){return tierView(S1,'시즌1 티어덱','시트 「시즌1 티어덱」 기준 '+S1.length+'개 덱','s1')},
+s2(){return tierView(S2,'시즌2 티어덱 (풍운재기)','시트 「시즌2 티어덱」 기준 '+S2.length+'개 덱 · 시즌2에서는 시즌1 장수와 전법도 그대로 쓸 수 있습니다(장수 도감에서 보유 체크)','s2')},
 skdex(){
   const names=Object.keys(SKD).filter(n=>((SKD[n]||{}).season||1)<=DSEASON).sort((x,y)=>{const G=['전설','영웅'],T=['액티브','추격','패시브','지휘'],f=(n,A,k)=>{const i=A.indexOf((SKD[n]||{})[k]);return i<0?9:i};return f(x,G,'grade')-f(y,G,'grade')||f(x,T,'type')-f(y,T,'type')||x.localeCompare(y,'ko')});const used=s=>DECKS.filter(d=>d.heroes.some(h=>Object.values(h.sk||{}).some(a=>a.includes(s))));
   const hit=names.filter(n=>used(n).length).length;
