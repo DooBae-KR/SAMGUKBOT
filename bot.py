@@ -2,7 +2,7 @@
 - 신규 입장자에게 [인증하기] 버튼 안내 → UID/직업/닉네임 입력 폼(모달)
 - UID를 엑셀 명단과 대조해 검증 → 별명을 [직업]닉네임 으로 변경 → 역할(동맹원/간부) 부여
 """
-import urllib.parse, hmac, hashlib
+import urllib.parse, hmac, hashlib, unicodedata
 import os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue
 from aiohttp import web
 from pathlib import Path
@@ -644,6 +644,41 @@ def jc_plan(st):
 
 def siege_name(e): return f"{e['tags']}{jc_label(e['level'])}"
 
+KST = datetime.timezone(datetime.timedelta(hours=9))
+BUILD_SEC = int(os.environ.get("BUILD_MIN", "60")) * 60            # 주둔지 건축 소요 시간(분)
+NIGHT_START = int(os.environ.get("NIGHT_START", "1"))              # 이 시각(시)부터
+NIGHT_END = int(os.environ.get("NIGHT_END", "8"))                  # 이 시각(시)까지는 건축이 멈춤
+
+
+def build_end(start, dur=BUILD_SEC):
+    """start에 건축을 시작해 dur초 작업하면 끝나는 시각. 야간(01~08시)에는 멈췄다가 08시에 재개."""
+    t, rem = float(start), float(dur)
+    for _ in range(100):
+        d = datetime.datetime.fromtimestamp(t, KST)
+        ns = d.replace(hour=NIGHT_START, minute=0, second=0, microsecond=0)
+        ne = d.replace(hour=NIGHT_END, minute=0, second=0, microsecond=0)
+        if ns <= d < ne: t = ne.timestamp(); continue                 # 야간이면 08시까지 대기
+        nxt = ns if d < ns else ns + datetime.timedelta(days=1)       # 다음 야간 시작
+        avail = nxt.timestamp() - t
+        if rem <= avail: return t + rem
+        rem -= avail; t = nxt.timestamp()
+    return t + rem
+
+
+def fmt_t(ts): return datetime.datetime.fromtimestamp(ts, KST).strftime("%m.%d.%H:%M")
+
+
+def _w(s): return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+def _pad(s, w): return s + " " * max(0, w - _w(s))
+
+
+def siege_rows(st, now=None):
+    """/공성 표용 [(등록자, 레벨표시, 완공예상, 상태)] — 건축 중 + 정철 대기, 완공 빠른 순"""
+    now = now or time.time(); rows = []
+    for b in st.get("building", []): rows.append((b.get("name", ""), b["level"], b["t_end"], "건축"))
+    for e, eta, _ in jc_plan(st): rows.append((e.get("name", ""), e["level"], build_end(max(eta, now, e.get("reg", 0))), "대기"))
+    return sorted(rows, key=lambda r: r[2])
+
 
 @bot.tree.command(name="공성등록", description="[간부] 공성 주둔지를 등록합니다. 정철이 모이면 자동으로 차감하고 알려 줍니다")
 @app_commands.describe(레벨="건설할 성지(관문) 레벨", 연결안됨="아군 성지/관문과 관로로 연결되지 않음(추가 소모)", 타진영="타 진영 시작 지역 성지(총량 +50%)")
@@ -652,28 +687,29 @@ async def siege_add(it: discord.Interaction, 레벨: app_commands.Choice[int], �
     if not is_staff(it): return await it.response.send_message("간부 이상만 등록할 수 있습니다.", ephemeral=True)
     st = jc_load(); lv = 레벨.value; cost = jc_need(lv, 연결안됨, 타진영)
     tags = ("연결 안 됨 " if 연결안됨 else "") + ("타 진영 " if 타진영 else "")
-    st.setdefault("sieges", []).append({"user": it.user.id, "channel": it.channel_id, "level": lv, "cost": cost, "tags": tags, "soon": False})
+    st.setdefault("sieges", []).append({"user": it.user.id, "name": it.user.display_name, "channel": it.channel_id, "level": lv, "cost": cost, "tags": tags, "soon": False, "reg": time.time()})
     st.pop("timers", None); jc_save(st)
-    n = len(st["sieges"]); e, eta, left = jc_plan(st)[-1]
+    n = len(st["sieges"]); e, eta, left = jc_plan(st)[-1]; fund = max(eta, time.time()); end = build_end(fund)
+    night = " (야간 01~08시 건축 중지 반영)" if build_end(fund, BUILD_SEC) - fund > BUILD_SEC + 1 else ""
     await it.response.send_message(
         f"📌 **{n}번** {siege_name(e)} 등록 — 필요 정철 **{cost:,}**개\n"
-        f"예상 도달 <t:{int(eta)}:f> (<t:{int(eta)}:R>) · 도달하면 보유 정철에서 {cost:,}개를 자동 차감하고, 도달 {ALERT_MIN}분 전과 도달했을 때 알려 드립니다.\n"
-        f"전체 일정은 `/공성`으로 확인하세요.")
+        f"정철 도달 예상 <t:{int(fund)}:f> (<t:{int(fund)}:R>) · 도달하면 보유 정철에서 {cost:,}개를 자동 차감하고 건축을 시작합니다.\n"
+        f"축성 예상 완료 **{fmt_t(end)}**{night}\n"
+        f"정철 도달 {ALERT_MIN}분 전, 도달·건축 시작, 축성 완료 때 알려 드립니다. 전체 일정은 `/공성`으로 확인하세요.")
 
 
 @bot.tree.command(name="공성", description="현재 정철 개수와 진행 중인 공성 예상 일정을 봅니다")
 async def siege_view(it: discord.Interaction):
     st = jc_load(); now = time.time(); cur = jc_stock_now(st, now)
     nxt = JC_ANCHOR + (_tick_n(now) + 1) * JC_STEP
-    lines = [f"🪙 현재 정철 약 **{int(cur):,}**개 · 5분마다 13·13·14개 지급(시간당 160개) · 다음 지급 <t:{int(nxt)}:R>"]
-    plan = jc_plan(st)
-    if not plan: lines.append("등록된 공성이 없습니다. `/공성등록`으로 주둔지를 등록하세요.")
-    else:
-        lines.append("**예상 공성 일정** (등록 순서대로 정철 차감)")
-        for i, (e, eta, left) in enumerate(plan, 1):
-            lines.append(f"{i}. **{siege_name(e)}** 필요 {e['cost']:,}개 → <t:{int(eta)}:f> (<t:{int(eta)}:R>) · 건설 후 잔여 약 {int(left):,}개 · <@{e['user']}>")
-        lines.append(f"전체 필요 {sum(e['cost'] for e, _, _ in plan):,}개 · 마지막 도달 <t:{int(plan[-1][1])}:f>")
-    await it.response.send_message("\n".join(lines))
+    head = f"🪙 현재 정철 약 **{int(cur):,}**개 · 5분마다 13·13·14개 지급(시간당 160개) · 다음 지급 <t:{int(nxt)}:R>"
+    rows = siege_rows(st, now)
+    if not rows: return await it.response.send_message(head + "\n등록된 공성이 없습니다. `/공성등록`으로 주둔지를 등록하세요.")
+    names = [r[0] or "-" for r in rows]; w = max(_w("등록자"), *(_w(n) for n in names))
+    lines = [f"{_pad('등록자', w)} | 성지레벨 | 축성예상시간"]
+    for n, (_, lv, end, kind) in zip(names, rows):
+        lines.append(f"{_pad(n, w)} | {_pad(str(lv) + ('관문' if lv == 12 else ''), 8)} | {fmt_t(end)}{' *' if kind == '대기' else ''}")
+    await it.response.send_message(head + "\n```\n" + "\n".join(lines) + "\n```\n`*` 정철이 아직 모이지 않은 대기 건(정철 도달 후 건축 시작). 01~08시에는 건축이 멈추고 08시에 재개됩니다.")
 
 
 @bot.tree.command(name="공성취소", description="[간부] 등록한 공성을 취소합니다(번호 생략 시 마지막 등록)")
@@ -710,14 +746,19 @@ async def _say(ch_id, text):
 @tasks.loop(seconds=30)
 async def jc_loop():
     try:
-        st = jc_load(); sg = st.get("sieges", [])
-        if not sg: return
+        st = jc_load(); sg = st.setdefault("sieges", []); bl = st.setdefault("building", [])
+        if not sg and not bl: return
         now = time.time(); changed = False
-        while sg and jc_stock_now(st, now) >= sg[0]["cost"]:          # 도달 → 자동 차감 후 알림
+        for b in [b for b in bl if b["t_end"] <= now]:                    # 축성 완료 알림
+            bl.remove(b); changed = True
+            await _say(b["channel"], f"🏯 <@{b['user']}> **{b['tags']}{jc_label(b['level'])}** 주둔지 축성이 완료되었습니다!")
+        while sg and jc_stock_now(st, now) >= sg[0]["cost"]:          # 도달 → 자동 차감, 건축 시작
             e = sg.pop(0); cur = jc_stock_now(st, now)
+            fund = min(now, max(jc_eta(st, e["cost"]), e.get("reg", 0))); end = build_end(fund)
             st["stock"] = cur - e["cost"]; st["at"] = now; changed = True
+            bl.append({"user": e["user"], "name": e.get("name", ""), "channel": e["channel"], "level": e["level"], "tags": e["tags"], "t_start": fund, "t_end": end})
             nxt = f"\n다음: **{siege_name(sg[0])}** {sg[0]['cost']:,}개 대기 중" if sg else ""
-            await _say(e["channel"], f"🔔 <@{e['user']}> **{siege_name(e)}** 정철이 모였습니다! 필요 {e['cost']:,}개를 차감했습니다. (남은 정철 약 {int(st['stock']):,}개){nxt}")
+            await _say(e["channel"], f"🔔 <@{e['user']}> **{siege_name(e)}** 정철이 모였습니다! 필요 {e['cost']:,}개를 차감하고 건축을 시작합니다. (남은 정철 약 {int(st['stock']):,}개)\n🏗️ 축성 예상 완료 **{fmt_t(end)}** (<t:{int(end)}:R>){nxt}")
         for e, eta, _ in jc_plan(st):                                   # 도달 직전 알림
             if not e.get("soon") and eta - now <= ALERT_MIN * 60:
                 e["soon"] = True; changed = True
