@@ -688,7 +688,13 @@ async def siege_add(it: discord.Interaction, 레벨: app_commands.Choice[int], �
     st = jc_load(); lv = 레벨.value; cost = jc_need(lv, 연결안됨, 타진영)
     tags = ("연결 안 됨 " if 연결안됨 else "") + ("타 진영 " if 타진영 else "")
     st.setdefault("sieges", []).append({"user": it.user.id, "name": it.user.display_name, "channel": it.channel_id, "level": lv, "cost": cost, "tags": tags, "soon": False, "reg": time.time()})
-    st.pop("timers", None); jc_save(st)
+    st.pop("timers", None); mine = st["sieges"][-1]
+    started = jc_settle(st, time.time()); jc_save(st)                     # 정철이 충분하면 즉시 차감하고 건축 시작
+    for e, end, left in started:
+        if e is mine or (e["reg"], e["user"]) == (mine["reg"], mine["user"]):
+            return await it.response.send_message(
+                f"🏗️ {siege_name(e)} 등록 — 정철이 충분해 **{cost:,}**개를 바로 차감하고 건축을 시작했습니다. (남은 정철 약 {int(left):,}개)\n"
+                f"축성 예상 완료 **{fmt_t(end)}** (<t:{int(end)}:R>)" + (" · 01~08시 건축 중지 반영" if end - time.time() > BUILD_SEC + 60 else "") + "\n전체 일정은 `/공성`으로 확인하세요.")
     n = len(st["sieges"]); e, eta, left = jc_plan(st)[-1]; fund = max(eta, time.time()); end = build_end(fund)
     night = " (야간 01~08시 건축 중지 반영)" if build_end(fund, BUILD_SEC) - fund > BUILD_SEC + 1 else ""
     await it.response.send_message(
@@ -743,6 +749,18 @@ async def _say(ch_id, text):
         except Exception: log.exception("정철 알림 전송 실패")
 
 
+def jc_settle(st, now, quiet_id=None):
+    """정철이 충분한 대기 건을 순서대로 차감하고 건축을 시작시킨다. → 시작된 건 목록 [(공성, 완공시각, 남은정철)]"""
+    sg = st.setdefault("sieges", []); bl = st.setdefault("building", []); started = []
+    while sg and jc_stock_now(st, now) >= sg[0]["cost"]:
+        e = sg.pop(0); cur = jc_stock_now(st, now)
+        fund = min(now, max(jc_eta(st, e["cost"]), e.get("reg", 0))); end = build_end(fund)
+        st["stock"] = cur - e["cost"]; st["at"] = now
+        bl.append({"user": e["user"], "name": e.get("name", ""), "channel": e["channel"], "level": e["level"], "tags": e["tags"], "t_start": fund, "t_end": end})
+        started.append((e, end, st["stock"]))
+    return started
+
+
 @tasks.loop(seconds=30)
 async def jc_loop():
     try:
@@ -752,13 +770,10 @@ async def jc_loop():
         for b in [b for b in bl if b["t_end"] <= now]:                    # 축성 완료 알림
             bl.remove(b); changed = True
             await _say(b["channel"], f"🏯 <@{b['user']}> **{b['tags']}{jc_label(b['level'])}** 주둔지 축성이 완료되었습니다!")
-        while sg and jc_stock_now(st, now) >= sg[0]["cost"]:          # 도달 → 자동 차감, 건축 시작
-            e = sg.pop(0); cur = jc_stock_now(st, now)
-            fund = min(now, max(jc_eta(st, e["cost"]), e.get("reg", 0))); end = build_end(fund)
-            st["stock"] = cur - e["cost"]; st["at"] = now; changed = True
-            bl.append({"user": e["user"], "name": e.get("name", ""), "channel": e["channel"], "level": e["level"], "tags": e["tags"], "t_start": fund, "t_end": end})
+        for e, end, left in jc_settle(st, now):                         # 도달 → 자동 차감, 건축 시작
+            changed = True
             nxt = f"\n다음: **{siege_name(sg[0])}** {sg[0]['cost']:,}개 대기 중" if sg else ""
-            await _say(e["channel"], f"🔔 <@{e['user']}> **{siege_name(e)}** 정철이 모였습니다! 필요 {e['cost']:,}개를 차감하고 건축을 시작합니다. (남은 정철 약 {int(st['stock']):,}개)\n🏗️ 축성 예상 완료 **{fmt_t(end)}** (<t:{int(end)}:R>){nxt}")
+            await _say(e["channel"], f"🔔 <@{e['user']}> **{siege_name(e)}** 정철이 모였습니다! 필요 {e['cost']:,}개를 차감하고 건축을 시작합니다. (남은 정철 약 {int(left):,}개)\n🏗️ 축성 예상 완료 **{fmt_t(end)}** (<t:{int(end)}:R>){nxt}")
         for e, eta, _ in jc_plan(st):                                   # 도달 직전 알림
             if not e.get("soon") and eta - now <= ALERT_MIN * 60:
                 e["soon"] = True; changed = True
