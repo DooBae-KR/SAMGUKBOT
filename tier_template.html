@@ -99,6 +99,10 @@ table.mini2{margin-top:8px;font-size:12px}table.mini2 th,table.mini2 td{padding:
 .recs{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}.rec{background:var(--card);border:1px solid var(--jade);border-radius:12px;padding:12px 14px}.rec.full{border-color:var(--gold)}
 .rec .h.off{opacity:.3}.rec .h img{border-radius:6px}
 .s2{font-style:normal;font-size:9px;background:var(--gold);color:#000;border-radius:4px;padding:0 4px;vertical-align:middle}.dg .hi{display:block;margin-top:2px}
+.stc{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;border:1px solid var(--line);margin:1px 3px}.stc.g{color:var(--jade);border-color:var(--jade)}.stc.u{color:var(--gold);border-color:var(--gold)}
+.sts{margin:6px 0 4px}.skr{display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;border-radius:8px;background:var(--card2);border:1px solid var(--line);font-size:12px}.skr.own{border-color:var(--jade)}.skr small{color:var(--mut);margin-left:6px;font-size:10px}.skr i{color:var(--mut);font-style:normal;font-size:10px}
+.sko{color:var(--jade)}.skx{color:var(--mut)}
+.sts .mut{font-size:11px}.sts .mur b{min-width:52px;font-weight:700;font-size:11px}.sts b.w{color:var(--jade)}.sts b.e{color:var(--gold)}.sts b.l{color:var(--ink)}
 .sesel{padding:0 0 8px}.sesel select{width:100%;padding:7px 10px;border-radius:8px;background:var(--card2);color:var(--ink);border:1px solid var(--line);font-size:13px}
 .bar button.on{background:var(--jade);color:#04120c;border-color:var(--jade)}
 .mu{margin:0 0 10px;font-size:11px}.mur{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:4px}.mu b{min-width:30px;font-weight:700}
@@ -424,17 +428,63 @@ function muHTML(m){
   const row=(cls,lab,a)=>a&&a.length?`<div class="mur"><b class="${cls}">${lab}</b>${a.map(x=>`<span class="${cls}">${esc(x)}</span>`).join('')}</div>`:'';
   return `<div class="mu">${row('w','유리',m.win)}${row('l','불리',m.lose)}${row('e','변수',m.etc)}</div>`;
 }
+
+/* ===== 이상상태 · 전법 보유 분석 ===== */
+const STS=['혼란','허약','침묵','무장 해제','공포','위협','군량 고갈','화공','홍수','폭풍','연소','짐독','요술','조롱'];
+const nk=s=>(s||'').replace(/[\s·]/g,'');
+let _SKN=null,_HSK=null,_ST={};
+function skIndex(){if(_SKN)return;_SKN={};_HSK={};Object.keys(SKD).forEach(n=>{_SKN[nk(n)]=n});Object.keys(HD).forEach(h=>{const s=HD[h].sk;if(s)_HSK[nk(s)]=h})}
+function skKey(raw){skIndex();const k=nk(raw);if(_SKN[k])return _SKN[k];if(_HSK[k])return null;
+  const c=Object.keys(_SKN).find(x=>x.length===k.length&&k.length>=3&&[...x].filter((ch,i)=>ch!==k[i]).length<=1);return c?_SKN[c]:null}
+function haveSk(raw){skIndex();const k=nk(raw),n=skKey(raw);
+  if(_HSK[k]!==undefined&&!_SKN[k])return OWN.has(_HSK[k]);   // 장수 전용 전법: 장수를 가지면 보유
+  if(n)return OWNSK.has(n);return null}                         // null = 전법 데이터에 없어 판정 불가
+function stOf(desc){desc=(desc||'').replace(/무장해제/g,'무장 해제').replace(/\s+/g,' ');const g=new Set(),u=new Set();
+  STS.forEach(S=>{if(!desc.includes(S))return;
+    const re=S.replace(/ /g,' ?');
+    if(new RegExp(re+'(?:을\\(를\\)|를|을|와\\(과\\)|과|와)?(?: 상태를?| 효과를?)?(?: ?\\d+스택)?(?: 및 [가-힣 ]{1,8}?(?:을\\(를\\)|를|을| 상태를| 효과를)?)*\\s*부여').test(desc)||new RegExp(re+' 상태가 된다').test(desc))g.add(S);
+    if(new RegExp('(?:이미 )?'+re+' ?(?:상태|효과)?(?:면|를 보유|가 아닌|인 |일 |를 이미|을 보유)').test(desc))u.add(S)});
+  if(/디버프 상태 \d가지를 제거|디버프 상태 1가지를 제거/.test(desc))g.add('정화');
+  if(/디버프 상태를 보유|디버프 상태 1개당|디버프 효과 부여 후/.test(desc))u.add('디버프');
+  return {g,u}}
+function stSk(n){return _ST[n]||(_ST[n]=stOf((SKD[n]||{}).desc))}
+function stHero(h){const k='h:'+h;return _ST[k]||(_ST[k]=stOf((HD[h]||{}).desc))}
+function deckAnalysis(d){
+  const toks=new Set(),slots=[];
+  (d.rows||[]).filter(r=>r[0]==='전법').forEach(r=>r[1].forEach(sl=>(sl||[]).forEach(cell=>{
+    const alts=(cell||'').split('/').map(x=>x.split(/[>+]/).map(y=>y.trim()).filter(Boolean)).flat();
+    alts.forEach(a=>toks.add(a));
+    const hv=alts.map(haveSk).filter(x=>x!==null);if(hv.length)slots.push(hv.some(Boolean))})));
+  const G=new Set(),U=new Set(),inDeck=new Set();
+  toks.forEach(a=>{const n=skKey(a);if(n){inDeck.add(n);const s=stSk(n);s.g.forEach(x=>G.add(x));s.u.forEach(x=>U.add(x))}});
+  d.heroes.forEach(h=>{const n=h.split('/')[0].trim(),s=stHero(n);s.g.forEach(x=>G.add(x));s.u.forEach(x=>U.add(x))});
+  const anyG=[...G].some(x=>x!=='정화');
+  const miss=[...U].filter(x=>x==='디버프'?!anyG:!G.has(x));
+  const okSeason=n=>((SKD[n]||{}).season||1)<=DSEASON;
+  const rec=[],seen=new Set();
+  const add=(n,why)=>{if(seen.has(n)||inDeck.has(n)||!okSeason(n))return;seen.add(n);rec.push({n,why,own:OWNSK.has(n)})};
+  miss.forEach(m=>{let c=0;Object.keys(SKD).sort((x,y)=>OWNSK.has(y)-OWNSK.has(x)).forEach(n=>{if(c>=3)return;const s=stSk(n);if(m==='디버프'?[...s.g].some(x=>x!=='정화'):s.g.has(m)){const b=rec.length;add(n,(m==='디버프'?'디버프':m)+' 부여 (덱에 없음)');if(rec.length>b)c++}})});
+  [...G].filter(x=>x!=='정화').forEach(g=>Object.keys(SKD).forEach(n=>{if(stSk(n).u.has(g))add(n,g+' 활용')}));
+  rec.sort((a,b)=>(b.own-a.own)||0);
+  return {G:[...G].filter(x=>x!=='정화'),U:[...U],miss,rec:rec.slice(0,6),have:slots.filter(Boolean).length,total:slots.length}}
+function ssHTML(d){const a=deckAnalysis(d),known=OWNSK.size||OWN.size;
+  if(!a.G.length&&!a.U.length&&!a.rec.length)return '';
+  const chips=(L,c)=>L.map(x=>`<span class="stc ${c}">${esc(x)}</span>`).join('')||'<span class="mut">—</span>';
+  return `<div class="sts"><div class="mur"><b class="w">부여</b>${chips(a.G,'g')}</div><div class="mur"><b class="e">활용</b>${chips(a.U,a.miss.length?'u':'g')}${a.miss.length?`<span class="mut">· 덱에 ${a.miss.map(esc).join(', ')} 부여원이 없음</span>`:''}</div>
+   ${a.rec.length?`<div class="mur"><b class="l">추천 전법</b>${a.rec.map(r=>`<span class="skr ${r.own?'own':''}" title="${esc(r.why)}">${skTag(r.n)}${known?(r.own?' ✓':' <i>미보유</i>'):''}<small>${esc(r.why)}</small></span>`).join('')}</div>`:''}</div>`}
 function tierView(D,title,sub,pf){
   const tiers=[...new Set(D.map(d=>d.tier))];
-  const lines=a=>a&&a.length?a.map(x=>`<div>${esc(x).replace(/&gt;/g,' › ')}</div>`).join(''):'<div class="mut">—</div>';
+  const known=OWNSK.size||OWN.size;
+  const lines=(a,lab)=>a&&a.length?a.map(x=>{if(lab!=='전법'||!known)return `<div>${esc(x).replace(/&gt;/g,' › ')}</div>`;
+    return `<div>${x.split('/').map(g=>g.split(/[>+]/).map(s=>{const o=haveSk(s);return `<span class="${o===null?'':o?'sko':'skx'}">${esc(s.trim())}${o?' ✓':''}</span>`}).join(' › ')).join(' / ')}</div>`}).join(''):'<div class="mut">—</div>';
   const hero=(raw,i,d)=>{const alts=(raw||'').split('/').map(x=>x.trim()).filter(Boolean),n=alts[0]||'?',own=alts.some(a=>OWN.has(a));
     return `<div class="s1c ${OWN.size&&!own?'off':''}">${IMG(n)?`<img src="${IMG(n)}" loading="lazy" onerror="this.outerHTML='<div class=noimg>${esc(n)}</div>'">`:`<div class="noimg">${esc(n)}</div>`}
-     <b>${esc(raw)}${OWN.size&&own?' <span class="ok">✓</span>':''}</b>${d.rows.map(([lab,v])=>`<small>${lab}</small>${lines(v[i])}`).join('')}</div>`};
+     <b>${esc(raw)}${OWN.size&&own?' <span class="ok">✓</span>':''}</b>${d.rows.map(([lab,v])=>`<small>${lab}</small>${lines(v[i],lab)}`).join('')}</div>`};
   return `<h1>${title}</h1><p class="sub">${sub}. 장수 / 로 이어진 이름은 대체 가능 장수, 전법의 <b>A › B</b>는 A 우선·없으면 B로 대체, 빗금(/)은 같은 자리 후보입니다. 장수 도감에서 보유 장수를 체크하면 덱별 보유 현황이 표시됩니다.</p>
   ${tiers.map(tr=>`<div class="s1t">${tr}<small>${D.filter(d=>d.tier===tr).length}개 덱</small></div>
    <div class="s1g">${D.filter(d=>d.tier===tr).map(d=>{const have=OWN.size?d.heroes.filter(h=>h.split('/').some(a=>OWN.has(a.trim()))).length:null;
-     return `<div class="s1d"><h3>${esc(d.name)}<span class="chip">${esc(d.form||'진형 미정')}</span>${have!==null?`<span class="chip ${have===3?'full':''}">보유 ${have}/3</span>`:''}</h3>
-      <p class="nt">${esc(d.note)||'&nbsp;'}</p>${muHTML((MU[pf+':'+d.name])||null)}<div class="s1h">${d.heroes.map((h,i)=>hero(h,i,d)).join('')}</div></div>`}).join('')}</div>`).join('')}
+     return `<div class="s1d"><h3>${esc(d.name)}<span class="chip">${esc(d.form||'진형 미정')}</span>${have!==null?`<span class="chip ${have===3?'full':''}">장수 ${have}/3</span>`:''}${(OWNSK.size||OWN.size)&&deckAnalysis(d).total?`<span class="chip ${deckAnalysis(d).have===deckAnalysis(d).total?'full':''}">전법 ${deckAnalysis(d).have}/${deckAnalysis(d).total}</span>`:''}</h3>
+      <p class="nt">${esc(d.note)||'&nbsp;'}</p>${muHTML((MU[pf+':'+d.name])||null)}${ssHTML(d)}<div class="s1h">${d.heroes.map((h,i)=>hero(h,i,d)).join('')}</div></div>`}).join('')}</div>`).join('')}
   <p class="note">출처: 은귀영 정리 시트(kdocs) · 정확하지 않을 수 있으니 원본과 함께 보세요.</p>`;
 }
 const V={
