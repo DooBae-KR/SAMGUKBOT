@@ -513,7 +513,7 @@ chart(){return DSEASON===1?chartView('s1','시즌1 상성 차트'):chartView('s2
 c1(){return chartView('s1','시즌1 상성 차트')},
 c2(){return chartView('s2','시즌2 상성 차트')},
 skdex(){
-  const names=Object.keys(SKD).filter(n=>((SKD[n]||{}).season||1)<=DSEASON).sort((x,y)=>{const G=['전설','영웅'],T=['액티브','추격','패시브','지휘'],f=(n,A,k)=>{const i=A.indexOf((SKD[n]||{})[k]);return i<0?9:i};return f(x,G,'grade')-f(y,G,'grade')||f(x,T,'type')-f(y,T,'type')||x.localeCompare(y,'ko')});const used=s=>DECKS.filter(d=>d.heroes.some(h=>Object.values(h.sk||{}).some(a=>a.includes(s))));
+  const names=Object.keys(SKD).filter(n=>((SKD[n]||{}).season||1)<=DSEASON).sort((x,y)=>{const G=['전설','영웅'],T=['액티브','추격','패시브','지휘'],f=(n,A,k)=>{const i=A.indexOf((SKD[n]||{})[k]);return i<0?9:i};return f(x,G,'grade')-f(y,G,'grade')||x.localeCompare(y,'ko')});const used=s=>DECKS.filter(d=>d.heroes.some(h=>Object.values(h.sk||{}).some(a=>a.includes(s))));
   const hit=names.filter(n=>used(n).length).length;
   return `<h1>전법 도감</h1>${dsBar()}<p class="sub">전법 ${names.length}종 (시트 기준 · 시즌2 포함). 영상에서 추천된 전법은 ${hit}종입니다. 카드를 눌러 따로 가진 전법을 표시하면 덱의 전법 %에 반영됩니다. 장수 전용 전법은 장수를 가지면 자동 보유라 여기에는 없습니다.</p>
   <div class="dogam sk">${names.map(n=>{const u=used(n),auto=false,man=OWNSK.has(n);
