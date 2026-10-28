@@ -404,6 +404,24 @@ async def web_index(request):
 # ---------- 도감(보유 장수·전법) 페이지 ----------
 TIER_SECRET = os.environ.get("TIER_SECRET") or os.environ.get("DISCORD_TOKEN", "")
 PUBLIC_URL = (os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL") or f"http://localhost:{WEB_PORT}").rstrip("/")
+HR_HOURS = int(os.environ.get("HR_HOURS", "12"))     # /인사 링크 유효시간
+
+
+def hr_token(uid, exp):
+    return f"{uid}.{exp}." + hmac.new(TIER_SECRET.encode(), f"hr:{uid}:{exp}".encode(), hashlib.sha256).hexdigest()[:24]
+
+
+def hr_valid(t):
+    p = (t or "").split(".")
+    if len(p) != 3 or not p[1].isdigit() or int(p[1]) < time.time(): return False
+    return hmac.compare_digest(p[2], hr_token(p[0], p[1]).rsplit(".", 1)[1])
+
+
+async def web_hr(request):
+    if not hr_valid(request.query.get("t")): return web.Response(status=403, text="링크가 만료되었거나 올바르지 않습니다. 디스코드에서 /인사 를 다시 입력해 주세요.")
+    html = render_html()
+    if html is None: return web.Response(status=503, text="명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
+    return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 DEX_DIR = Path(os.environ.get("DEX_DIR", "dex"))
 
 
@@ -503,7 +521,7 @@ async def web_dex_save(request):
 async def start_web():
     if not WEB_PORT: return
     app = web.Application(); app.router.add_get("/", web_index)
-    app.router.add_get("/tier", web_tier); app.router.add_post("/api/dex", web_dex_save)
+    app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()
@@ -561,6 +579,14 @@ async def dex_link(it: discord.Interaction):
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(it.user.id)), None)
     if not cid: return await it.response.send_message("먼저 인증(CID 등록)을 완료해 주세요.", ephemeral=True)
     await it.response.send_message(f"🔗 내 도감 링크 (다른 사람에게 공유하지 마세요)\n{PUBLIC_URL}/tier?t={tier_token(cid)}\n장수·전법을 체크하면 자동으로 시트에 저장됩니다.", ephemeral=True)
+
+
+@bot.tree.command(name="인사", description="[간부] 인사데이터(상황판) 링크를 받습니다")
+async def hr_link(it: discord.Interaction):
+    if not is_staff(it): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
+    if not roster.members: return await it.response.send_message("명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", ephemeral=True)
+    exp = int(time.time()) + HR_HOURS * 3600
+    await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp)}\n멤버 {len(roster.members)}명 기준", ephemeral=True)
 
 
 @bot.tree.command(name="인증해제", description="CID의 인증 기록을 지웁니다(재인증 허용)")
