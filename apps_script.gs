@@ -34,9 +34,10 @@ function doPost(e) {
 function _mirror(name, data, now) {
   if (name === 'verified') {
     var sh = _sheet('봇_인증'); sh.clear();
-    var out = [['캐릭터 ID', '디스코드 ID(인증자)', '갱신']];
-    Object.keys(data.uid || {}).forEach(function (k) { out.push([k, String(data.uid[k]), now]); });
-    sh.getRange(1, 1, out.length, 3).setValues(out);
+    var out = [['캐릭터 ID', '닉네임', '디스코드 ID(인증자)', '갱신']];
+    Object.keys(data.uid || {}).forEach(function (k) { out.push([k, String((data.nick || {})[k] || ''), String(data.uid[k]), now]); });
+    sh.getRange(1, 1, out.length, 1).setNumberFormat('@');
+    sh.getRange(1, 1, out.length, 4).setValues(out);
   } else if (name.indexOf('dex_') === 0) {
     var s3 = _sheet('도감선택');
     if (s3.getLastRow() === 0) s3.appendRow(['CID', '닉네임', '보유 장수 수', '보유 장수', '보유 전법 수', '보유 전법', '갱신']);

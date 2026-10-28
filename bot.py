@@ -245,7 +245,7 @@ class VerifyModal(discord.ui.Modal, title="연맹 인증"):
         try: role, notes = await apply_verification(it.user, uid, job, nick, info)
         except Exception as e:
             log.exception("역할 부여 실패"); return await it.followup.send(f"처리 중 오류: {e}", ephemeral=True)
-        db["uid"][uid] = did; db["tries"].pop(did, None); db_save(db)
+        db["uid"][uid] = did; db.setdefault("nick", {})[uid] = nick; db["tries"].pop(did, None); db_save(db)
         await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
 
 
@@ -262,11 +262,13 @@ async def sync_members(guild: discord.Guild):
     mem_role = discord.utils.get(guild.roles, name=MEMBER_ROLE)
     off_role = discord.utils.get(guild.roles, name=OFFICER_ROLE)
     res = {"nick": 0, "role": 0, "removed": 0, "fail": 0, "total": 0}
-    for uid, did in list(db_load()["uid"].items()):
+    db = db_load(); nicks = db.setdefault("nick", {}); nchg = False
+    for uid, did in list(db["uid"].items()):
         m = guild.get_member(int(did))
         if m is None: continue
         res["total"] += 1
         info = roster.by_uid.get(uid)
+        if info and info.get("name") and nicks.get(uid) != info["name"]: nicks[uid] = info["name"]; nchg = True     # 인증 시트에 적을 닉네임(명단 기준)
         try:
             if info is None:
                 if SYNC_REMOVE:
@@ -286,6 +288,7 @@ async def sync_members(guild: discord.Guild):
                     except discord.Forbidden: pass
         except discord.Forbidden: res["fail"] += 1
         except Exception: log.exception("동기화 실패: %s", uid); res["fail"] += 1
+    if nchg: db_save(db)
     log.info("동기화: %s", res)
     return res
 
