@@ -730,18 +730,19 @@ async def siege_add(it: discord.Interaction, 레벨: app_commands.Choice[int], �
         f"정철 도달 {ALERT_MIN}분 전, 도달·건축 시작, 축성 완료 때 알려 드립니다. 전체 일정은 `/공성`으로 확인하세요.")
 
 
-@bot.tree.command(name="공성", description="현재 정철 개수와 진행 중인 공성 예상 일정을 봅니다")
+@bot.tree.command(name="공성", description="[간부] 현재 정철 개수와 진행 중인 공성 예상 일정을 봅니다(대외비)")
 async def siege_view(it: discord.Interaction):
+    if not is_staff(it): return await it.response.send_message("간부 이상만 볼 수 있습니다. (대외비)", ephemeral=True)
     st = jc_load(); now = time.time(); cur = jc_stock_now(st, now)
     nxt = JC_ANCHOR + (_tick_n(now) + 1) * JC_STEP
     head = f"🪙 현재 정철 약 **{int(cur):,}**개 · 5분마다 13·13·14개 지급(시간당 160개) · 다음 지급 <t:{int(nxt)}:R>"
     rows = siege_rows(st, now)
-    if not rows: return await it.response.send_message(head + "\n등록된 공성이 없습니다. `/공성등록`으로 주둔지를 등록하세요.")
+    if not rows: return await it.response.send_message(head + "\n등록된 공성이 없습니다. `/공성등록`으로 주둔지를 등록하세요.", ephemeral=True)
     names = [r[0] or "-" for r in rows]; w = max(_w("등록자"), *(_w(n) for n in names))
     lines = [f"{_pad('등록자', w)} | 성지레벨 | 축성예상시간"]
     for n, (_, lv, end, kind) in zip(names, rows):
         lines.append(f"{_pad(n, w)} | {_pad(str(lv) + ('관문' if lv == 12 else ''), 8)} | {fmt_t(end)}{' *' if kind == '대기' else ''}")
-    await it.response.send_message(head + "\n```\n" + "\n".join(lines) + "\n```\n`*` 정철이 아직 모이지 않은 대기 건(정철 도달 후 건축 시작). 01~08시에는 건축이 멈추고 08시에 재개됩니다.")
+    await it.response.send_message(head + "\n```\n" + "\n".join(lines) + "\n```\n`*` 정철이 아직 모이지 않은 대기 건(정철 도달 후 건축 시작). 01~08시에는 건축이 멈추고 08시에 재개됩니다.", ephemeral=True)
 
 
 @bot.tree.command(name="공성취소", description="[간부] 등록한 공성을 취소합니다(번호 생략 시 마지막 등록)")
