@@ -30,6 +30,46 @@ function doPost(e) {
   } finally { lock.releaseLock(); }
 }
 
+// ---- 봇_인증의 CID(A열)를 '인사' 탭의 CID(UID)와 매핑하는 함수 열(E~H) ----
+var HR_GID = 818075343;   // 인사 탭 gid (다르면 수정)
+var HR_UID = ['uid', '유저id', '아이디', 'id', 'cid', '캐릭터 id', '캐릭터id'];
+var HR_NAME = ['닉네임', '이름', '닉'];
+var HR_JOB = ['직업'];
+var HR_TITLE = ['직위', '직책', '등급'];
+
+function _colLetter(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+
+function _hrSheet() {
+  var ss = SpreadsheetApp.getActive(), all = ss.getSheets();
+  for (var i = 0; i < all.length; i++) if (all[i].getSheetId() === HR_GID) return all[i];
+  return ss.getSheetByName('인사');
+}
+
+// 인사 탭에서 헤더 행을 찾아 열 번호(1부터)를 돌려준다
+function _hrCols(hr) {
+  var rows = hr.getRange(1, 1, Math.min(hr.getLastRow(), 15), hr.getLastColumn()).getValues();
+  function find(H, c) { for (var i = 0; i < H.length; i++) if (c.indexOf(String(H[i]).trim().toLowerCase()) >= 0) return i + 1; return 0; }
+  for (var r = 0; r < rows.length; r++) {
+    var H = rows[r], u = find(H, HR_UID);
+    if (u) return { uid: u, name: find(H, HR_NAME), job: find(H, HR_JOB), title: find(H, HR_TITLE) };
+  }
+  return null;
+}
+
+function _hrLink(sh, n) {
+  var hr = _hrSheet(), c = hr && _hrCols(hr);
+  sh.getRange(1, 5, 1, 4).setValues([['인사탭 닉네임', '인사탭 직업', '인사탭 직위', '인사탭 매핑']]);
+  if (!c || n < 2) return;
+  var U = "ARRAYFORMULA('" + hr.getName() + "'!$" + _colLetter(c.uid) + ":$" + _colLetter(c.uid) + '&"")';
+  function pick(col) { return col ? '=IFERROR(INDEX(\'' + hr.getName() + "'!$" + _colLetter(col) + ':$' + _colLetter(col) + ', MATCH($A{r}&"", ' + U + ', 0)), "")' : '=""'; }
+  var f = [];
+  for (var r = 2; r <= n; r++) {
+    var row = [pick(c.name), pick(c.job), pick(c.title), '=IF(ISNUMBER(MATCH($A{r}&"", ' + U + ', 0)), "OK", "인사탭에 없음")'];
+    f.push(row.map(function (x) { return x.replace(/\{r\}/g, r); }));
+  }
+  sh.getRange(2, 5, n - 1, 4).setFormulas(f);
+}
+
 // 사람이 보기 쉬운 탭
 function _mirror(name, data, now) {
   if (name === 'verified') {
@@ -38,6 +78,7 @@ function _mirror(name, data, now) {
     Object.keys(data.uid || {}).forEach(function (k) { out.push([k, String((data.nick || {})[k] || ''), String(data.uid[k]), now]); });
     sh.getRange(1, 1, out.length, 1).setNumberFormat('@');
     sh.getRange(1, 1, out.length, 4).setValues(out);
+    _hrLink(sh, out.length);
   } else if (name.indexOf('dex_') === 0) {
     var s3 = _sheet('도감선택');
     if (s3.getLastRow() === 0) s3.appendRow(['CID', '닉네임', '보유 장수 수', '보유 장수', '보유 전법 수', '보유 전법', '갱신']);
