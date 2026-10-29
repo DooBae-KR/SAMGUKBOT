@@ -656,6 +656,8 @@ class Bot(discord.Client):
         if SYNC_MINUTES and not sync_loop.is_running(): sync_loop.start()
         if not jc_loop.is_running(): jc_loop.start()
         if not donate_loop.is_running(): donate_loop.start()
+        hg = self.get_guild(GUILD_ID)
+        if hg: await verify_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
 
@@ -673,10 +675,7 @@ VERIFY_CH = "인증"
 
 
 async def verify_channel(g):
-    """서버의 인증 안내 채널. 홈 서버는 VERIFY_CHANNEL_ID, 그 외에는 #인증 채널(없으면 만든다). 만들 수 없으면 None."""
-    if g.id == GUILD_ID and VERIFY_CHANNEL_ID:
-        c = g.get_channel(VERIFY_CHANNEL_ID)
-        if c: return c
+    """서버의 인증 안내 채널 = #인증 (홈 서버 포함 모든 서버 동일. 없으면 만든다). 만들 수 없으면 None."""
     me = g.me
     ok = lambda c: me is not None and c.permissions_for(me).send_messages
     c = discord.utils.get(g.text_channels, name=VERIFY_CH)
