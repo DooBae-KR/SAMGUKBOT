@@ -3,7 +3,7 @@
 - UID를 엑셀 명단과 대조해 검증 → 별명을 [직업]닉네임 으로 변경 → 역할(동맹원/간부) 부여
 """
 import urllib.parse, urllib.error, hmac, hashlib, unicodedata
-import os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue
+import tempfile, os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue, contextvars
 from aiohttp import web
 from pathlib import Path
 import discord
@@ -14,7 +14,16 @@ import openpyxl
 
 load_dotenv()
 TOKEN = os.environ["DISCORD_TOKEN"]
-GUILD_ID = int(os.environ["GUILD_ID"])
+GUILD_ID = int(os.environ["GUILD_ID"])                  # 제작자의 '홈' 서버(기존 데이터가 있는 서버)
+_CTX = contextvars.ContextVar("gid", default=GUILD_ID)  # 지금 처리 중인 서버. 모든 저장·명단 조회는 이 값 기준으로 분리된다
+
+
+def cur_gid(): return _CTX.get()
+def set_gid(g): _CTX.set(int(g) if g else GUILD_ID)
+
+
+LICENSED = set()                                        # 제작자가 승인한 서버(홈 서버는 항상 허가)
+def licensed(gid): return gid == GUILD_ID or gid in LICENSED
 EXCEL_PATH = os.environ.get("EXCEL_PATH", "261023.xlsx")
 SHEET_NAME = os.environ.get("SHEET_NAME", "")            # 비우면 첫 시트
 VERIFY_CHANNEL_ID = int(os.environ.get("VERIFY_CHANNEL_ID", "0"))  # 인증 안내 채널
@@ -132,7 +141,24 @@ class Roster:
         self.load(); return DEFAULT_JOBS or self.jobs
 
 
-roster = Roster(EXCEL_PATH)
+_home_roster = Roster(EXCEL_PATH)                       # 홈 서버: 기존처럼 엑셀/구글 시트
+_tenant_rosters = {}                                    # 그 외 서버: DB(sam_emp / sam_emp_stat)
+
+
+def roster_for(gid):
+    if gid == GUILD_ID: return _home_roster
+    r = _tenant_rosters.get(gid)
+    if r is None: r = _tenant_rosters[gid] = Roster("__none__")
+    return r
+
+
+class _RosterProxy:
+    """roster.xxx 를 지금 처리 중인 서버의 명단으로 연결한다."""
+    def __getattr__(self, k): return getattr(roster_for(cur_gid()), k)
+    def __setattr__(self, k, v): setattr(roster_for(cur_gid()), k, v)
+
+
+roster = _RosterProxy()
 
 
 # ---------- 인증 기록 ----------
@@ -163,7 +189,7 @@ SB_URL = f"{_sp.scheme}://{_sp.netloc}" if _sp.netloc else ""      # /rest/v1 �
 SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
 SB_ON = bool(SB_URL and SB_KEY)
 _MISSING = object()                                        # Supabase에 행이 없음(= 아직 이전 안 됨)
-_sb_tenant_ok = False
+_sb_tenant_ok = set()
 
 
 def _sb_req(method, path, body=None, prefer=None):
@@ -179,47 +205,46 @@ def _sb_req(method, path, body=None, prefer=None):
     return json.loads(raw) if raw.strip() else None
 
 
-def _sb_ensure_tenant():
-    global _sb_tenant_ok
-    if _sb_tenant_ok: return
-    _sb_req("POST", "sam_alli?on_conflict=guild_id", [{"guild_id": GUILD_ID, "name": "default"}],
+def _sb_ensure_tenant(gid=GUILD_ID):
+    if gid in _sb_tenant_ok: return
+    _sb_req("POST", "sam_alli?on_conflict=guild_id", [{"guild_id": gid, "name": "default"}],
             prefer="resolution=ignore-duplicates,return=minimal")
-    _sb_tenant_ok = True
+    _sb_tenant_ok.add(gid)
 
 
-def _sb_get(name):
-    rows = _sb_req("GET", f"sam_store?guild_id=eq.{GUILD_ID}&name=eq.{urllib.parse.quote(name, safe='')}&select=data")
+def _sb_get(name, gid=GUILD_ID):
+    rows = _sb_req("GET", f"sam_store?guild_id=eq.{gid}&name=eq.{urllib.parse.quote(name, safe='')}&select=data")
     return rows[0]["data"] if rows else _MISSING
 
 
-def _sb_put(name, data):
-    _sb_ensure_tenant()
+def _sb_put(name, data, gid=GUILD_ID):
+    _sb_ensure_tenant(gid)
     _sb_req("POST", "sam_store?on_conflict=guild_id,name",
-            [{"guild_id": GUILD_ID, "name": name, "data": data, "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}],
+            [{"guild_id": gid, "name": name, "data": data, "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}],
             prefer="resolution=merge-duplicates,return=minimal")
 
 
-def _sb_put_tenant(d):
+def _sb_put_tenant(d, gid=GUILD_ID):
     _sb_req("POST", "sam_alli?on_conflict=guild_id",
-            [{"guild_id": GUILD_ID, "name": d["name"], "config": {"alliance": d["name"], "server": d["server"]}}],
+            [{"guild_id": gid, "name": d["name"], "config": {"alliance": d["name"], "server": d["server"]}}],
             prefer="resolution=merge-duplicates,return=minimal")
 
 
 def _writer():
     while True:
-        name, data = _outq.get()
-        try:                                               # 쌓인 요청은 이름별 최신 것만 보냄
-            latest = {name: data}
-            while not _outq.empty(): n, d = _outq.get_nowait(); latest[n] = d
-            for n, d in latest.items():
+        item = _outq.get()
+        try:                                               # 쌓인 요청은 (서버, 이름)별 최신 것만 보냄
+            latest = {(item[0], item[1]): item[2]}
+            while not _outq.empty(): g2, n2, d2 = _outq.get_nowait(); latest[(g2, n2)] = d2
+            for (g, n), d in latest.items():
                 if SB_ON:
                     for attempt in range(3):
                         try:
-                            if n == "alliance": _sb_ensure_tenant(); _sb_put_tenant(d)
-                            _sb_put(n, d); break
+                            if n == "alliance" and d: _sb_ensure_tenant(g); _sb_put_tenant(d, g)
+                            _sb_put(n, d, g); break
                         except Exception as e:
-                            log.warning("Supabase 저장 실패(%s) %d/3: %s", n, attempt + 1, e); time.sleep(3)
-                if SAVE_URL:                               # 시트는 열람·인사 연동용 미러로 계속 기록
+                            log.warning("Supabase 저장 실패(%s/%s) %d/3: %s", g, n, attempt + 1, e); time.sleep(3)
+                if SAVE_URL and g == GUILD_ID:             # 시트 미러는 홈 서버만
                     for attempt in range(3):
                         try: _remote_put(n, d); break
                         except Exception as e:
@@ -231,35 +256,60 @@ if SAVE_URL or SB_ON: threading.Thread(target=_writer, daemon=True).start()
 log.info("저장소: %s%s", "Supabase" if SB_ON else "", (" + 시트 미러" if SB_ON and SAVE_URL else "시트" if SAVE_URL else "" if SB_ON else "로컬 파일"))
 
 
+def roster_load_db(gid):
+    """sam_emp(사람) + sam_emp_stat(가장 최근 날짜 수치)로 그 서버의 명단을 메모리에 올린다."""
+    emp = _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid,name,job,extra&limit=5000") or []
+    last = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&select=snap_date&order=snap_date.desc&limit=1") or []
+    st = {}
+    if last:
+        for r in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=eq.{last[0]['snap_date']}&select=*&limit=5000") or []: st[r["cid"]] = r
+    by, members, jobs = {}, [], []
+    for e in emp:
+        x = st.get(e["cid"], {}); job = e.get("job") or ""
+        by[e["cid"]] = {"job": job, "title": x.get("title") or "", "name": e.get("name") or ""}
+        if job and job not in jobs: jobs.append(job)
+        members.append({"n": e.get("name") or "", "j": job, "g": (e.get("extra") or {}).get("조별", ""), "r": x.get("title") or "",
+                        "p": x.get("prosperity") or 0, "m": x.get("war_merit") or 0, "c": x.get("contribution") or 0, "s": x.get("siege_count") or 0,
+                        "reg": x.get("camp") or "", "x": x.get("camp_x") or 0, "y": x.get("camp_y") or 0, "t": 0})
+    r = roster_for(gid); r.by_uid, r.jobs, r.members, r.src = by, jobs, members, "DB 명단"
+    return len(by)
+
+
+def _lpath(path, gid):
+    return path if gid == GUILD_ID else path.parent / f"g{gid}" / path.name      # 홈 서버 외에는 서버별 폴더
+
+
 def store_get(name, path, default):
+    gid = cur_gid(); path = _lpath(path, gid); key = (gid, name)
     with _lock:
-        if name in _cache: return copy.deepcopy(_cache[name])
+        if key in _cache: return copy.deepcopy(_cache[key])
         data, migrate = None, False
         if SB_ON:
             for attempt in range(3):
                 try:
-                    v = _sb_get(name)
+                    v = _sb_get(name, gid)
                     if v is _MISSING: migrate = True       # 처음이면 아래 시트/로컬 값을 Supabase로 이전
                     else: data = v
                     break
-                except Exception as e: log.warning("Supabase 불러오기 실패(%s) %d/3: %s", name, attempt + 1, e); time.sleep(2)
-        if data is None and SAVE_URL:
+                except Exception as e: log.warning("Supabase 불러오기 실패(%s/%s) %d/3: %s", gid, name, attempt + 1, e); time.sleep(2)
+        if data is None and SAVE_URL and gid == GUILD_ID:
             for attempt in range(3):
                 try: data = _remote_get(name); break
                 except Exception as e: log.warning("시트 불러오기 실패(%s) %d/3: %s", name, attempt + 1, e); time.sleep(2)
         if data is None and path.exists():
             try: data = json.loads(path.read_text("utf-8"))
             except Exception: pass
-        if migrate and data is not None: _outq.put((name, copy.deepcopy(data))); log.info("Supabase로 이전: %s", name)
-        _cache[name] = data if data is not None else default
-        return copy.deepcopy(_cache[name])
+        if migrate and data is not None: _outq.put((gid, name, copy.deepcopy(data))); log.info("Supabase로 이전: %s/%s", gid, name)
+        _cache[key] = data if data is not None else default
+        return copy.deepcopy(_cache[key])
 
 
 def store_set(name, path, data):
-    with _lock: _cache[name] = copy.deepcopy(data)
-    try: path.write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
+    gid = cur_gid(); path = _lpath(path, gid)
+    with _lock: _cache[(gid, name)] = copy.deepcopy(data)
+    try: path.parent.mkdir(parents=True, exist_ok=True); path.write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
     except Exception: pass                                 # 읽기 전용 디스크여도 원격 저장은 계속
-    if SAVE_URL or SB_ON: _outq.put((name, copy.deepcopy(data)))
+    if SAVE_URL or SB_ON: _outq.put((gid, name, copy.deepcopy(data)))
 
 
 def db_load(): return store_get("verified", DB_PATH, {"uid": {}, "tries": {}})
@@ -287,7 +337,15 @@ async def apply_verification(member: discord.Member, uid, job, nick, info):
 
 
 # ---------- UI ----------
-class VerifyModal(discord.ui.Modal, title="연맹 인증"):
+class CtxView(discord.ui.View):
+    async def interaction_check(self, it): set_gid(it.guild_id); return True      # 버튼을 누른 서버 기준으로 처리
+
+
+class CtxModal(discord.ui.Modal):
+    async def interaction_check(self, it): set_gid(it.guild_id); return True
+
+
+class VerifyModal(CtxModal, title="연맹 인증"):
     uid = discord.ui.TextInput(label="CID (캐릭터 ID)", placeholder="게임 내 캐릭터 ID", max_length=30)
     job = discord.ui.TextInput(label="직업 (비우면 명단 값 사용)", placeholder="예) 천공", max_length=10, required=False)
     nick = discord.ui.TextInput(label="닉네임 (비우면 명단 값 사용)", placeholder="게임 내 닉네임", max_length=25, required=False)
@@ -327,13 +385,14 @@ ALLY_PATH = DB_PATH.with_name("alliance.json")
 
 def ally_load():
     d = store_get("alliance", ALLY_PATH, None)
-    if not d:                                              # 최초 1회: 환경변수/기본값으로 등록
+    if not d and cur_gid() != GUILD_ID: return {"name": "", "server": ""}
+    if not d:                                              # 홈 서버 최초 1회: 환경변수/기본값으로 등록
         d = {"name": os.environ.get("ALLIANCE_NAME", "공성부대").strip(), "server": os.environ.get("GAME_SERVER", "41").strip()}
         store_set("alliance", ALLY_PATH, d)
     return d
 
 
-class AllyModal(discord.ui.Modal, title="동맹 등록"):
+class AllyModal(CtxModal, title="동맹 등록"):
     server = discord.ui.TextInput(label="서버 번호 (숫자만 입력)", placeholder="예: 41", min_length=1, max_length=5)
     name = discord.ui.TextInput(label="동맹명", placeholder="예: 공성부대", min_length=1, max_length=12)
 
@@ -349,7 +408,7 @@ class AllyModal(discord.ui.Modal, title="동맹 등록"):
         await it.response.send_message(f"✅ 동맹 등록 완료 — **{int(sv)}서버 · {nm}**", ephemeral=True)
 
 
-class DipModal(discord.ui.Modal, title="외교관 등록"):
+class DipModal(CtxModal, title="외교관 등록"):
     ally = discord.ui.TextInput(label="동맹명", placeholder="소속 동맹 이름", max_length=12)
     uid = discord.ui.TextInput(label="CID (캐릭터 ID)", placeholder="게임 내 캐릭터 ID", max_length=30)
     nick = discord.ui.TextInput(label="닉네임", placeholder="게임 내 닉네임", max_length=20)
@@ -378,7 +437,7 @@ class DipModal(discord.ui.Modal, title="외교관 등록"):
         await it.followup.send(f"✅ 외교관 등록 완료! 별명: **{nick}** · 역할: **{role.name}**" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
 
 
-class DipView(discord.ui.View):
+class DipView(CtxView):
     def __init__(self): super().__init__(timeout=None)
 
     @discord.ui.button(label="외교관 등록", style=discord.ButtonStyle.success, custom_id="dip_btn")
@@ -386,7 +445,7 @@ class DipView(discord.ui.View):
         await it.response.send_modal(DipModal())
 
 
-class VerifyView(discord.ui.View):
+class VerifyView(CtxView):
     def __init__(self): super().__init__(timeout=None)
 
     @discord.ui.button(label="인증하기", style=discord.ButtonStyle.primary, custom_id="verify_btn")
@@ -400,15 +459,16 @@ def leave_save(d): store_set("leave", LEAVE_PATH, d)
 
 
 def lv_view(uid):
-    v = discord.ui.View(timeout=None)
+    v = discord.ui.View(timeout=None); gid = cur_gid()
     for act, label, style in (("role", "역할 회수", discord.ButtonStyle.secondary), ("kick", "킥(서버 추방)", discord.ButtonStyle.danger),
                               ("keep", "유지", discord.ButtonStyle.success), ("snooze", "보류 24h", discord.ButtonStyle.secondary)):
-        v.add_item(discord.ui.Button(label=label, style=style, custom_id=f"lv:{act}:{uid}"))
+        v.add_item(discord.ui.Button(label=label, style=style, custom_id=f"lv:{act}:{gid}:{uid}"))
     return v
 
 
 async def lv_send(guild, text, view=None):
     ch = bot.get_channel(ADMIN_CHANNEL_ID) if ADMIN_CHANNEL_ID else None
+    if ch is not None and getattr(ch, "guild", None) and ch.guild.id != guild.id: ch = None      # 다른 서버의 채널이면 서버장 DM
     if ch is None:
         owner = guild.owner or await guild.fetch_member(guild.owner_id)
         ch = await owner.create_dm()
@@ -461,15 +521,17 @@ async def lv_execute(guild, uid, entry, act, by):
 
 
 class KickConfirm(discord.ui.View):
-    def __init__(self, uid, by): super().__init__(timeout=60); self.uid, self.by = uid, by
+    def __init__(self, uid, by, gid): super().__init__(timeout=60); self.uid, self.by, self.gid = uid, by, gid
+
+    async def interaction_check(self, it): set_gid(self.gid); return True
 
     @discord.ui.button(label="정말 킥하기", style=discord.ButtonStyle.danger)
     async def ok(self, it: discord.Interaction, _):
-        await lv_apply(it, "kick", self.uid, confirmed=True)
+        await lv_apply(it, "kick", self.uid, self.gid, confirmed=True)
 
 
-async def lv_apply(it, act, uid, confirmed=False):
-    guild = bot.get_guild(GUILD_ID); lv = leave_load(); entry = lv["pending"].get(uid)
+async def lv_apply(it, act, uid, gid, confirmed=False):
+    guild = bot.get_guild(gid); lv = leave_load(); entry = lv["pending"].get(uid)
     if not entry: return await it.response.send_message("이미 처리되었거나 목록에 없는 건입니다.", ephemeral=True)
     by = it.user.display_name; stamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%m.%d %H:%M")
     if act in ("role", "kick"):
@@ -477,7 +539,7 @@ async def lv_apply(it, act, uid, confirmed=False):
             lv["pending"].pop(uid); leave_save(lv); await lv_finish(entry, f"✅ 명단에 다시 등록되어 처리하지 않았습니다. (CID `{uid}` · {entry['nick']})")
             return await it.response.send_message("이미 인사 탭에 있는 CID라 처리하지 않았습니다.", ephemeral=True)
         if act == "kick" and not confirmed:
-            return await it.response.send_message(f"**{entry['nick']}** 님을 서버에서 추방합니다. 다시 들어오려면 초대 링크와 재인증이 필요합니다. 진행할까요?", view=KickConfirm(uid, by), ephemeral=True)
+            return await it.response.send_message(f"**{entry['nick']}** 님을 서버에서 추방합니다. 다시 들어오려면 초대 링크와 재인증이 필요합니다. 진행할까요?", view=KickConfirm(uid, by, gid), ephemeral=True)
         await it.response.defer(ephemeral=True)
         label, note = await lv_execute(guild, uid, entry, act, by)
         if label is None: return await it.followup.send(f"❌ {note}", ephemeral=True)
@@ -504,11 +566,12 @@ async def on_interaction(it: discord.Interaction):
         return
     if not cid.startswith("lv:"): return
     try:
-        g = bot.get_guild(GUILD_ID); mem = g.get_member(it.user.id) if g else None
-        if not (mem and (mem.guild_permissions.administrator or (GUILD_ID, it.user.id) in PERM)):
+        parts = cid.split(":"); act, uid = parts[1], parts[-1]
+        gid = int(parts[2]) if len(parts) == 4 else GUILD_ID          # 예전 버튼(서버 ID 없음)은 홈 서버
+        set_gid(gid); g = bot.get_guild(gid); mem = g.get_member(it.user.id) if g else None
+        if not (mem and (mem.guild_permissions.administrator or (gid, it.user.id) in PERM)):
             return await it.response.send_message("관리자만 처리할 수 있습니다.", ephemeral=True)
-        _, act, uid = cid.split(":", 2)
-        await lv_apply(it, act, uid)
+        await lv_apply(it, act, uid, gid)
     except Exception:
         log.exception("이탈 처리 오류")
         try: await it.response.send_message("처리 중 오류가 발생했습니다. 로그를 확인하세요.", ephemeral=True)
@@ -554,10 +617,20 @@ async def sync_members(guild: discord.Guild):
     return res
 
 
+class GuildTree(app_commands.CommandTree):
+    """모든 명령 실행 전에: ① 처리할 서버를 정하고 ② 허가되지 않은 서버는 /동맹등록 외에는 막는다."""
+    async def interaction_check(self, it: discord.Interaction):
+        set_gid(it.guild_id)
+        if it.guild_id is None:
+            await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True); return False
+        if licensed(it.guild_id) or (it.command and it.command.name == "동맹등록"): return True
+        await it.response.send_message("🔒 이 서버는 제작자의 승인이 필요합니다. `/동맹등록`으로 신청해 주세요.", ephemeral=True); return False
+
+
 class Bot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default(); intents.members = True
-        super().__init__(intents=intents); self.tree = app_commands.CommandTree(self)
+        super().__init__(intents=intents); self.tree = GuildTree(self)
 
     async def setup_hook(self):
         if SHEET_ID and ROSTER_GID:
@@ -567,7 +640,10 @@ class Bot(discord.Client):
         await asyncio.to_thread(lambda: (db_load(), jc_load()))      # 시트에 저장된 인증·정철 상태를 미리 불러옴
         await start_web()
         self.add_view(VerifyView()); self.add_view(DipView())
-        g = discord.Object(GUILD_ID); self.tree.copy_global_to(guild=g); await self.tree.sync(guild=g)
+        g = discord.Object(GUILD_ID)
+        if OPEN_SERVERS:                                   # 다른 서버에서도 명령이 보이게 전역 등록(허가 안 된 서버는 /동맹등록만 가능)
+            self.tree.clear_commands(guild=g); await self.tree.sync(guild=g); await self.tree.sync()
+        else: self.tree.copy_global_to(guild=g); await self.tree.sync(guild=g)
 
     async def on_ready(self):
         log.info("로그인: %s", self.user)
@@ -578,7 +654,8 @@ class Bot(discord.Client):
         except Exception: log.exception("승인 목록 로드 실패")
 
     async def on_member_join(self, m: discord.Member):
-        if m.guild.id != GUILD_ID or m.bot: return
+        if not licensed(m.guild.id) or m.bot: return
+        set_gid(m.guild.id)
         text = f"{m.mention} 환영합니다! 아래 **인증하기** 버튼을 눌러 CID · 직업 · 닉네임을 입력해 주세요."
         ch = m.guild.get_channel(VERIFY_CHANNEL_ID) if VERIFY_CHANNEL_ID else None
         try:
@@ -593,7 +670,8 @@ bot.event(on_interaction)
 
 @tasks.loop(minutes=max(SYNC_MINUTES, 1))
 async def sync_loop():
-    try:
+    set_gid(GUILD_ID)
+    try:                                                   # 홈 서버: 엑셀/구글 시트
         if SHEET_ID and ROSTER_GID:
             text = await asyncio.to_thread(fetch_sheet_csv); roster.load_csv_text(text)
             await asyncio.to_thread(refresh_talk)
@@ -602,6 +680,18 @@ async def sync_loop():
         g = bot.get_guild(GUILD_ID)
         if g: await sync_members(g)
     except Exception: log.exception("주기 동기화 실패")
+    if SB_ON:
+        try: await asyncio.to_thread(perm_refresh)         # 새로 승인/해제된 서버 반영
+        except Exception: log.exception("승인 목록 갱신 실패")
+    for gid in sorted(LICENSED - {GUILD_ID}):              # 승인된 다른 서버: DB 명단
+        try:
+            set_gid(gid); g = bot.get_guild(gid)
+            if g is None: continue
+            await asyncio.to_thread(roster_load_db, gid)
+            await sync_members(g)
+        except Exception: log.exception("서버 %s 동기화 실패", gid)
+    set_gid(GUILD_ID)
+
 
 admin = app_commands.default_permissions(manage_roles=True)
 
@@ -647,15 +737,17 @@ async def panel(it: discord.Interaction):
 
 
 # ---------- 제작자 허가(관리자 인증) ----------
+OPEN_SERVERS = os.environ.get("OPEN_SERVERS", "0").strip() == "1"   # 1이면 다른 서버에서도 봇 명령 표시(제작자 승인 필요)
 OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)      # 제작자 디스코드 ID(비우면 봇 소유자)
 PERM = set()                                               # 승인된 (서버 ID, 사용자 ID)
 
 
 def perm_refresh():
-    global PERM
+    global PERM, LICENSED
     if not SB_ON: return
     rows = _sb_req("GET", "sam_perm?status=eq.approved&select=guild_id,discord_id") or []
     PERM = {(int(r["guild_id"]), int(r["discord_id"])) for r in rows}
+    LICENSED = {g for g, _ in PERM}
 
 
 async def perm_owner():
@@ -670,46 +762,81 @@ def perm_view(gid, uid):
     return v
 
 
+def ally_set(gid, name, server):
+    """그 서버의 동맹 정보 저장(sam_store + sam_alli). 스레드에서 호출."""
+    tok = _CTX.set(int(gid))
+    try: store_set("alliance", ALLY_PATH, {"name": name, "server": str(int(server))})
+    finally: _CTX.reset(tok)
+
+
+async def pm_setup_guild(gid):
+    """승인된 서버에 기본 역할(동맹원·간부·외교관)을 만든다. → 안내 문구"""
+    g = bot.get_guild(gid)
+    if g is None: return "봇이 서버에 없어 역할을 만들지 못했습니다."
+    made, fail = [], []
+    for nm in (MEMBER_ROLE, OFFICER_ROLE, DIPLOMAT_ROLE):
+        if discord.utils.get(g.roles, name=nm): continue
+        try: await g.create_role(name=nm, reason="제작자 승인 — 기본 역할 생성"); made.append(nm)
+        except Exception: fail.append(nm)
+    out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.")
+    return out + (f" / 생성 실패(봇에 '역할 관리' 권한 필요): {', '.join(fail)}" if fail else "")
+
+
 async def pm_decide(it: discord.Interaction, cid):
     owner = await perm_owner()
     if it.user.id != owner.id: return await it.response.send_message("제작자만 처리할 수 있습니다.", ephemeral=True)
     _, act, gid, uid = cid.split(":", 3); gid, uid = int(gid), int(uid); ok = act == "ok"
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    rows = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?guild_id=eq.{gid}&discord_id=eq.{uid}&select=ally_name,game_server,guild_name")
+    row = rows[0] if rows else {}
     await asyncio.to_thread(_sb_req, "PATCH", f"sam_perm?guild_id=eq.{gid}&discord_id=eq.{uid}",
                             {"status": "approved" if ok else "rejected", "decided_at": now, "decided_by": it.user.id}, "return=minimal")
-    if ok: PERM.add((gid, uid))
-    else: PERM.discard((gid, uid))
+    extra = ""
+    if ok:
+        PERM.add((gid, uid)); LICENSED.add(gid)
+        if row.get("ally_name") and row.get("game_server"): await asyncio.to_thread(ally_set, gid, row["ally_name"], row["game_server"])
+        extra = await pm_setup_guild(gid)
+    else:
+        PERM.discard((gid, uid))
+        if not any(g == gid for g, _ in PERM): LICENSED.discard(gid)
     head = (it.message.content or "").split("\n")[0]
-    await it.response.edit_message(content=f"{head}\n{'✅ 승인됨' if ok else '⛔ 거절됨'} — {it.user.display_name}", view=None)
+    await it.response.edit_message(content=f"{head}\n{'✅ 승인됨' if ok else '⛔ 거절됨'} — {it.user.display_name}" + (f"\n{extra}" if extra else ""), view=None)
     try:
         u = await bot.fetch_user(uid)
-        await u.send("✅ 관리자 인증이 **승인**되었습니다. 이제 관리자 명령을 사용할 수 있습니다." if ok else "⛔ 관리자 인증 신청이 **거절**되었습니다.")
+        await u.send((f"✅ **{row.get('guild_name') or '서버'}** 사용이 **승인**되었습니다. ({row.get('game_server')}서버 · {row.get('ally_name')})\n"
+                      f"서버에서 봇 역할을 '{MEMBER_ROLE}'·'{OFFICER_ROLE}' 역할보다 위로 올린 뒤, `/명단업데이트`로 인사 명단(.xlsx)을 올려 주세요. 이후 동맹원은 `/인증패널`의 버튼으로 CID 인증을 하면 됩니다.")
+                     if ok else "⛔ 동맹 등록 신청이 **거절**되었습니다.")
     except Exception: log.warning("신청자 DM 실패: %s", uid)
 
 
-@bot.tree.command(name="관리자인증", description="봇 관리자 사용을 제작자에게 신청합니다(승인되면 관리자 명령 사용 가능)")
-@app_commands.describe(사유="신청 사유(동맹명, 직책 등)")
-async def cmd_perm(it: discord.Interaction, 사유: str = ""):
-    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
-    if not SB_ON: return await it.response.send_message("❌ DB(Supabase)가 연결되지 않아 신청을 받을 수 없습니다.", ephemeral=True)
-    await it.response.defer(ephemeral=True); gid, uid = it.guild.id, it.user.id
-    cur = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?guild_id=eq.{gid}&discord_id=eq.{uid}&select=status")
-    st = cur[0]["status"] if cur else None
-    if st == "approved": return await it.followup.send("이미 승인된 관리자입니다.", ephemeral=True)
-    if st == "pending": return await it.followup.send("이미 신청되어 제작자의 승인을 기다리는 중입니다.", ephemeral=True)
-    owner = await perm_owner(); now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    row = {"guild_id": gid, "discord_id": uid, "guild_name": it.guild.name, "user_name": str(it.user), "reason": 사유[:200],
-           "status": "approved" if uid == owner.id else "pending", "requested_at": now, "decided_at": None, "decided_by": None}
-    await asyncio.to_thread(_sb_req, "POST", "sam_perm?on_conflict=guild_id,discord_id", [row], "resolution=merge-duplicates,return=minimal")
-    if uid == owner.id:
-        PERM.add((gid, uid)); return await it.followup.send("제작자 본인이라 바로 승인되었습니다.", ephemeral=True)
-    try:
-        await owner.send(f"🔐 **관리자 인증 신청**\n서버: **{it.guild.name}** (`{gid}`)\n신청자: {it.user.mention} ({it.user}) · `{uid}`\n사유: {사유 or '(없음)'}",
-                         view=perm_view(gid, uid), allowed_mentions=discord.AllowedMentions.none())
-        await it.followup.send("📨 제작자에게 신청을 보냈습니다. 승인되면 DM으로 알려 드립니다.", ephemeral=True)
-    except Exception:
-        log.exception("제작자 알림 실패")
-        await it.followup.send("신청은 접수됐지만 제작자에게 알림을 보내지 못했습니다. 제작자에게 직접 알려 주세요.", ephemeral=True)
+class AllyApplyModal(CtxModal, title="동맹 등록 신청"):
+    server = discord.ui.TextInput(label="서버 번호 (숫자만 입력)", placeholder="예: 41", min_length=1, max_length=5)
+    name = discord.ui.TextInput(label="동맹명", placeholder="예: 공성부대", min_length=1, max_length=12)
+    reason = discord.ui.TextInput(label="사유 (선택)", placeholder="신청 사유, 직책 등", required=False, max_length=200, style=discord.TextStyle.paragraph)
+
+    async def on_submit(self, it: discord.Interaction):
+        sv, nm = self.server.value.strip(), self.name.value.strip()
+        if not (sv.isascii() and sv.isdigit()): return await it.response.send_message("❌ 서버 번호는 숫자만 입력할 수 있습니다. (예: 41)", ephemeral=True)
+        if not SB_ON: return await it.response.send_message("❌ DB(Supabase)가 연결되지 않아 신청을 받을 수 없습니다.", ephemeral=True)
+        await it.response.defer(ephemeral=True); gid, uid = it.guild.id, it.user.id
+        cur = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?guild_id=eq.{gid}&discord_id=eq.{uid}&select=status")
+        st = cur[0]["status"] if cur else None
+        if st == "pending": return await it.followup.send("이미 신청되어 제작자의 승인을 기다리는 중입니다.", ephemeral=True)
+        owner = await perm_owner(); now = datetime.datetime.now(datetime.timezone.utc).isoformat(); sv = str(int(sv))
+        row = {"guild_id": gid, "discord_id": uid, "guild_name": it.guild.name, "user_name": str(it.user), "reason": self.reason.value[:200],
+               "ally_name": nm, "game_server": sv, "status": "approved" if uid == owner.id else "pending",
+               "requested_at": now, "decided_at": None, "decided_by": None}
+        await asyncio.to_thread(_sb_req, "POST", "sam_perm?on_conflict=guild_id,discord_id", [row], "resolution=merge-duplicates,return=minimal")
+        if uid == owner.id:
+            PERM.add((gid, uid)); LICENSED.add(gid); await asyncio.to_thread(ally_set, gid, nm, sv); extra = await pm_setup_guild(gid)
+            return await it.followup.send(f"제작자 본인이라 바로 등록되었습니다. ({sv}서버 · {nm})\n{extra}", ephemeral=True)
+        try:
+            await owner.send(f"🔐 **동맹 등록 신청**\n서버: **{it.guild.name}** (`{gid}`)\n동맹: **{sv}서버 · {nm}**\n신청자: {it.user.mention} ({it.user}) · `{uid}`\n사유: {self.reason.value or '(없음)'}",
+                             view=perm_view(gid, uid), allowed_mentions=discord.AllowedMentions.none())
+            await it.followup.send("📨 제작자에게 신청을 보냈습니다. 승인되면 DM으로 알려 드립니다.", ephemeral=True)
+        except Exception:
+            log.exception("제작자 알림 실패")
+            await it.followup.send("신청은 접수됐지만 제작자에게 알림을 보내지 못했습니다. 제작자에게 직접 알려 주세요.", ephemeral=True)
 
 
 def admin_only(f): return f          # 디스코드 기본 권한으로 숨기지 않고, 함수 안(is_admin)에서 판정(제작자가 승인한 관리자도 사용)
@@ -768,30 +895,44 @@ PUBLIC_URL = (os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_UR
 HR_HOURS = int(os.environ.get("HR_HOURS", "12"))     # /인사 링크 유효시간
 
 
-def hr_token(uid, exp):
-    return f"{uid}.{exp}." + hmac.new(TIER_SECRET.encode(), f"hr:{uid}:{exp}".encode(), hashlib.sha256).hexdigest()[:24]
+def hr_token(uid, exp, gid=GUILD_ID):
+    return f"{uid}.{exp}.{gid}." + hmac.new(TIER_SECRET.encode(), f"hr:{uid}:{exp}:{gid}".encode(), hashlib.sha256).hexdigest()[:24]
 
 
-def hr_valid(t):
+def hr_parse(t):
+    """인사 링크 검사 → 서버 ID 또는 None. (서버 ID가 없는 예전 링크는 홈 서버)"""
     p = (t or "").split(".")
-    if len(p) != 3 or not p[1].isdigit() or int(p[1]) < time.time(): return False
-    return hmac.compare_digest(p[2], hr_token(p[0], p[1]).rsplit(".", 1)[1])
+    if len(p) == 3: uid, exp, gid, sig = p[0], p[1], GUILD_ID, p[2]; old = True
+    elif len(p) == 4 and p[2].isdigit(): uid, exp, gid, sig = p[0], p[1], int(p[2]), p[3]; old = False
+    else: return None
+    if not exp.isdigit() or int(exp) < time.time(): return None
+    want = hmac.new(TIER_SECRET.encode(), (f"hr:{uid}:{exp}" if old else f"hr:{uid}:{exp}:{gid}").encode(), hashlib.sha256).hexdigest()[:24]
+    return gid if hmac.compare_digest(sig, want) else None
 
 
 async def web_hr(request):
-    if not hr_valid(request.query.get("t")): return web.Response(status=403, text="링크가 만료되었거나 올바르지 않습니다. 디스코드에서 /인사 를 다시 입력해 주세요.")
+    gid = hr_parse(request.query.get("t")); set_gid(gid)
+    if gid is None: return web.Response(status=403, text="링크가 만료되었거나 올바르지 않습니다. 디스코드에서 /인사 를 다시 입력해 주세요.")
     html = render_html()
     if html is None: return web.Response(status=503, text="명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
     return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 DEX_DIR = Path(os.environ.get("DEX_DIR", "dex"))
 
 
-def tier_token(cid): return f"{cid}.{hmac.new(TIER_SECRET.encode(), f'dex:{cid}'.encode(), hashlib.sha256).hexdigest()[:20]}"
+def _dex_sig(gid, cid): return hmac.new(TIER_SECRET.encode(), (f"dex:{cid}" if gid == GUILD_ID else f"dex:{gid}:{cid}").encode(), hashlib.sha256).hexdigest()[:20]
 
 
-def tier_cid(t):
-    cid, _, sig = (t or "").partition(".")
-    return cid if cid and hmac.compare_digest(sig, tier_token(cid).partition(".")[2]) else None
+def tier_token(cid, gid=GUILD_ID):
+    return f"{cid}.{_dex_sig(gid, cid)}" if gid == GUILD_ID else f"{gid}.{cid}.{_dex_sig(gid, cid)}"      # 홈 서버는 예전 형식 그대로
+
+
+def tier_parse(t):
+    """도감 링크 검사 → (서버 ID, CID) 또는 None"""
+    p = (t or "").split(".")
+    if len(p) == 2: gid, cid, sig = GUILD_ID, p[0], p[1]
+    elif len(p) == 3 and p[0].isdigit(): gid, cid, sig = int(p[0]), p[1], p[2]
+    else: return None
+    return (gid, cid) if cid and hmac.compare_digest(sig, _dex_sig(gid, cid)) else None
 
 
 def dex_path(cid): return DEX_DIR / f"{re.sub(r'[^0-9A-Za-z]', '', cid)}.json"
@@ -855,8 +996,9 @@ def tier_sheet_cfg():
 
 
 async def web_tier(request):
-    cid = tier_cid(request.query.get("t"))
-    if not cid: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /도감 으로 새 링크를 받으세요.")
+    pr = tier_parse(request.query.get("t"))
+    if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /도감 으로 새 링크를 받으세요.")
+    set_gid(pr[0]); cid = pr[1]
     info = roster.by_uid.get(cid) or {}
     dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
     cfg = await asyncio.to_thread(tier_sheet_cfg)
@@ -868,8 +1010,9 @@ async def web_tier(request):
 async def web_dex_save(request):
     try: b = await request.json()
     except Exception: return web.json_response({"ok": False, "error": "형식 오류"}, status=400)
-    cid = tier_cid(b.get("t"))
-    if not cid: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
+    pr = tier_parse(b.get("t"))
+    if not pr: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
+    set_gid(pr[0]); cid = pr[1]
     clean = lambda v: sorted({str(x)[:30] for x in v if isinstance(x, str)})[:600] if isinstance(v, list) else []
     info = roster.by_uid.get(cid) or {}
     data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")),
@@ -889,11 +1032,13 @@ async def start_web():
     log.info("상황판: http://localhost:%d/%s", WEB_PORT, f"?key={WEB_KEY}" if WEB_KEY else "")
 
 
-@bot.tree.command(name="동맹등록", description="[관리자] 서버 번호(숫자)와 동맹명을 등록/수정합니다")
-@admin_only
+@bot.tree.command(name="동맹등록", description="서버 번호(숫자)와 동맹명을 등록합니다. 승인 전 서버는 제작자에게 신청됩니다")
 async def cmd_ally(it: discord.Interaction):
-    if not is_admin(it): return await it.response.send_message("관리자만 사용할 수 있습니다.", ephemeral=True)
-    await it.response.send_modal(AllyModal())
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if licensed(it.guild_id):                              # 이미 승인된 서버: 간부가 정보 수정
+        if not is_staff(it): return await it.response.send_message("간부만 수정할 수 있습니다.", ephemeral=True)
+        return await it.response.send_modal(AllyModal())
+    await it.response.send_modal(AllyApplyModal())         # 승인 전 서버: 제작자에게 신청
 
 
 # ---------- 시트 → Supabase 이관 ----------
@@ -902,8 +1047,8 @@ def _sb_rows(table, rows, conflict="guild_id,cid"):
         _sb_req("POST", f"{table}?on_conflict={conflict}", rows[i:i + 200], prefer="resolution=merge-duplicates,return=minimal")
 
 
-def _sb_count(table):
-    return len(_sb_req("GET", f"{table}?guild_id=eq.{GUILD_ID}&select=guild_id&limit=100000") or [])
+def _sb_count(table, gid=GUILD_ID):
+    return len(_sb_req("GET", f"{table}?guild_id=eq.{gid}&select=guild_id&limit=100000") or [])
 
 
 def _num(v):
@@ -911,12 +1056,13 @@ def _num(v):
     except ValueError: return 0
 
 
-def hr_import(now=None):
+def hr_import(now=None, rows=None, gid=GUILD_ID):
     """인사 탭을 읽어 중복(같은 CID)을 하나로 묶고, 사람 정보와 주간 수치를 나눠 저장한다.
     sam_emp: CID·멤버·직업·조별 / sam_emp_stat: 직위·번영·주간 무훈·주간 공헌·주둔지·주 공성 횟수(날짜별)."""
     now = now or datetime.datetime.now(datetime.timezone.utc).isoformat()
     snap = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")   # KST 날짜
-    rows = list(csv.reader(io.StringIO(fetch_sheet_csv())))
+    if rows is None: rows = list(csv.reader(io.StringIO(fetch_sheet_csv())))
+    _sb_ensure_tenant(gid)
     uidc = COL_UID + ["캐릭터 ID", "캐릭터ID", "CID"]
     hi = next((i for i, r in enumerate(rows) if roster._find(r, uidc) is not None), None)
     if hi is None: raise RuntimeError("인사 탭에서 CID 열을 찾지 못했습니다.")
@@ -935,16 +1081,16 @@ def hr_import(now=None):
     if same: warn.append("이름은 같고 CID가 다른 멤버: " + ", ".join(f"{n}({'/'.join(c)})" for n, c in list(same.items())[:5]))
     ro, st = [], []
     for cid, g in merged.items():
-        ro.append({"guild_id": GUILD_ID, "cid": cid, "name": g.get("멤버", ""), "job": g.get("직업", ""), "updated_at": now,
+        ro.append({"guild_id": gid, "cid": cid, "name": g.get("멤버", ""), "job": g.get("직업", ""), "updated_at": now,
                    "extra": {"조별": g.get("조별", "")}})
         m = re.match(r"\s*([^(]*)\(\s*(\d+)\s*,\s*(\d+)\s*\)", g.get("주둔지", ""))
-        st.append({"guild_id": GUILD_ID, "cid": cid, "snap_date": snap, "title": g.get("직위", ""), "prosperity": _num(g.get("번영")),
+        st.append({"guild_id": gid, "cid": cid, "snap_date": snap, "title": g.get("직위", ""), "prosperity": _num(g.get("번영")),
                    "war_merit": _num(g.get("주간 무훈")), "contribution": _num(g.get("주간 공헌")),
                    "camp": (m.group(1).strip() if m else g.get("주둔지", "")), "camp_x": int(m.group(2)) if m else None,
                    "camp_y": int(m.group(3)) if m else None, "siege_count": _num(g.get("주 공성 횟수"))})
     _sb_rows("sam_emp", ro); _sb_rows("sam_emp_stat", st, conflict="guild_id,cid,snap_date")
-    out = [f"명단(sam_emp): 시트 {len(rows) - hi - 1}줄 → 중복 {dup}건 병합 → {len(ro)}명 (DB 총 {_sb_count('sam_emp')}명)",
-           f"인사 수치(sam_emp_stat): {snap} 기준 {len(st)}건 (DB 총 {_sb_count('sam_emp_stat')}건)"]
+    out = [f"명단(sam_emp): 시트 {len(rows) - hi - 1}줄 → 중복 {dup}건 병합 → {len(ro)}명 (DB 총 {_sb_count('sam_emp', gid)}명)",
+           f"인사 수치(sam_emp_stat): {snap} 기준 {len(st)}건 (DB 총 {_sb_count('sam_emp_stat', gid)}건)"]
     return out, warn
 
 
@@ -981,7 +1127,7 @@ def migrate_to_db():
     # 5) 호환 저장소(sam_store): 봇이 실제로 읽는 원본 JSON
     names = ["verified", "jungchul", "alliance", "leave"] + [f"dex_{c}" for c in db["uid"]]; n = 0
     for nm in names:
-        v = _cache.get(nm)
+        v = _cache.get((GUILD_ID, nm))
         if v is not None: _sb_put(nm, v); n += 1
     out.append(f"저장소(sam_store): {n}개 항목")
     return out, warn
@@ -999,6 +1145,26 @@ async def hr_sync_loop():
     except Exception: log.exception("인사 자동 반영 오류")
 
 
+async def update_roster_tenant(it, 파일):
+    gid = it.guild_id
+    if 파일 is None or not 파일.filename.lower().endswith(".xlsx"):
+        return await it.followup.send("❌ 인사 명단 엑셀(.xlsx)을 첨부해 주세요. 첫 시트에 `캐릭터 ID`, `멤버`, `직업`, `직위` 열이 필요합니다. (조별, 번영, 주간 무훈, 주간 공헌, 주둔지, 주 공성 횟수는 선택)", ephemeral=True)
+    tmp = Path(tempfile.gettempdir()) / f"roster_{gid}.xlsx"
+    try:
+        await 파일.save(tmp)
+        wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
+        rows = [["" if c is None else (str(int(c)) if isinstance(c, float) and c.is_integer() else str(c)) for c in r] for r in wb.worksheets[0].iter_rows(values_only=True)]
+        out, warn = await asyncio.to_thread(hr_import, None, rows, gid)
+        await asyncio.to_thread(roster_load_db, gid)
+    except Exception as e:
+        log.exception("명단 업로드 실패"); return await it.followup.send(f"❌ 실패: {str(e)[:300]}", ephemeral=True)
+    finally: tmp.unlink(missing_ok=True)
+    sy = await sync_members(it.guild)
+    await it.followup.send("✅ 명단을 반영했습니다.\n" + "\n".join("• " + x for x in out)
+                           + f"\n• 역할 동기화: 인증자 {sy['total']}명 중 역할 변경 {sy['role']}명, 별명 변경 {sy['nick']}명"
+                           + ("\n⚠️ " + "\n⚠️ ".join(warn) if warn else ""), ephemeral=True)
+
+
 @bot.tree.command(name="명단업데이트", description="[관리자] 명단을 새로 반영합니다 (엑셀 첨부 또는 구글 시트)")
 @admin_only
 @app_commands.describe(파일="새 명단 엑셀(.xlsx). 비우면 구글 시트에서 받아옵니다")
@@ -1006,6 +1172,7 @@ async def update_roster(it: discord.Interaction, 파일: discord.Attachment = No
     if not is_admin(it):
         return await it.response.send_message("관리자만 사용할 수 있습니다.", ephemeral=True)
     await it.response.defer(ephemeral=True)
+    if cur_gid() != GUILD_ID: return await update_roster_tenant(it, 파일)      # 다른 서버: 홈 서버 파일을 건드리지 않고 DB에 저장
     try: roster.load()
     except Exception: pass
     before = set(roster.by_uid)
@@ -1040,6 +1207,9 @@ async def update_roster(it: discord.Interaction, 파일: discord.Attachment = No
 @admin_only
 async def reload(it: discord.Interaction):
     if not is_admin(it): return await it.response.send_message("관리자만 사용할 수 있습니다.", ephemeral=True)
+    if cur_gid() != GUILD_ID:
+        try: n = await asyncio.to_thread(roster_load_db, cur_gid()); return await it.response.send_message(f"명단 {n}명 로드", ephemeral=True)
+        except Exception as e: return await it.response.send_message(f"실패: {e}", ephemeral=True)
     roster.mtime = 0
     try: roster.load(); await it.response.send_message(f"명단 {len(roster.by_uid)}명 로드, 직업: {', '.join(roster.jobs) or '-'}", ephemeral=True)
     except Exception as e: await it.response.send_message(f"실패: {e}", ephemeral=True)
@@ -1049,7 +1219,7 @@ async def reload(it: discord.Interaction):
 async def dex_link(it: discord.Interaction):
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(it.user.id)), None)
     if not cid: return await it.response.send_message("먼저 인증(CID 등록)을 완료해 주세요.", ephemeral=True)
-    await it.response.send_message(f"🔗 내 도감 링크 (다른 사람에게 공유하지 마세요)\n{PUBLIC_URL}/tier?t={tier_token(cid)}\n장수·전법을 체크하면 자동으로 시트에 저장됩니다.", ephemeral=True)
+    await it.response.send_message(f"🔗 내 도감 링크 (다른 사람에게 공유하지 마세요)\n{PUBLIC_URL}/tier?t={tier_token(cid, cur_gid())}\n장수·전법을 체크하면 자동으로 시트에 저장됩니다.", ephemeral=True)
 
 
 @bot.tree.command(name="인사", description="[간부] 인사데이터(상황판) 링크를 받습니다")
@@ -1057,7 +1227,7 @@ async def hr_link(it: discord.Interaction):
     if not is_staff(it): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
     if not roster.members: return await it.response.send_message("명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", ephemeral=True)
     exp = int(time.time()) + HR_HOURS * 3600
-    await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp)}\n멤버 {len(roster.members)}명 기준", ephemeral=True)
+    await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp, cur_gid())}\n멤버 {len(roster.members)}명 기준", ephemeral=True)
 
 
 @bot.tree.command(name="인증해제", description="CID의 인증 기록을 지웁니다(재인증 허용)")
@@ -1084,7 +1254,7 @@ def extra_cost(level):             # 아군 성지/관문과 관로로 연결되
     return 500 if level <= 8 else 1500 if level <= 12 else 3000
 
 
-def jc_load(): return store_get("jungchul", JC_PATH, {"stock": JC_STOCK, "at": time.time(), "rate": JC_RATE, "timers": []})
+def jc_load(): return store_get("jungchul", JC_PATH, {"stock": JC_STOCK if cur_gid() == GUILD_ID else 0, "at": time.time(), "rate": JC_RATE, "timers": []})
 
 
 def jc_save(st): store_set("jungchul", JC_PATH, st)
@@ -1358,8 +1528,7 @@ def jc_settle(st, now, quiet_id=None):
     return started
 
 
-@tasks.loop(seconds=30)
-async def jc_loop():
+async def jc_tick():
     try:
         st = jc_load(); sg = st.setdefault("sieges", []); bl = st.setdefault("building", [])
         rv = st.setdefault("reserve", [])
@@ -1383,6 +1552,13 @@ async def jc_loop():
                 await officer_call(r["channel"], f"⚔️ **공성 {fmt_dur(max(0, r['t'] - now) / 3600)} 전!** {siege_name(r)} 공성이 **{fmt_t(r['t'])}** (<t:{int(r['t'])}:R>)에 예정되어 있습니다. 모두 준비해 주세요. (예약: {r.get('name', '-')})")
         if changed: jc_save(st)
     except Exception: log.exception("정철 타이머 오류")
+
+
+@tasks.loop(seconds=30)
+async def jc_loop():
+    for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):
+        set_gid(gid); await jc_tick()
+    set_gid(GUILD_ID)
 
 
 if __name__ == "__main__":
