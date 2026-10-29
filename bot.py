@@ -943,31 +943,29 @@ async def donate_loop():
         except Exception: log.exception("후원 안내 전송 실패: %s", gid)
 
 
-CMD_HELP = [
-    ("모두", [("/동맹등록", "서버 번호·동맹명을 등록(승인 전 서버는 제작자에게 신청)"),
+CMD_HELP = {
+    "동맹원": [("/동맹등록", "서버 번호·동맹명을 등록(승인 전 서버는 제작자에게 신청)"),
              ("/도감", "내 보유 장수·전법을 체크하는 개인 링크"),
              ("/후원", "제작자 서버비 후원 안내(카카오 QR)"),
-             ("/명령어", "내 역할로 쓸 수 있는 명령어 보기")]),
-    ("간부", [("/인사", "인사데이터(상황판) 링크"),
-             ("/공성등록", "공성 주둔지 등록"), ("/공성", "정철 개수·공성 예상 일정"), ("/공성취소", "등록한 공성 취소"),
-             ("/공성예약", "공성 시각 예약(30분 전 간부 호출)"), ("/공성예약취소", "공성 예약 취소"),
-             ("/정철설정", "정철 보유량 맞추기")]),
-    ("관리자", [("/명단업데이트", "명단 반영(엑셀 첨부 또는 구글 시트)"), ("/명단새로고침", "엑셀 명단 다시 읽기"),
-              ("/인증패널", "인증 버튼 패널 게시"), ("/인증해제", "CID 인증 기록 삭제(재인증 허용)"),
-              ("/외교관패널", "외교관 등록 버튼 패널 게시"), ("/외교관해제", "외교관 등록 해제")]),
-    ("제작자", [("/후원안내설정", "후원 QR 이미지·문구 설정")]),
-]
+             ("/명령어", "내 역할로 쓸 수 있는 명령어 보기")],
+    "간부": [("/인사", "인사데이터(상황판) 링크"),
+           ("/공성등록", "공성 주둔지 등록"), ("/공성", "정철 개수·공성 예상 일정"), ("/공성취소", "등록한 공성 취소"),
+           ("/공성예약", "공성 시각 예약(30분 전 간부 호출)"), ("/공성예약취소", "공성 예약 취소"),
+           ("/정철설정", "정철 보유량 맞추기")],
+}
 
 
-@bot.tree.command(name="명령어", description="내 역할로 사용할 수 있는 명령어를 알려 드립니다")
-async def cmd_help(it: discord.Interaction):
+@bot.tree.command(name="명령어", description="역할별로 사용할 수 있는 명령어를 알려 드립니다")
+@app_commands.describe(역할="[제작자 전용] 어느 역할이 보는 명령어를 볼지(비우면 내 역할 기준)")
+@app_commands.choices(역할=[app_commands.Choice(name="동맹원", value="동맹원"), app_commands.Choice(name="간부", value="간부")])
+async def cmd_help(it: discord.Interaction, 역할: app_commands.Choice[str] = None):
     owner = await perm_owner()
-    lv = {"모두": True, "간부": is_staff(it), "관리자": is_admin(it), "제작자": it.user.id == owner.id}
-    lines = [f"📖 **명령어 안내** — 내 등급: **{[k for k in ('제작자', '관리자', '간부') if lv[k]][0] if any(lv[k] for k in ('제작자', '관리자', '간부')) else '동맹원'}**"]
-    for role, cmds in CMD_HELP:
-        if not lv[role]: continue
-        lines.append(f"\n**[{role}]**" if role != "모두" else "\n**[공통]**")
-        lines += [f"`{c}` — {d}" for c, d in cmds]
+    mine = "간부" if (is_staff(it) or it.user.id == owner.id) else "동맹원"
+    role = 역할.value if (역할 and it.user.id == owner.id) else mine          # 역할 지정은 제작자만 가능
+    lines = [f"📖 **{role}이(가) 사용할 수 있는 명령어**" + (" (제작자 조회)" if role != mine or (역할 and it.user.id == owner.id) else ""), "\n**[공통]**"]
+    lines += [f"`{c}` — {d}" for c, d in CMD_HELP["동맹원"]]
+    if role == "간부":
+        lines.append("\n**[간부 전용]**"); lines += [f"`{c}` — {d}" for c, d in CMD_HELP["간부"]]
     await it.response.send_message("\n".join(lines), ephemeral=True)
 
 
