@@ -1355,7 +1355,7 @@ def migrate_to_db():
     return out, warn
 
 
-HR_SYNC_HOURS = int(os.environ.get("HR_SYNC_HOURS", "0"))   # 0이면 끔. 설정하면 N시간마다 인사 탭을 DB에 자동 반영
+HR_SYNC_HOURS = int(os.environ.get("HR_SYNC_HOURS", "6"))   # 0이면 끔(기본 6시간). 설정하면 N시간마다 인사 탭을 DB에 자동 반영
 
 
 @tasks.loop(hours=max(HR_SYNC_HOURS, 1))
@@ -1418,6 +1418,11 @@ async def update_roster(it: discord.Interaction, 파일: discord.Attachment = No
     tk = refresh_talk()
     log.info("명단 업데이트 by %s (%s)", it.user, src)
     extra = (f"\n상황판: 멤버 {len(roster.members)}명" + (f", 톡방 {tk}명" if tk is not None else "") + " 반영") if roster.members else "\n상황판: 인사 탭의 열이 달라 반영하지 못했습니다(봇 창 로그 확인)."
+    if SB_ON:                                                       # 시트 → DB 반영(빠진 멤버는 이탈자 표로 이동)
+        try:
+            o, w = await asyncio.to_thread(hr_import)
+            extra += "\nDB 반영: " + " / ".join(o) + "".join("\n⚠️ " + x for x in w)
+        except Exception as e: log.exception("DB 반영 실패"); extra += f"\n⚠️ DB 반영 실패: {str(e)[:150]}"
     out = write_html()
     if out: extra += f"\n인사데이터 HTML 파일 갱신: {out.name}"
     sy = await sync_members(it.guild)
