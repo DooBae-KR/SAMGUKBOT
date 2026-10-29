@@ -649,6 +649,7 @@ class Bot(discord.Client):
         log.info("로그인: %s", self.user)
         if SYNC_MINUTES and not sync_loop.is_running(): sync_loop.start()
         if not jc_loop.is_running(): jc_loop.start()
+        if not donate_loop.is_running(): donate_loop.start()
         if SB_ON and HR_SYNC_HOURS and not hr_sync_loop.is_running(): hr_sync_loop.start()
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
@@ -845,11 +846,17 @@ DONATE_TEXT = "주에 한번씩 제작자의 서버비를 위해 열심히 일�
 DONATE_MAX = 2 * 1024 * 1024                              # QR 이미지 최대 크기
 
 
+DONATE_IMG_DEFAULT = Path(__file__).with_name("donate_qr.png")   # 저장소에 넣어 둔 기본 QR
+
+
 def donate_get():
-    """후원 안내(문구 + QR 이미지). 서버와 관계없이 홈 서버 저장소 한 곳에서 읽는다."""
+    """후원 안내(문구 + QR 이미지). 서버와 관계없이 홈 서버 저장소 한 곳에서 읽는다. 저장된 이미지가 없으면 기본 QR 파일."""
     tok = _CTX.set(GUILD_ID)
-    try: return store_get("donate", DONATE_PATH, None) or {}
+    try: d = dict(store_get("donate", DONATE_PATH, None) or {})
     finally: _CTX.reset(tok)
+    if not d.get("img") and DONATE_IMG_DEFAULT.exists():
+        d["img"] = base64.b64encode(DONATE_IMG_DEFAULT.read_bytes()).decode("ascii"); d["ext"] = ".png"
+    return d
 
 
 def donate_put(d):
@@ -886,6 +893,41 @@ async def cmd_donate_set(it: discord.Interaction, 이미지: discord.Attachment 
     f = discord.File(io.BytesIO(base64.b64decode(d["img"])), filename="donate" + d.get("ext", ".png")) if d.get("img") else None
     await it.followup.send("✅ 설정했습니다. 미리보기:\n\n" + (d.get("text") or DONATE_TEXT), file=f, ephemeral=True) if f else \
         await it.followup.send("✅ 설정했습니다. (이미지는 아직 없습니다)\n\n" + (d.get("text") or DONATE_TEXT), ephemeral=True)
+
+
+KST = datetime.timezone(datetime.timedelta(hours=9))
+DONATE_SENT = Path(os.environ.get("DONATE_SENT_PATH", "donate_sent.json"))
+
+
+def donate_channel(g):
+    """후원 안내를 올릴 채널: 서버 시스템 채널 → 봇이 쓸 수 있는 첫 텍스트 채널."""
+    me = g.me
+    ok = lambda c: me is not None and c.permissions_for(me).send_messages and c.permissions_for(me).attach_files
+    if g.system_channel and ok(g.system_channel): return g.system_channel
+    return next((c for c in g.text_channels if ok(c)), None)
+
+
+@tasks.loop(seconds=60)
+async def donate_loop():
+    """토요일 19:00(KST)에 봇이 있는 모든 승인 서버에 후원 안내를 한 번씩 올린다."""
+    now = datetime.datetime.now(KST)
+    if now.weekday() != 5 or not (now.hour == 19 and now.minute < 30): return
+    week = now.strftime("%Y-%m-%d")
+    tok = _CTX.set(GUILD_ID)
+    try: sent = store_get("donate_sent", DONATE_SENT, None) or {}
+    finally: _CTX.reset(tok)
+    if sent.get("date") == week: return
+    tok = _CTX.set(GUILD_ID)
+    try: store_set("donate_sent", DONATE_SENT, {"date": week})      # 먼저 기록: 재시작해도 중복 전송 방지
+    finally: _CTX.reset(tok)
+    d = await asyncio.to_thread(donate_get); text = d.get("text") or DONATE_TEXT
+    if not d.get("img"): log.warning("후원 QR 이미지가 없어 주간 안내를 건너뜁니다"); return
+    raw = base64.b64decode(d["img"])
+    for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):
+        g = bot.get_guild(gid); ch = donate_channel(g) if g else None
+        if not ch: log.warning("후원 안내 채널 없음: %s", gid); continue
+        try: await ch.send(text, file=discord.File(io.BytesIO(raw), filename="donate" + d.get("ext", ".png")))
+        except Exception: log.exception("후원 안내 전송 실패: %s", gid)
 
 
 def admin_only(f): return f          # 디스코드 기본 권한으로 숨기지 않고, 함수 안(is_admin)에서 판정(제작자가 승인한 관리자도 사용)
