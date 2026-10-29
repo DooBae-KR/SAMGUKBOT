@@ -196,6 +196,12 @@ def _sb_put(name, data):
             prefer="resolution=merge-duplicates,return=minimal")
 
 
+def _sb_put_tenant(d):
+    _sb_req("POST", "sam_tenant?on_conflict=guild_id",
+            [{"guild_id": GUILD_ID, "name": d["name"], "config": {"alliance": d["name"], "server": d["server"]}}],
+            prefer="resolution=merge-duplicates,return=minimal")
+
+
 def _writer():
     while True:
         name, data = _outq.get()
@@ -205,7 +211,9 @@ def _writer():
             for n, d in latest.items():
                 if SB_ON:
                     for attempt in range(3):
-                        try: _sb_put(n, d); break
+                        try:
+                            if n == "alliance": _sb_ensure_tenant(); _sb_put_tenant(d)
+                            _sb_put(n, d); break
                         except Exception as e:
                             log.warning("Supabase 저장 실패(%s) %d/3: %s", n, attempt + 1, e); time.sleep(3)
                 if SAVE_URL:                               # 시트는 열람·인사 연동용 미러로 계속 기록
@@ -310,6 +318,34 @@ class VerifyModal(discord.ui.Modal, title="연맹 인증"):
 
 
 # ---------- 외교관 인증 ----------
+# ---------- 동맹 정보(서버 번호 + 동맹명) ----------
+ALLY_PATH = DB_PATH.with_name("alliance.json")
+
+
+def ally_load():
+    d = store_get("alliance", ALLY_PATH, None)
+    if not d:                                              # 최초 1회: 환경변수/기본값으로 등록
+        d = {"name": os.environ.get("ALLIANCE_NAME", "공성부대").strip(), "server": os.environ.get("GAME_SERVER", "41").strip()}
+        store_set("alliance", ALLY_PATH, d)
+    return d
+
+
+class AllyModal(discord.ui.Modal, title="동맹 등록"):
+    server = discord.ui.TextInput(label="서버 번호 (숫자만 입력)", placeholder="예: 41", min_length=1, max_length=5)
+    name = discord.ui.TextInput(label="동맹명", placeholder="예: 공성부대", min_length=1, max_length=12)
+
+    def __init__(self):
+        super().__init__(); cur = ally_load()
+        self.server.default, self.name.default = cur["server"], cur["name"]
+
+    async def on_submit(self, it: discord.Interaction):
+        sv, nm = self.server.value.strip(), self.name.value.strip()
+        if not (sv.isascii() and sv.isdigit()): return await it.response.send_message("❌ 서버 번호는 숫자만 입력할 수 있습니다. (예: 41)", ephemeral=True)
+        if not nm: return await it.response.send_message("❌ 동맹명을 입력해 주세요.", ephemeral=True)
+        store_set("alliance", ALLY_PATH, {"name": nm, "server": str(int(sv))})
+        await it.response.send_message(f"✅ 동맹 등록 완료 — **{int(sv)}서버 · {nm}**", ephemeral=True)
+
+
 class DipModal(discord.ui.Modal, title="외교관 등록"):
     ally = discord.ui.TextInput(label="동맹명", placeholder="소속 동맹 이름", max_length=12)
     uid = discord.ui.TextInput(label="CID (캐릭터 ID)", placeholder="게임 내 캐릭터 ID", max_length=30)
@@ -772,6 +808,13 @@ async def start_web():
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()
     log.info("상황판: http://localhost:%d/%s", WEB_PORT, f"?key={WEB_KEY}" if WEB_KEY else "")
+
+
+@bot.tree.command(name="동맹등록", description="[관리자] 서버 번호(숫자)와 동맹명을 등록/수정합니다")
+@admin_only
+async def cmd_ally(it: discord.Interaction):
+    if not is_admin(it): return await it.response.send_message("관리자만 사용할 수 있습니다.", ephemeral=True)
+    await it.response.send_modal(AllyModal())
 
 
 @bot.tree.command(name="명단업데이트", description="[관리자] 명단을 새로 반영합니다 (엑셀 첨부 또는 구글 시트)")
