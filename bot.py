@@ -996,13 +996,58 @@ def refresh_talk():
         log.warning("톡방 탭 로드 실패: %s", e); return None
 
 
-def render_html():
-    """현재 명단/톡방 데이터로 상황판 HTML 문자열을 만든다. 데이터가 없으면 None."""
+TALK_PATH = Path(os.environ.get("TALK_PATH", "talk.json"))
+TALK_MAX, TALK_NAME_MAX = 2000, 40
+_talk_lock = threading.Lock()
+
+
+def talk_get():
+    """톡방 참여자 이름 목록. 대시보드에서 한 번이라도 관리했으면 저장된 값, 아니면 시트 톡방참여자 탭(홈 서버만)."""
+    d = store_get("talk", TALK_PATH, None)
+    if isinstance(d, dict) and isinstance(d.get("names"), list): return list(d["names"]), d.get("date"), True
+    return sorted(roster.talk), None, False
+
+
+def talk_apply(body):
+    """대시보드 톡방 관리 요청 처리 → (이름 목록, 날짜). 잘못된 요청은 ValueError."""
+    def clean(xs):
+        if not isinstance(xs, list): raise ValueError("이름 목록이 올바르지 않습니다.")
+        out = []
+        for x in xs:
+            n = re.sub(r"\s+", " ", str(x)).strip()
+            if not n: continue
+            if len(n) > TALK_NAME_MAX: raise ValueError(f"이름이 너무 깁니다(최대 {TALK_NAME_MAX}자): {n[:12]}…")
+            if n not in out: out.append(n)
+        return out
+    with _talk_lock:
+        names, _, _ = talk_get(); cur = list(names); op = body.get("op")
+        if op == "add": cur += [n for n in clean(body.get("names")) if n not in cur]
+        elif op == "remove":
+            rm = set(clean(body.get("names"))); cur = [n for n in cur if n not in rm]
+        elif op == "rename":
+            a, b = clean([body.get("from")]), clean([body.get("to")])
+            if not a or not b: raise ValueError("이름을 입력해 주세요.")
+            if a[0] not in cur: raise ValueError("목록에 없는 이름입니다.")
+            if b[0] != a[0] and b[0] in cur: raise ValueError("이미 있는 이름입니다.")
+            cur = [b[0] if n == a[0] else n for n in cur]
+        elif op == "set": cur = clean(body.get("names"))
+        else: raise ValueError("알 수 없는 요청입니다.")
+        if len(cur) > TALK_MAX: raise ValueError(f"톡방 인원은 최대 {TALK_MAX}명까지입니다.")
+        date = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
+        store_set("talk", TALK_PATH, {"names": sorted(cur), "date": date})
+        return sorted(cur), date
+
+
+def render_html(tok=None):
+    """현재 명단/톡방 데이터로 상황판 HTML 문자열을 만든다. 데이터가 없으면 None. tok이 있으면(간부 링크) 톡방 관리 탭이 켜진다."""
     if not roster.members: return None
     tpl = (Path(__file__).parent / "dashboard_template.html").read_text("utf-8")
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
-    D = [{**d, "t": 1 if d["n"] in roster.talk else 0} for d in roster.members]
-    cfg = {"rosterFile": roster.src or "명단", "rosterDate": today, "talkFile": "구글 시트 톡방참여자 탭" if roster.talk else "없음", "talkDate": today, "graceEnd": GRACE_END}
+    names, tdate, managed = talk_get(); tset = set(names)
+    D = [{**d, "t": 1 if d["n"] in tset else 0} for d in roster.members]
+    cfg = {"rosterFile": roster.src or "명단", "rosterDate": today,
+           "talkFile": ("대시보드 톡방 관리" if managed else "구글 시트 톡방참여자 탭") if names else "없음", "talkDate": tdate or today, "graceEnd": GRACE_END}
+    if tok: cfg.update(edit=True, tok=tok, talkNames=sorted(names))
     body = tpl.replace("__D__", json.dumps(D, ensure_ascii=False)).replace("__CFG__", json.dumps(cfg, ensure_ascii=False))
     return '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + body + "</html>"
 
@@ -1046,9 +1091,22 @@ def hr_parse(t):
 async def web_hr(request):
     gid = hr_parse(request.query.get("t")); set_gid(gid)
     if gid is None: return web.Response(status=403, text="링크가 만료되었거나 올바르지 않습니다. 디스코드에서 /인사 를 다시 입력해 주세요.")
-    html = render_html()
+    html = await asyncio.to_thread(lambda: (set_gid(gid), render_html(request.query.get("t")))[1])
     if html is None: return web.Response(status=503, text="명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
     return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+
+async def web_talk(request):
+    """대시보드 '톡방 관리' 탭의 저장 요청. 인사 링크(간부 전용 토큰)가 있어야 한다."""
+    gid = hr_parse(request.query.get("t"))
+    if gid is None: return web.json_response({"error": "링크가 만료되었습니다. 디스코드에서 /인사 를 다시 입력해 주세요."}, status=403)
+    if request.content_length and request.content_length > 200_000: return web.json_response({"error": "요청이 너무 큽니다."}, status=413)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
+    if not isinstance(body, dict): return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
+    try: names, date = await asyncio.to_thread(lambda: (set_gid(gid), talk_apply(body))[1])
+    except ValueError as e: return web.json_response({"error": str(e)}, status=400)
+    return web.json_response({"names": names, "date": date})
 DEX_DIR = Path(os.environ.get("DEX_DIR", "dex"))
 
 
@@ -1158,7 +1216,7 @@ async def web_dex_save(request):
 async def start_web():
     if not WEB_PORT: return
     app = web.Application(); app.router.add_get("/", web_index)
-    app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save)
+    app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()

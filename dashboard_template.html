@@ -71,7 +71,7 @@ textarea{font:13px var(--sans);padding:8px 10px;border:1px solid var(--line);bor
 <div class="adm" id="adm" hidden><b>명단 업데이트</b><label>명단 엑셀 <input type="file" id="fr" accept=".xlsx,.xls,.csv"></label><button class="btn" id="aprev" disabled>확인</button><button class="btn pri" id="aapply" disabled>적용</button><span id="amsg"></span><label style="flex-basis:100%;display:block">톡방 참여자 <span class="lead" style="margin:0">(스프레드시트 톡방참여자 탭의 닉네임 열을 복사해 붙여넣으세요)</span><textarea id="tk" rows="3" style="display:block;width:100%;margin-top:6px"></textarea></label><button class="btn" id="atk">톡방 적용</button><span id="tmsg" style="color:var(--mute)"></span></div></div></header>
 <nav><div class="wrap" id="nav"></div></nav>
 <main><div class="wrap">
-<section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section>
+<section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section><section class="tab" id="t5"></section>
 </div></main>
 <div id="tip"></div>
 <script>
@@ -82,6 +82,10 @@ const q=(a,p)=>{const s=[...a].sort((x,y)=>x-y);return s[Math.floor((s.length-1)
 const f=n=>Math.round(n).toLocaleString('ko-KR'), P=(a,b)=>b?Math.round(a/b*100):0;
 let medM,p10c,rb,rc,rm,graceEnd;
 let TALK=null;
+if(CFG.edit&&CFG.talkNames)TALK=new Set(CFG.talkNames);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=id=>document.getElementById(id);
+let TMSG='',TEDIT=null,TQ='';
 function prep(){if(TALK)D.forEach(d=>d.t=TALK.has(d.n)?1:0);D.forEach((d,i)=>d.i=i);medM=med(D.map(d=>d.m));p10c=q(D.map(d=>d.c),.1);rb=pctr(D.map(d=>d.p));rc=pctr(D.map(d=>d.c));rm=pctr(D.map(d=>d.m));graceEnd=new Date(CFG.graceEnd+'T00:00:00+09:00')}
 const SEG=['이탈위험','핵심 전력','성실 공성','간헐 참여','휴면'];
 const SEGC={'이탈위험':'--verm','핵심 전력':'--gold','성실 공성':'--jade','간헐 참여':'--blue','휴면':'--ash'};
@@ -232,16 +236,15 @@ function tabRules(){
    <tr><td>공성 횟수</td><td>${W.s}점 × (횟수 ÷ 6)</td></tr><tr><td>주간 공헌</td><td>${W.c}점 × 백분위</td></tr><tr><td>주간 무훈</td><td>${W.m}점 × 백분위</td></tr><tr><td>번영</td><td>${W.p}점 × 백분위</td></tr><tr><td>톡방 참여</td><td>+${W.talk}점</td></tr></tbody></table></div></section>`;
   document.getElementById('gx').checked=graceOff;document.getElementById('gx').onchange=e=>{graceOff=e.target.checked;build();show(4)};
 }
-function build(){derive();tabSummary();tabRoster();tabIssues();tabAnalysis();tabRules()}
+function build(){derive();tabSummary();tabRoster();tabIssues();tabAnalysis();tabRules();if(CFG.edit)tabTalk()}
 const renderMeta=()=>{document.getElementById('meta').textContent=`명단 ${CFG.rosterFile}, 기준일 ${CFG.rosterDate}. 톡방 목록 ${CFG.talkFile}, 업데이트 ${CFG.talkDate}. 캐릭터 ID는 표시하지 않습니다.`};
-const NAMES=['현황','멤버 명부','인사 이슈','분석','기준표'];
+const NAMES=['현황','멤버 명부','인사 이슈','분석','기준표'].concat(CFG.edit?['톡방 관리']:[]);
 document.getElementById('nav').innerHTML=NAMES.map((n,i)=>`<button data-i="${i}">${n}</button>`).join('');
 function show(i){document.querySelectorAll('nav button,.tab').forEach(e=>e.classList.remove('on'));document.querySelector(`nav button[data-i="${i}"]`).classList.add('on');document.getElementById('t'+i).classList.add('on');tip.classList.remove('on')}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(+b.dataset.i));
 prep();renderMeta();build();show(0);
 // ---------- 실시간 데이터 / 업데이트 ----------
 function refresh(){const cur=document.querySelector('nav button.on');const i=cur?+cur.dataset.i:0;prep();renderMeta();build();show(i)}
-const $=id=>document.getElementById(id);
 const nz=v=>{if(typeof v==='number')return v;const n=Number(String(v).replace(/[,\s]/g,''));return isNaN(n)?0:n};
 async function sheetRows(file){const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''})}
 function parseRoster(rows){
@@ -308,6 +311,41 @@ async function initLive(){
   },()=>{});
   let can=false;try{can=user?await user.canEdit():false}catch(e){}
   if(can){$('adm').hidden=false;bindAdmin(db)}
+}
+
+// ---------- 톡방 관리 탭 ----------
+async function talkApi(body){
+  const r=await fetch('/api/talk?t='+encodeURIComponent(CFG.tok),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('오류 '+r.status));return j}
+async function talkDo(body,ok){
+  try{const j=await talkApi(body);TALK=new Set(j.names);CFG={...CFG,talkFile:'대시보드 톡방 관리',talkDate:j.date};TEDIT=null;TMSG=ok(j);refresh()}
+  catch(e){TMSG='❌ '+e.message;tabTalk()}}
+function tabTalk(){
+  const have=new Set(D.map(d=>d.n)),all=[...(TALK||[])].sort((a,b)=>a.localeCompare(b,'ko')),ghost=all.filter(n=>!have.has(n));
+  const list=all.filter(n=>!TQ||n.includes(TQ));
+  $('t5').innerHTML=`<section class="blk"><h2>톡방 참여자 관리</h2>
+  <p class="lead">여기서 고친 목록이 곧바로 현황·명부·분석의 톡방 참여 표시에 반영됩니다. 현재 ${all.length}명이고, 명단에 없는 이름은 ${ghost.length}명입니다. 한 번 이 탭에서 저장하면 구글 시트 톡방참여자 탭 대신 여기 목록을 기준으로 합니다.</p>
+  <div class="filters"><textarea id="tadd" rows="3" placeholder="추가할 닉네임을 줄바꿈이나 쉼표로 구분해 붙여넣으세요" style="flex:1;min-width:240px;font:14px var(--sans);padding:8px 11px;border:1px solid var(--line);border-radius:12px;background:var(--raise);color:var(--text)"></textarea>
+   <button class="btn" id="tadd_b" style="background:var(--gold);color:#17201e;border-color:var(--gold);font-weight:700">추가</button></div>
+  <div class="filters"><input id="tq" placeholder="목록에서 검색" size="16" value="${esc(TQ)}"><button class="btn" id="tclean"${ghost.length?'':' disabled'}>명단에 없는 이름 ${ghost.length}명 정리</button>
+   <button class="btn" id="tclear"${all.length?'':' disabled'}>전체 비우기</button><span class="lead" style="margin:0" id="tm">${esc(TMSG)}</span></div>
+  <div class="tw"><table><thead><tr><th style="cursor:default">닉네임</th><th style="cursor:default">명단</th><th style="cursor:default;width:150px">관리</th></tr></thead><tbody>
+  ${list.map(n=>`<tr data-n="${esc(n)}"><td>${TEDIT===n?`<input class="ren" value="${esc(n)}" maxlength="40" size="18">`:esc(n)}</td>
+   <td>${have.has(n)?'<span style="color:var(--jade)">명단 있음</span>':'<span style="color:var(--verm)">명단에 없음</span>'}</td>
+   <td>${TEDIT===n?'<button class="btn rsave">저장</button> <button class="btn rcancel">취소</button>':'<button class="btn redit">수정</button> <button class="btn rdel">삭제</button>'}</td></tr>`).join('')||'<tr><td colspan="3" style="color:var(--mute)">표시할 이름이 없습니다.</td></tr>'}
+  </tbody></table></div></section>`;
+  $('tq').oninput=e=>{TQ=e.target.value;const pos=e.target.selectionStart;tabTalk();const q=$('tq');q.focus();q.setSelectionRange(pos,pos)};
+  $('tadd_b').onclick=()=>{const names=$('tadd').value.split(/[\n\t,]+/).map(x=>x.trim()).filter(Boolean);if(!names.length){TMSG='추가할 닉네임을 입력해 주세요.';return tabTalk()}
+    talkDo({op:'add',names},j=>`✅ 추가했습니다. 현재 ${j.names.length}명`)};
+  $('tclean').onclick=()=>{if(ghost.length&&confirm(`명단에 없는 ${ghost.length}명을 톡방 목록에서 지울까요?`))talkDo({op:'remove',names:ghost},j=>`✅ ${ghost.length}명을 정리했습니다. 현재 ${j.names.length}명`)};
+  $('tclear').onclick=()=>{if(confirm('톡방 참여자 목록을 전부 비울까요?'))talkDo({op:'set',names:[]},()=>'✅ 목록을 비웠습니다.')};
+  document.querySelectorAll('#t5 tr[data-n]').forEach(tr=>{const n=tr.dataset.n;
+    const b=c=>tr.querySelector(c);
+    if(b('.redit'))b('.redit').onclick=()=>{TEDIT=n;tabTalk();const i=document.querySelector('#t5 .ren');if(i){i.focus();i.select()}};
+    if(b('.rdel'))b('.rdel').onclick=()=>talkDo({op:'remove',names:[n]},j=>`✅ '${n}'을(를) 삭제했습니다. 현재 ${j.names.length}명`);
+    if(b('.rcancel'))b('.rcancel').onclick=()=>{TEDIT=null;tabTalk()};
+    if(b('.rsave')){const go=()=>talkDo({op:'rename',from:n,to:b('.ren').value},()=>`✅ '${n}'을(를) '${b('.ren')?b('.ren').value.trim():''}'(으)로 바꿨습니다.`);b('.rsave').onclick=go;b('.ren').onkeydown=e=>{if(e.key==='Enter')go();if(e.key==='Escape'){TEDIT=null;tabTalk()}}}
+  });
 }
 initLive();
 </script>
