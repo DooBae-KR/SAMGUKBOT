@@ -662,11 +662,31 @@ class Bot(discord.Client):
     async def on_member_join(self, m: discord.Member):
         if not licensed(m.guild.id) or m.bot: return
         set_gid(m.guild.id)
-        ch = m.guild.get_channel(VERIFY_CHANNEL_ID) if VERIFY_CHANNEL_ID else None
+        ch = await verify_channel(m.guild)
         try:
             if ch: await ch.send(f"{m.mention} 환영합니다! 채팅창에 `/인증` 을 입력하면 나에게만 보이는 인증 창이 열립니다. CID · 직업 · 닉네임을 입력해 주세요.")
             else: await m.send("환영합니다! 아래 **인증하기** 버튼을 눌러 CID · 직업 · 닉네임을 입력해 주세요. (서버에서 `/인증` 으로도 열 수 있습니다)", view=VerifyView())
         except discord.Forbidden: log.warning("안내 메시지 전송 실패: %s", m)
+
+
+VERIFY_CH = "인증"
+
+
+async def verify_channel(g):
+    """서버의 인증 안내 채널. 홈 서버는 VERIFY_CHANNEL_ID, 그 외에는 #인증 채널(없으면 만든다). 만들 수 없으면 None."""
+    if g.id == GUILD_ID and VERIFY_CHANNEL_ID:
+        c = g.get_channel(VERIFY_CHANNEL_ID)
+        if c: return c
+    me = g.me
+    ok = lambda c: me is not None and c.permissions_for(me).send_messages
+    c = discord.utils.get(g.text_channels, name=VERIFY_CH)
+    if c is None:
+        try:
+            ow = {g.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False, use_application_commands=True),
+                  g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
+            c = await g.create_text_channel(VERIFY_CH, overwrites=ow, topic="처음 오셨다면 /인증 을 입력해 CID 인증을 해 주세요", reason="인증 안내 채널")
+        except Exception: log.warning("인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id)
+    return c if c and ok(c) else None
 
 
 bot = Bot()
@@ -791,7 +811,8 @@ async def pm_setup_guild(gid):
         if discord.utils.get(g.roles, name=nm): continue
         try: await g.create_role(name=nm, reason="제작자 승인 — 기본 역할 생성"); made.append(nm)
         except Exception: fail.append(nm)
-    out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.")
+    vc = await verify_channel(g)
+    out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)")
     return out + (f" / 생성 실패(봇에 '역할 관리' 권한 필요): {', '.join(fail)}" if fail else "")
 
 
