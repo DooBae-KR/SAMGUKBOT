@@ -156,7 +156,10 @@ def _remote_put(name, data):
 
 
 # ---------- Supabase(주 저장소) ----------
-SB_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+_u = os.environ.get("SUPABASE_URL", "").strip()
+if _u and "://" not in _u: _u = "https://" + _u                   # https:// 를 빼먹은 경우
+_sp = urllib.parse.urlsplit(_u)
+SB_URL = f"{_sp.scheme}://{_sp.netloc}" if _sp.netloc else ""      # /rest/v1 등 뒤에 붙은 경로는 버리고 주소만 사용
 SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
 SB_ON = bool(SB_URL and SB_KEY)
 _MISSING = object()                                        # Supabase에 행이 없음(= 아직 이전 안 됨)
