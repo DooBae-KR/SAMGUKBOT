@@ -495,10 +495,17 @@ async def lv_apply(it, act, uid, confirmed=False):
 
 async def on_interaction(it: discord.Interaction):
     cid = (it.data or {}).get("custom_id", "") if it.type == discord.InteractionType.component else ""
+    if cid.startswith("pm:"):
+        try: await pm_decide(it, cid)
+        except Exception:
+            log.exception("관리자 인증 처리 오류")
+            try: await it.response.send_message("처리 중 오류가 발생했습니다. 로그를 확인하세요.", ephemeral=True)
+            except Exception: pass
+        return
     if not cid.startswith("lv:"): return
     try:
         g = bot.get_guild(GUILD_ID); mem = g.get_member(it.user.id) if g else None
-        if not (mem and mem.guild_permissions.administrator):
+        if not (mem and (mem.guild_permissions.administrator or (GUILD_ID, it.user.id) in PERM)):
             return await it.response.send_message("관리자만 처리할 수 있습니다.", ephemeral=True)
         _, act, uid = cid.split(":", 2)
         await lv_apply(it, act, uid)
@@ -567,6 +574,8 @@ class Bot(discord.Client):
         if SYNC_MINUTES and not sync_loop.is_running(): sync_loop.start()
         if not jc_loop.is_running(): jc_loop.start()
         if SB_ON and HR_SYNC_HOURS and not hr_sync_loop.is_running(): hr_sync_loop.start()
+        try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
+        except Exception: log.exception("승인 목록 로드 실패")
 
     async def on_member_join(self, m: discord.Member):
         if m.guild.id != GUILD_ID or m.bot: return
@@ -637,11 +646,77 @@ async def panel(it: discord.Interaction):
     await it.followup.send("게시했습니다.", ephemeral=True)
 
 
-admin_only = app_commands.default_permissions(administrator=True)
+# ---------- 제작자 허가(관리자 인증) ----------
+OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)      # 제작자 디스코드 ID(비우면 봇 소유자)
+PERM = set()                                               # 승인된 (서버 ID, 사용자 ID)
+
+
+def perm_refresh():
+    global PERM
+    if not SB_ON: return
+    rows = _sb_req("GET", "sam_perm?status=eq.approved&select=guild_id,discord_id") or []
+    PERM = {(int(r["guild_id"]), int(r["discord_id"])) for r in rows}
+
+
+async def perm_owner():
+    if OWNER_ID: return await bot.fetch_user(OWNER_ID)
+    return (await bot.application_info()).owner
+
+
+def perm_view(gid, uid):
+    v = discord.ui.View(timeout=None)
+    v.add_item(discord.ui.Button(label="승인", style=discord.ButtonStyle.success, custom_id=f"pm:ok:{gid}:{uid}"))
+    v.add_item(discord.ui.Button(label="거절", style=discord.ButtonStyle.danger, custom_id=f"pm:no:{gid}:{uid}"))
+    return v
+
+
+async def pm_decide(it: discord.Interaction, cid):
+    owner = await perm_owner()
+    if it.user.id != owner.id: return await it.response.send_message("제작자만 처리할 수 있습니다.", ephemeral=True)
+    _, act, gid, uid = cid.split(":", 3); gid, uid = int(gid), int(uid); ok = act == "ok"
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    await asyncio.to_thread(_sb_req, "PATCH", f"sam_perm?guild_id=eq.{gid}&discord_id=eq.{uid}",
+                            {"status": "approved" if ok else "rejected", "decided_at": now, "decided_by": it.user.id}, "return=minimal")
+    if ok: PERM.add((gid, uid))
+    else: PERM.discard((gid, uid))
+    head = (it.message.content or "").split("\n")[0]
+    await it.response.edit_message(content=f"{head}\n{'✅ 승인됨' if ok else '⛔ 거절됨'} — {it.user.display_name}", view=None)
+    try:
+        u = await bot.fetch_user(uid)
+        await u.send("✅ 관리자 인증이 **승인**되었습니다. 이제 관리자 명령을 사용할 수 있습니다." if ok else "⛔ 관리자 인증 신청이 **거절**되었습니다.")
+    except Exception: log.warning("신청자 DM 실패: %s", uid)
+
+
+@bot.tree.command(name="관리자인증", description="봇 관리자 사용을 제작자에게 신청합니다(승인되면 관리자 명령 사용 가능)")
+@app_commands.describe(사유="신청 사유(동맹명, 직책 등)")
+async def cmd_perm(it: discord.Interaction, 사유: str = ""):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if not SB_ON: return await it.response.send_message("❌ DB(Supabase)가 연결되지 않아 신청을 받을 수 없습니다.", ephemeral=True)
+    await it.response.defer(ephemeral=True); gid, uid = it.guild.id, it.user.id
+    cur = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?guild_id=eq.{gid}&discord_id=eq.{uid}&select=status")
+    st = cur[0]["status"] if cur else None
+    if st == "approved": return await it.followup.send("이미 승인된 관리자입니다.", ephemeral=True)
+    if st == "pending": return await it.followup.send("이미 신청되어 제작자의 승인을 기다리는 중입니다.", ephemeral=True)
+    owner = await perm_owner(); now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    row = {"guild_id": gid, "discord_id": uid, "guild_name": it.guild.name, "user_name": str(it.user), "reason": 사유[:200],
+           "status": "approved" if uid == owner.id else "pending", "requested_at": now, "decided_at": None, "decided_by": None}
+    await asyncio.to_thread(_sb_req, "POST", "sam_perm?on_conflict=guild_id,discord_id", [row], "resolution=merge-duplicates,return=minimal")
+    if uid == owner.id:
+        PERM.add((gid, uid)); return await it.followup.send("제작자 본인이라 바로 승인되었습니다.", ephemeral=True)
+    try:
+        await owner.send(f"🔐 **관리자 인증 신청**\n서버: **{it.guild.name}** (`{gid}`)\n신청자: {it.user.mention} ({it.user}) · `{uid}`\n사유: {사유 or '(없음)'}",
+                         view=perm_view(gid, uid), allowed_mentions=discord.AllowedMentions.none())
+        await it.followup.send("📨 제작자에게 신청을 보냈습니다. 승인되면 DM으로 알려 드립니다.", ephemeral=True)
+    except Exception:
+        log.exception("제작자 알림 실패")
+        await it.followup.send("신청은 접수됐지만 제작자에게 알림을 보내지 못했습니다. 제작자에게 직접 알려 주세요.", ephemeral=True)
+
+
+def admin_only(f): return f          # 디스코드 기본 권한으로 숨기지 않고, 함수 안(is_admin)에서 판정(제작자가 승인한 관리자도 사용)
 
 
 def is_admin(it: discord.Interaction):
-    return isinstance(it.user, discord.Member) and it.user.guild_permissions.administrator
+    return isinstance(it.user, discord.Member) and (it.user.guild_permissions.administrator or (it.guild_id, it.user.id) in PERM)
 
 
 def fetch_sheet_csv(gid=None):
@@ -1051,7 +1126,7 @@ def jc_label(level): return f"{level}레벨" + (" 관문" if level == 12 else ""
 
 
 def is_staff(it):
-    return isinstance(it.user, discord.Member) and (it.user.guild_permissions.administrator or any(r.name == OFFICER_ROLE for r in it.user.roles))
+    return isinstance(it.user, discord.Member) and (it.user.guild_permissions.administrator or (it.guild_id, it.user.id) in PERM or any(r.name == OFFICER_ROLE for r in it.user.roles))
 
 
 def jc_plan(st):
