@@ -817,6 +817,78 @@ async def cmd_ally(it: discord.Interaction):
     await it.response.send_modal(AllyModal())
 
 
+# ---------- 시트 → Supabase 이관 ----------
+def _sb_rows(table, rows, conflict="guild_id,cid"):
+    for i in range(0, len(rows), 200):
+        _sb_req("POST", f"{table}?on_conflict={conflict}", rows[i:i + 200], prefer="resolution=merge-duplicates,return=minimal")
+
+
+def _sb_count(table):
+    return len(_sb_req("GET", f"{table}?guild_id=eq.{GUILD_ID}&select=guild_id&limit=100000") or [])
+
+
+def migrate_to_db():
+    """시트(인사 탭 + 봇_저장)의 값을 그대로 읽어 sam_* 테이블에 넣는다. 여러 번 실행해도 안전(덮어쓰기)."""
+    if not SB_ON: raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY가 설정되지 않았습니다.")
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat(); out, warn = [], []
+    ally = ally_load(); _sb_ensure_tenant(); _sb_put_tenant(ally); out.append(f"동맹: {ally['server']}서버 {ally['name']}")
+    # 1) 인사 탭 → sam_roster (시트 값 그대로, 나머지 열은 extra)
+    rows = list(csv.reader(io.StringIO(fetch_sheet_csv())))
+    uidc = COL_UID + ["캐릭터 ID", "캐릭터ID", "CID"]
+    hi = next((i for i, r in enumerate(rows) if roster._find(r, uidc) is not None), None)
+    if hi is None: raise RuntimeError("인사 탭에서 CID 열을 찾지 못했습니다.")
+    H = [h.strip() for h in rows[hi]]; ic = roster._find(H, uidc); ro = []; seen = set()
+    for r in rows[hi + 1:]:
+        cid = Roster.norm_uid(r[ic]) if ic < len(r) else ""
+        if not cid or cid in seen: continue
+        seen.add(cid); g = lambda k: (r[H.index(k)].strip() if k in H and H.index(k) < len(r) else "")
+        ro.append({"guild_id": GUILD_ID, "cid": cid, "name": g("멤버"), "job": g("직업"), "title": g("직위"), "updated_at": now,
+                   "extra": {h: (r[i].strip() if i < len(r) else "") for i, h in enumerate(H) if i != ic and h and h not in ("멤버", "직업", "직위")}})
+    _sb_req("DELETE", f"sam_roster?guild_id=eq.{GUILD_ID}", prefer="return=minimal"); _sb_rows("sam_roster", ro)
+    out.append(f"명단(sam_roster): 시트 {len(ro)}명 → DB {_sb_count('sam_roster')}명")
+    # 2) 인증/외교관
+    db = db_load(); nicks, dips = db.get("nick", {}), db.get("dip", {}); used = {}; ver = []
+    for cid, did in db["uid"].items():
+        if did in used: warn.append(f"Discord 계정 중복으로 제외: CID {cid} (이미 {used[did]}에 연결된 계정)"); continue
+        used[did] = cid; ver.append({"guild_id": GUILD_ID, "cid": cid, "discord_id": str(did), "nick": nicks.get(cid), "verified_at": now})
+    _sb_rows("sam_verified", ver); out.append(f"인증(sam_verified): 봇 {len(db['uid'])}건 → DB {_sb_count('sam_verified')}건")
+    dp = [{"guild_id": GUILD_ID, "cid": c, "ally": d.get("ally", ""), "nick": d.get("name", ""), "discord_id": str(db["uid"].get(c, 0)), "created_at": now}
+          for c, d in dips.items() if c in db["uid"]]
+    if dp: _sb_rows("sam_diplomat", dp)
+    out.append(f"외교관(sam_diplomat): {len(dp)}건")
+    # 3) 도감
+    dx = []
+    for cid in db["uid"]:
+        d = store_get(f"dex_{cid}", dex_path(cid), None)
+        if d: dx.append({"guild_id": GUILD_ID, "cid": cid, "nick": d.get("name"), "own_generals": d.get("own", []), "own_tactics": d.get("ownsk", []), "updated_at": now})
+    if dx: _sb_rows("sam_dex", dx)
+    out.append(f"도감(sam_dex): {len(dx)}명")
+    # 4) 정철
+    jc = jc_load()
+    _sb_rows("sam_jungchul", [{"guild_id": GUILD_ID, "stock": int(jc.get("stock", 0)), "rate": int(jc.get("rate", JC_RATE)), "pattern": JC_PAT, "updated_at": now,
+              "stock_at": datetime.datetime.fromtimestamp(jc.get("at", time.time()), datetime.timezone.utc).isoformat(),
+              "anchor": datetime.datetime.fromtimestamp(JC_ANCHOR, datetime.timezone.utc).isoformat()}], conflict="guild_id")
+    out.append(f"정철(sam_jungchul): 보유 {jc.get('stock', 0)}개")
+    # 5) 호환 저장소(sam_store): 봇이 실제로 읽는 원본 JSON
+    names = ["verified", "jungchul", "alliance", "leave"] + [f"dex_{c}" for c in db["uid"]]; n = 0
+    for nm in names:
+        v = _cache.get(nm)
+        if v is not None: _sb_put(nm, v); n += 1
+    out.append(f"저장소(sam_store): {n}개 항목")
+    return out, warn
+
+
+@bot.tree.command(name="db이관", description="[관리자] 시트(인사 탭·봇_저장)의 값을 Supabase DB로 이관합니다")
+@admin_only
+async def cmd_migrate(it: discord.Interaction):
+    if not is_admin(it): return await it.response.send_message("관리자만 사용할 수 있습니다.", ephemeral=True)
+    await it.response.defer(ephemeral=True)
+    try: out, warn = await asyncio.to_thread(migrate_to_db)
+    except Exception as e:
+        log.exception("DB 이관 실패"); return await it.followup.send(f"❌ 이관 실패: {str(e)[:300]}", ephemeral=True)
+    await it.followup.send("✅ **DB 이관 완료**\n" + "\n".join("• " + x for x in out) + ("\n\n⚠️ " + "\n⚠️ ".join(warn) if warn else ""), ephemeral=True)
+
+
 @bot.tree.command(name="명단업데이트", description="[관리자] 명단을 새로 반영합니다 (엑셀 첨부 또는 구글 시트)")
 @admin_only
 @app_commands.describe(파일="새 명단 엑셀(.xlsx). 비우면 구글 시트에서 받아옵니다")
