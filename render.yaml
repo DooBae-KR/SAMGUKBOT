@@ -17,6 +17,10 @@ services:
         sync: false
       - key: WEB_KEY
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
       - key: SAVE_URL
         sync: false
       - key: SAVE_KEY

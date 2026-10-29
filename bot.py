@@ -2,7 +2,7 @@
 - 신규 입장자에게 [인증하기] 버튼 안내 → UID/직업/닉네임 입력 폼(모달)
 - UID를 엑셀 명단과 대조해 검증 → 별명을 [직업]닉네임 으로 변경 → 역할(동맹원/간부) 부여
 """
-import urllib.parse, hmac, hashlib, unicodedata
+import urllib.parse, urllib.error, hmac, hashlib, unicodedata
 import os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue
 from aiohttp import web
 from pathlib import Path
@@ -155,6 +155,47 @@ def _remote_put(name, data):
     if not res.get("ok"): raise RuntimeError(res.get("error", "저장 실패"))
 
 
+# ---------- Supabase(주 저장소) ----------
+SB_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
+SB_ON = bool(SB_URL and SB_KEY)
+_MISSING = object()                                        # Supabase에 행이 없음(= 아직 이전 안 됨)
+_sb_tenant_ok = False
+
+
+def _sb_req(method, path, body=None, prefer=None):
+    h = {"apikey": SB_KEY, "Content-Type": "application/json"}
+    if SB_KEY.startswith("eyJ"): h["Authorization"] = "Bearer " + SB_KEY    # 옛 JWT 키만 Bearer 필요
+    if prefer: h["Prefer"] = prefer
+    data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(f"{SB_URL}/rest/v1/{path}", data=data, headers=h, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r: raw = r.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"Supabase {e.code}: {e.read().decode('utf-8', 'ignore')[:200]}")
+    return json.loads(raw) if raw.strip() else None
+
+
+def _sb_ensure_tenant():
+    global _sb_tenant_ok
+    if _sb_tenant_ok: return
+    _sb_req("POST", "sam_tenant?on_conflict=guild_id", [{"guild_id": GUILD_ID, "name": "default"}],
+            prefer="resolution=ignore-duplicates,return=minimal")
+    _sb_tenant_ok = True
+
+
+def _sb_get(name):
+    rows = _sb_req("GET", f"sam_store?guild_id=eq.{GUILD_ID}&name=eq.{urllib.parse.quote(name, safe='')}&select=data")
+    return rows[0]["data"] if rows else _MISSING
+
+
+def _sb_put(name, data):
+    _sb_ensure_tenant()
+    _sb_req("POST", "sam_store?on_conflict=guild_id,name",
+            [{"guild_id": GUILD_ID, "name": name, "data": data, "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}],
+            prefer="resolution=merge-duplicates,return=minimal")
+
+
 def _writer():
     while True:
         name, data = _outq.get()
@@ -162,27 +203,43 @@ def _writer():
             latest = {name: data}
             while not _outq.empty(): n, d = _outq.get_nowait(); latest[n] = d
             for n, d in latest.items():
-                for attempt in range(3):
-                    try: _remote_put(n, d); break
-                    except Exception as e:
-                        log.warning("시트 저장 실패(%s) %d/3: %s", n, attempt + 1, e); time.sleep(3)
+                if SB_ON:
+                    for attempt in range(3):
+                        try: _sb_put(n, d); break
+                        except Exception as e:
+                            log.warning("Supabase 저장 실패(%s) %d/3: %s", n, attempt + 1, e); time.sleep(3)
+                if SAVE_URL:                               # 시트는 열람·인사 연동용 미러로 계속 기록
+                    for attempt in range(3):
+                        try: _remote_put(n, d); break
+                        except Exception as e:
+                            log.warning("시트 저장 실패(%s) %d/3: %s", n, attempt + 1, e); time.sleep(3)
         except Exception: log.exception("저장 스레드 오류")
 
 
-if SAVE_URL: threading.Thread(target=_writer, daemon=True).start()
+if SAVE_URL or SB_ON: threading.Thread(target=_writer, daemon=True).start()
+log.info("저장소: %s%s", "Supabase" if SB_ON else "", (" + 시트 미러" if SB_ON and SAVE_URL else "시트" if SAVE_URL else "" if SB_ON else "로컬 파일"))
 
 
 def store_get(name, path, default):
     with _lock:
         if name in _cache: return copy.deepcopy(_cache[name])
-        data = None
-        if SAVE_URL:
+        data, migrate = None, False
+        if SB_ON:
+            for attempt in range(3):
+                try:
+                    v = _sb_get(name)
+                    if v is _MISSING: migrate = True       # 처음이면 아래 시트/로컬 값을 Supabase로 이전
+                    else: data = v
+                    break
+                except Exception as e: log.warning("Supabase 불러오기 실패(%s) %d/3: %s", name, attempt + 1, e); time.sleep(2)
+        if data is None and SAVE_URL:
             for attempt in range(3):
                 try: data = _remote_get(name); break
                 except Exception as e: log.warning("시트 불러오기 실패(%s) %d/3: %s", name, attempt + 1, e); time.sleep(2)
         if data is None and path.exists():
             try: data = json.loads(path.read_text("utf-8"))
             except Exception: pass
+        if migrate and data is not None: _outq.put((name, copy.deepcopy(data))); log.info("Supabase로 이전: %s", name)
         _cache[name] = data if data is not None else default
         return copy.deepcopy(_cache[name])
 
@@ -190,8 +247,8 @@ def store_get(name, path, default):
 def store_set(name, path, data):
     with _lock: _cache[name] = copy.deepcopy(data)
     try: path.write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
-    except Exception: pass                                 # 읽기 전용 디스크여도 시트 저장은 계속
-    if SAVE_URL: _outq.put((name, copy.deepcopy(data)))
+    except Exception: pass                                 # 읽기 전용 디스크여도 원격 저장은 계속
+    if SAVE_URL or SB_ON: _outq.put((name, copy.deepcopy(data)))
 
 
 def db_load(): return store_get("verified", DB_PATH, {"uid": {}, "tries": {}})
