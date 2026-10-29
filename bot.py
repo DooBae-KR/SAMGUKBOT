@@ -643,7 +643,10 @@ class Bot(discord.Client):
         g = discord.Object(GUILD_ID)
         if OPEN_SERVERS:                                   # 다른 서버에서도 명령이 보이게 전역 등록(허가 안 된 서버는 /동맹등록만 가능)
             self.tree.clear_commands(guild=g); await self.tree.sync(guild=g); await self.tree.sync()
-        else: self.tree.copy_global_to(guild=g); await self.tree.sync(guild=g)
+        else:
+            self.tree.copy_global_to(guild=g)
+            self.tree.remove_command("동맹등록", guild=g)          # 우리 서버는 이미 등록됨 → 메뉴에서 숨김
+            await self.tree.sync(guild=g)
 
     async def on_ready(self):
         log.info("로그인: %s", self.user)
