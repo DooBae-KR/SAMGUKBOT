@@ -899,10 +899,21 @@ KST = datetime.timezone(datetime.timedelta(hours=9))
 DONATE_SENT = Path(os.environ.get("DONATE_SENT_PATH", "donate_sent.json"))
 
 
-def donate_channel(g):
-    """후원 안내를 올릴 채널: 서버 시스템 채널 → 봇이 쓸 수 있는 첫 텍스트 채널."""
+DONATE_CH = "후원"
+
+
+async def donate_channel(g):
+    """#후원 채널을 돌려준다. 없으면 만들고(읽기 전용), 만들 수 없으면 시스템 채널 → 쓸 수 있는 첫 텍스트 채널."""
     me = g.me
     ok = lambda c: me is not None and c.permissions_for(me).send_messages and c.permissions_for(me).attach_files
+    ch = discord.utils.get(g.text_channels, name=DONATE_CH)
+    if ch is None:
+        try:
+            ow = {g.default_role: discord.PermissionOverwrite(send_messages=False, add_reactions=True),
+                  g.me: discord.PermissionOverwrite(send_messages=True, attach_files=True, view_channel=True)}
+            ch = await g.create_text_channel(DONATE_CH, overwrites=ow, topic="제작자 서버비 후원 안내 (매주 토요일 19시)", reason="후원 안내 채널")
+        except Exception: log.warning("후원 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id)
+    if ch and ok(ch): return ch
     if g.system_channel and ok(g.system_channel): return g.system_channel
     return next((c for c in g.text_channels if ok(c)), None)
 
@@ -924,7 +935,7 @@ async def donate_loop():
     if not d.get("img"): log.warning("후원 QR 이미지가 없어 주간 안내를 건너뜁니다"); return
     raw = base64.b64decode(d["img"])
     for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):
-        g = bot.get_guild(gid); ch = donate_channel(g) if g else None
+        g = bot.get_guild(gid); ch = await donate_channel(g) if g else None
         if not ch: log.warning("후원 안내 채널 없음: %s", gid); continue
         try: await ch.send(text, file=discord.File(io.BytesIO(raw), filename="donate" + d.get("ext", ".png")))
         except Exception: log.exception("후원 안내 전송 실패: %s", gid)
