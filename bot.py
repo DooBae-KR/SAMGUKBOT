@@ -920,23 +920,25 @@ async def donate_channel(g):
 
 @tasks.loop(seconds=60)
 async def donate_loop():
-    """토요일 19:00(KST)에 봇이 있는 모든 승인 서버에 후원 안내를 한 번씩 올린다."""
+    """토요일 19:00(KST)에, 아직 안내받지 않은 서버에만 후원 안내를 딱 한 번 올린다(서버마다 1회)."""
     now = datetime.datetime.now(KST)
     if now.weekday() != 5 or not (now.hour == 19 and now.minute < 30): return
-    week = now.strftime("%Y-%m-%d")
     tok = _CTX.set(GUILD_ID)
     try: sent = store_get("donate_sent", DONATE_SENT, None) or {}
     finally: _CTX.reset(tok)
-    if sent.get("date") == week: return
-    tok = _CTX.set(GUILD_ID)
-    try: store_set("donate_sent", DONATE_SENT, {"date": week})      # 먼저 기록: 재시작해도 중복 전송 방지
-    finally: _CTX.reset(tok)
+    done = set(sent.get("guilds") or [])
+    todo = [g for g in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}) if g not in done]
+    if not todo: return
     d = await asyncio.to_thread(donate_get); text = d.get("text") or DONATE_TEXT
-    if not d.get("img"): log.warning("후원 QR 이미지가 없어 주간 안내를 건너뜁니다"); return
+    if not d.get("img"): log.warning("후원 QR 이미지가 없어 안내를 건너뜁니다"); return
     raw = base64.b64decode(d["img"])
-    for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):
+    for gid in todo:
         g = bot.get_guild(gid); ch = await donate_channel(g) if g else None
         if not ch: log.warning("후원 안내 채널 없음: %s", gid); continue
+        done.add(gid)                                                # 먼저 기록: 재시작해도 중복 전송 방지
+        tok = _CTX.set(GUILD_ID)
+        try: store_set("donate_sent", DONATE_SENT, {"guilds": sorted(done)})
+        finally: _CTX.reset(tok)
         try: await ch.send(text, file=discord.File(io.BytesIO(raw), filename="donate" + d.get("ext", ".png")))
         except Exception: log.exception("후원 안내 전송 실패: %s", gid)
 
