@@ -27,6 +27,8 @@ services:
         value: "818075343"
       - key: TALK_GID
         value: "266611855"
+      - key: ADMIN_CHANNEL_ID
+        sync: false
       - key: MEMBER_ROLE
         value: 동맹원
       - key: OFFICER_ROLE

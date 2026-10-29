@@ -87,6 +87,14 @@ function _mirror(name, data, now) {
     if (r < 0) r = s3.getLastRow() + 1;
     s3.getRange(r, 1).setNumberFormat('@');
     s3.getRange(r, 1, 1, 7).setValues([[String(data.cid), data.name, (data.own || []).length, (data.own || []).join(', '), (data.ownsk || []).length, (data.ownsk || []).join(', '), data.at]]);
+  } else if (name === 'leave') {
+    var s4 = _sheet('봇_이탈처리'); s4.clear();
+    var lg = [['처리 시각', 'CID', '닉네임', '처리', '처리자', '디스코드 ID']];
+    (data.log || []).slice().reverse().forEach(function (x) { lg.push([x.t, x.uid, x.nick, x.act, x.by, String(x.did || '')]); });
+    s4.getRange(1, 2, lg.length, 1).setNumberFormat('@'); s4.getRange(1, 6, lg.length, 1).setNumberFormat('@');
+    s4.getRange(1, 1, lg.length, 6).setValues(lg);
+    var pn = Object.keys(data.pending || {}).length;
+    s4.getRange(1, 8, 2, 1).setValues([['확인 대기 중'], [pn]]);
   } else if (name === 'jungchul') {
     var s2 = _sheet('봇_정철'); s2.clear();
     var t = (data.sieges || []).map(function (x, i) { return [i + 1, x.level, x.cost, String(x.user)]; });

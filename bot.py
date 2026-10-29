@@ -29,7 +29,9 @@ WEB_PORT = int(os.environ.get("PORT") or os.environ.get("WEB_PORT", "8080"))   #
 WEB_KEY = os.environ.get("WEB_KEY", "")            # 설정하면 주소 뒤에 ?key=값 이 있어야 열림
 GRACE_END = os.environ.get("GRACE_END", "2026-11-06")
 SYNC_MINUTES = int(os.environ.get("SYNC_MINUTES", "10"))   # 시트를 다시 읽고 역할/별명을 맞추는 주기(0이면 끔)
-SYNC_REMOVE = os.environ.get("SYNC_REMOVE", "1") == "1"    # 명단에서 사라진 사람의 역할 회수
+ADMIN_CHANNEL_ID = int(os.environ.get("ADMIN_CHANNEL_ID", "0") or 0)   # 명단 이탈 의심 알림을 받을 관리자 채널(비우면 서버장 DM)
+MISSING_MAX = int(os.environ.get("MISSING_MAX", "5"))      # 한 번에 이만큼 넘게 사라지면 대량 이탈 의심으로 묶어 알림(시트 오류 방지)
+LEAVE_PATH = Path(os.environ.get("LEAVE_PATH", "leave.json"))
 DB_PATH = Path(os.environ.get("DB_PATH", "verified.json"))
 
 # 엑셀 헤더 후보(실제 파일 헤더에 맞게 .env 로 바꿀 수 있음)
@@ -257,12 +259,126 @@ class VerifyView(discord.ui.View):
         await it.response.send_modal(VerifyModal())
 
 
+# ---------- 명단 이탈 의심: 관리자 확인 후 처리 ----------
+def leave_load(): return store_get("leave", LEAVE_PATH, {"pending": {}, "ignored": [], "log": [], "mass_at": 0})
+def leave_save(d): store_set("leave", LEAVE_PATH, d)
+
+
+def lv_view(uid):
+    v = discord.ui.View(timeout=None)
+    for act, label, style in (("role", "역할 회수", discord.ButtonStyle.secondary), ("kick", "킥(서버 추방)", discord.ButtonStyle.danger),
+                              ("keep", "유지", discord.ButtonStyle.success), ("snooze", "보류 24h", discord.ButtonStyle.secondary)):
+        v.add_item(discord.ui.Button(label=label, style=style, custom_id=f"lv:{act}:{uid}"))
+    return v
+
+
+async def lv_send(guild, text, view=None):
+    ch = bot.get_channel(ADMIN_CHANNEL_ID) if ADMIN_CHANNEL_ID else None
+    if ch is None:
+        owner = guild.owner or await guild.fetch_member(guild.owner_id)
+        ch = await owner.create_dm()
+    return await ch.send(text, view=view, allowed_mentions=discord.AllowedMentions.none())
+
+
+async def report_missing(guild, missing):
+    lv = leave_load(); now = time.time(); pend = lv["pending"]; changed = False
+    have = {u for u, _, _ in missing}
+    for uid in [u for u in pend if u not in have]:                         # 명단에 복구되었거나 서버를 떠난 사람은 정리
+        pend.pop(uid); changed = True
+    todo = [(u, d, m) for u, d, m in missing if u not in lv["ignored"] and (u not in pend or (pend[u].get("snooze") and pend[u]["snooze"] <= now))]
+    if len(todo) > MISSING_MAX:
+        if now - lv.get("mass_at", 0) > 86400:
+            lv["mass_at"] = now; changed = True
+            names = ", ".join(f"{m.display_name}" for _, _, m in todo[:20]) + (" …" if len(todo) > 20 else "")
+            await lv_send(guild, f"🚨 **대량 이탈 의심** — 인사 탭에서 한 번에 **{len(todo)}명**의 CID가 사라졌습니다. 시트 연결/인사 탭 편집 오류일 수 있어 개별 처리는 보류합니다.\n{names}\n시트를 확인한 뒤 `/명단새로고침`을 실행하세요.")
+        if changed: leave_save(lv)
+        return
+    for uid, did, m in todo:
+        info = db_load().get("nick", {}).get(uid) or m.display_name
+        roles = ", ".join(r.name for r in m.roles if r.name in (MEMBER_ROLE, OFFICER_ROLE)) or "-"
+        msg = await lv_send(guild, f"⚠️ **명단 이탈 의심** — {m.mention} (`{m.display_name}`)\n인증 닉네임 **{info}** · CID `{uid}` · 역할 {roles}\n인사 탭에서 이 CID를 찾지 못했습니다. 확인 후 처리해 주세요.", lv_view(uid))
+        pend[uid] = {"did": did, "nick": info, "ch": msg.channel.id, "msg": msg.id, "at": now}; changed = True
+        await asyncio.sleep(0.5)
+    if changed: leave_save(lv)
+
+
+async def lv_finish(entry, text):
+    try:
+        ch = bot.get_channel(entry["ch"]) or await bot.fetch_channel(entry["ch"])
+        msg = await ch.fetch_message(entry["msg"]); await msg.edit(content=text, view=None)
+    except Exception: log.warning("이탈 알림 메시지 수정 실패")
+
+
+async def lv_execute(guild, uid, entry, act, by):
+    """역할 회수 / 킥. 인증 기록을 해제해 다시 인증할 수 있게 한다. → 결과 문구"""
+    m = guild.get_member(int(entry["did"])); notes = []
+    if m:
+        drop = [r for r in (discord.utils.get(guild.roles, name=MEMBER_ROLE), discord.utils.get(guild.roles, name=OFFICER_ROLE)) if r and r in m.roles]
+        try:
+            if drop: await m.remove_roles(*drop, reason=f"명단 이탈 확인({by})")
+            if act == "role":
+                try: await m.edit(nick=None, reason=f"명단 이탈 확인({by})")
+                except discord.Forbidden: notes.append("별명 초기화 권한 없음")
+            else: await m.kick(reason=f"명단 이탈 확인({by})")
+        except discord.Forbidden: return None, "봇 권한이 부족합니다(대상이 관리자이거나 봇 역할보다 높은 역할)."
+    db = db_load(); db["uid"].pop(uid, None); db.get("nick", {}).pop(uid, None); db_save(db)
+    return ("킥(서버 추방)" if act == "kick" else "역할 회수"), "; ".join(notes)
+
+
+class KickConfirm(discord.ui.View):
+    def __init__(self, uid, by): super().__init__(timeout=60); self.uid, self.by = uid, by
+
+    @discord.ui.button(label="정말 킥하기", style=discord.ButtonStyle.danger)
+    async def ok(self, it: discord.Interaction, _):
+        await lv_apply(it, "kick", self.uid, confirmed=True)
+
+
+async def lv_apply(it, act, uid, confirmed=False):
+    guild = bot.get_guild(GUILD_ID); lv = leave_load(); entry = lv["pending"].get(uid)
+    if not entry: return await it.response.send_message("이미 처리되었거나 목록에 없는 건입니다.", ephemeral=True)
+    by = it.user.display_name; stamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%m.%d %H:%M")
+    if act in ("role", "kick"):
+        if roster.by_uid.get(uid):
+            lv["pending"].pop(uid); leave_save(lv); await lv_finish(entry, f"✅ 명단에 다시 등록되어 처리하지 않았습니다. (CID `{uid}` · {entry['nick']})")
+            return await it.response.send_message("이미 인사 탭에 있는 CID라 처리하지 않았습니다.", ephemeral=True)
+        if act == "kick" and not confirmed:
+            return await it.response.send_message(f"**{entry['nick']}** 님을 서버에서 추방합니다. 다시 들어오려면 초대 링크와 재인증이 필요합니다. 진행할까요?", view=KickConfirm(uid, by), ephemeral=True)
+        await it.response.defer(ephemeral=True)
+        label, note = await lv_execute(guild, uid, entry, act, by)
+        if label is None: return await it.followup.send(f"❌ {note}", ephemeral=True)
+        done = f"🧹 **{label}** 처리 완료 — {entry['nick']} · CID `{uid}` · 처리자 {by} · {stamp}" + (f" ({note})" if note else "")
+        lv["pending"].pop(uid); lv["log"].append({"t": stamp, "uid": uid, "nick": entry["nick"], "act": label, "by": by, "did": entry["did"]}); lv["log"] = lv["log"][-300:]; leave_save(lv)
+        await lv_finish(entry, done); return await it.followup.send(done, ephemeral=True)
+    if act == "keep":
+        lv["ignored"].append(uid); lv["pending"].pop(uid); lv["log"].append({"t": stamp, "uid": uid, "nick": entry["nick"], "act": "유지", "by": by, "did": entry["did"]}); leave_save(lv)
+        await lv_finish(entry, f"✅ **유지** — {entry['nick']} · CID `{uid}` · 처리자 {by} · {stamp}")
+    else:
+        entry["snooze"] = time.time() + 86400; leave_save(lv)
+        await lv_finish(entry, f"⏸️ **24시간 보류** — {entry['nick']} · CID `{uid}` · 처리자 {by} · {stamp} (내일 다시 알립니다)")
+    await it.response.send_message("처리했습니다.", ephemeral=True)
+
+
+async def on_interaction(it: discord.Interaction):
+    cid = (it.data or {}).get("custom_id", "") if it.type == discord.InteractionType.component else ""
+    if not cid.startswith("lv:"): return
+    try:
+        g = bot.get_guild(GUILD_ID); mem = g.get_member(it.user.id) if g else None
+        if not (mem and mem.guild_permissions.administrator):
+            return await it.response.send_message("관리자만 처리할 수 있습니다.", ephemeral=True)
+        _, act, uid = cid.split(":", 2)
+        await lv_apply(it, act, uid)
+    except Exception:
+        log.exception("이탈 처리 오류")
+        try: await it.response.send_message("처리 중 오류가 발생했습니다. 로그를 확인하세요.", ephemeral=True)
+        except Exception: pass
+
+
 async def sync_members(guild: discord.Guild):
     """인증된 사람들을 명단(캐릭터 ID)과 대조해 별명/역할을 맞춘다."""
     mem_role = discord.utils.get(guild.roles, name=MEMBER_ROLE)
     off_role = discord.utils.get(guild.roles, name=OFFICER_ROLE)
     res = {"nick": 0, "role": 0, "removed": 0, "fail": 0, "total": 0}
-    db = db_load(); nicks = db.setdefault("nick", {}); nchg = False
+    db = db_load(); nicks = db.setdefault("nick", {}); nchg = False; missing = []
     for uid, did in list(db["uid"].items()):
         m = guild.get_member(int(did))
         if m is None: continue
@@ -271,9 +387,7 @@ async def sync_members(guild: discord.Guild):
         if info and info.get("name") and nicks.get(uid) != info["name"]: nicks[uid] = info["name"]; nchg = True     # 인증 시트에 적을 닉네임(명단 기준)
         try:
             if info is None:
-                if SYNC_REMOVE:
-                    drop = [r for r in (mem_role, off_role) if r and r in m.roles]
-                    if drop: await m.remove_roles(*drop, reason="명단에서 제외"); res["removed"] += 1; await asyncio.sleep(0.4)
+                if roster.by_uid: missing.append((uid, str(did), m))        # 명단 이탈 의심 → 관리자 확인 후 처리(자동 회수 안 함)
                 continue
             is_off = info["title"].replace(" ", "") in OFFICER_TITLES
             add = [r for r in ((mem_role,) + ((off_role,) if is_off else ())) if r and r not in m.roles]
@@ -288,7 +402,10 @@ async def sync_members(guild: discord.Guild):
                     except discord.Forbidden: pass
         except discord.Forbidden: res["fail"] += 1
         except Exception: log.exception("동기화 실패: %s", uid); res["fail"] += 1
-    if nchg: db_save(db)
+    if nchg:
+        d2 = db_load(); d2.setdefault("nick", {}).update({k: v for k, v in nicks.items() if k in d2["uid"]}); db_save(d2)
+    try: await report_missing(guild, missing)
+    except Exception: log.exception("명단 이탈 알림 실패")
     log.info("동기화: %s", res)
     return res
 
@@ -324,6 +441,7 @@ class Bot(discord.Client):
 
 
 bot = Bot()
+bot.event(on_interaction)
 
 
 @tasks.loop(minutes=max(SYNC_MINUTES, 1))
