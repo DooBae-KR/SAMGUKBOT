@@ -146,7 +146,7 @@ _tenant_rosters = {}                                    # 그 외 서버: DB(sam
 
 
 def roster_for(gid):
-    if gid == GUILD_ID: return _home_roster
+    if gid == GUILD_ID and not SB_ON: return _home_roster          # DB를 쓰면 홈 서버도 다른 서버와 똑같이 DB 명단
     r = _tenant_rosters.get(gid)
     if r is None: r = _tenant_rosters[gid] = Roster("__none__")
     return r
@@ -633,10 +633,13 @@ class Bot(discord.Client):
         super().__init__(intents=intents); self.tree = GuildTree(self)
 
     async def setup_hook(self):
-        if SHEET_ID and ROSTER_GID:
+        if SB_ON:                                                  # 홈 서버도 DB 명단(시트로 제어하지 않음)
+            try: n = await asyncio.to_thread(roster_load_db, GUILD_ID); log.info("DB에서 명단 %d명 로드", n)
+            except Exception as e: log.warning("DB 명단 로드 실패: %s", e)
+        elif SHEET_ID and ROSTER_GID:
             try: roster.load_csv_text(fetch_sheet_csv()); log.info("구글 시트(인사 탭)에서 명단 %d명 로드", len(roster.by_uid))
             except Exception as e: log.warning("시트 명단 로드 실패, 엑셀 사용: %s", e)
-        refresh_talk()
+            refresh_talk()
         await asyncio.to_thread(lambda: (db_load(), jc_load()))      # 시트에 저장된 인증·정철 상태를 미리 불러옴
         await start_web()
         self.add_view(VerifyView()); self.add_view(DipView())
@@ -653,7 +656,6 @@ class Bot(discord.Client):
         if SYNC_MINUTES and not sync_loop.is_running(): sync_loop.start()
         if not jc_loop.is_running(): jc_loop.start()
         if not donate_loop.is_running(): donate_loop.start()
-        if SB_ON and HR_SYNC_HOURS and not hr_sync_loop.is_running(): hr_sync_loop.start()
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
 
@@ -675,7 +677,19 @@ bot.event(on_interaction)
 @tasks.loop(minutes=max(SYNC_MINUTES, 1))
 async def sync_loop():
     set_gid(GUILD_ID)
-    try:                                                   # 홈 서버: 엑셀/구글 시트
+    if SB_ON:
+        try: await asyncio.to_thread(perm_refresh)         # 새로 승인/해제된 서버 반영
+        except Exception: log.exception("승인 목록 갱신 실패")
+        for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):   # 홈 서버를 포함한 모든 서버: DB 명단
+            try:
+                set_gid(gid); g = bot.get_guild(gid)
+                if g is None: continue
+                await asyncio.to_thread(roster_load_db, gid)
+                if gid == GUILD_ID: write_html()
+                await sync_members(g)
+            except Exception: log.exception("서버 %s 동기화 실패", gid)
+        set_gid(GUILD_ID); return
+    try:                                                   # (DB 미사용 환경) 엑셀/구글 시트
         if SHEET_ID and ROSTER_GID:
             text = await asyncio.to_thread(fetch_sheet_csv); roster.load_csv_text(text)
             await asyncio.to_thread(refresh_talk)
@@ -684,16 +698,6 @@ async def sync_loop():
         g = bot.get_guild(GUILD_ID)
         if g: await sync_members(g)
     except Exception: log.exception("주기 동기화 실패")
-    if SB_ON:
-        try: await asyncio.to_thread(perm_refresh)         # 새로 승인/해제된 서버 반영
-        except Exception: log.exception("승인 목록 갱신 실패")
-    for gid in sorted(LICENSED - {GUILD_ID}):              # 승인된 다른 서버: DB 명단
-        try:
-            set_gid(gid); g = bot.get_guild(gid)
-            if g is None: continue
-            await asyncio.to_thread(roster_load_db, gid)
-            await sync_members(g)
-        except Exception: log.exception("서버 %s 동기화 실패", gid)
     set_gid(GUILD_ID)
 
 
@@ -954,7 +958,8 @@ CMD_HELP = {
     "간부": [("/인사", "인사데이터(상황판) 링크"),
            ("/공성등록", "공성 주둔지 등록"), ("/공성", "정철 개수·공성 예상 일정"), ("/공성취소", "등록한 공성 취소"),
            ("/공성예약", "공성 시각 예약(30분 전 간부 호출)"), ("/공성예약취소", "공성 예약 취소"),
-           ("/정철설정", "정철 보유량 맞추기"), ("/동맹수정", "등록된 서버 번호·동맹명 수정")],
+           ("/정철설정", "정철 보유량 맞추기"), ("/동맹수정", "등록된 서버 번호·동맹명 수정"),
+           ("/동맹원추가", "게임 엑셀(오전 8시 반영)에 아직 없는 동맹원을 직접 추가")],
 }
 
 
@@ -1254,12 +1259,15 @@ def _num(v):
     except ValueError: return 0
 
 
+MANUAL_KEEP_DAYS = 3
+
+
 def hr_import(now=None, rows=None, gid=GUILD_ID):
     """인사 탭을 읽어 중복(같은 CID)을 하나로 묶고, 사람 정보와 주간 수치를 나눠 저장한다.
     sam_emp: CID·멤버·직업·조별 / sam_emp_stat: 직위·번영·주간 무훈·주간 공헌·주둔지·주 공성 횟수(날짜별)."""
     now = now or datetime.datetime.now(datetime.timezone.utc).isoformat()
     snap = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")   # KST 날짜
-    if rows is None: rows = list(csv.reader(io.StringIO(fetch_sheet_csv())))
+    if rows is None: raise RuntimeError("명단은 엑셀 업로드(/명단업데이트)로만 반영합니다.")
     _sb_ensure_tenant(gid)
     uidc = COL_UID + ["캐릭터 ID", "캐릭터ID", "CID"]
     hi = next((i for i, r in enumerate(rows) if roster._find(r, uidc) is not None), None)
@@ -1288,7 +1296,12 @@ def hr_import(now=None, rows=None, gid=GUILD_ID):
                    "camp_y": int(m.group(3)) if m else None, "siege_count": _num(g.get("주 공성 횟수"))})
     # 이번 명단에서 빠진 사람 = 접었거나 동맹을 나간 사람 → 이탈자 표(sam_emp_left)로 옮기고 sam_emp에서 제외
     old = _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid,name,job,extra&limit=100000") or []
-    gone = [r for r in old if r["cid"] not in merged]
+    def _manual_fresh(r):                                          # '동맹원추가'로 넣은 사람은 게임 엑셀(매일 오전 8시 일배치)에 반영될 때까지 며칠 유지
+        t = (r.get("extra") or {}).get("manual_at")
+        try: return bool(t) and time.time() - datetime.datetime.fromisoformat(t).timestamp() < MANUAL_KEEP_DAYS * 86400
+        except Exception: return False
+    kept = [r for r in old if r["cid"] not in merged and _manual_fresh(r)]
+    gone = [r for r in old if r["cid"] not in merged and not _manual_fresh(r)]
     moved = 0
     if gone and len(old) >= 10 and len(gone) > len(old) * 0.5:      # 파일이 잘못 올라온 경우 전원이 이탈 처리되는 사고 방지
         warn.append(f"이번 명단에서 빠진 사람이 {len(gone)}/{len(old)}명으로 너무 많아 이탈 처리를 건너뛰었습니다. 명단 파일을 확인해 주세요.")
@@ -1314,59 +1327,11 @@ def hr_import(now=None, rows=None, gid=GUILD_ID):
     out = [f"명단(sam_emp): 시트 {len(rows) - hi - 1}줄 → 중복 {dup}건 병합 → {len(ro)}명 (DB 총 {_sb_count('sam_emp', gid)}명)",
            f"인사 수치(sam_emp_stat): {snap} 기준 {len(st)}건 (DB 총 {_sb_count('sam_emp_stat', gid)}건)"]
     if moved: out.append(f"이탈자(sam_emp_left): {moved}명을 이탈 처리했습니다 — " + ", ".join(f"{r.get('name') or '-'}({r['cid']})" for r in gone[:8]) + (" 외" if moved > 8 else ""))
+    if kept: out.append(f"수동 추가 {len(kept)}명은 아직 엑셀에 없어 유지했습니다: " + ", ".join(r.get('name') or r['cid'] for r in kept[:8]))
     if back: out.append(f"복귀: 이탈자 표에 있던 {len(back)}명이 다시 명단에 있어 이탈 해제했습니다.")
     return out, warn
 
 
-def migrate_to_db():
-    """시트(인사 탭 + 봇_저장)의 값을 그대로 읽어 sam_* 테이블에 넣는다. 여러 번 실행해도 안전(덮어쓰기)."""
-    if not SB_ON: raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY가 설정되지 않았습니다.")
-    now = datetime.datetime.now(datetime.timezone.utc).isoformat(); out, warn = [], []
-    ally = ally_load(); _sb_ensure_tenant(); _sb_put_tenant(ally); out.append(f"동맹: {ally['server']}서버 {ally['name']}")
-    # 1) 인사 탭 → sam_emp(사람) + sam_emp_stat(날짜별 수치)
-    o, w = hr_import(now); out += o; warn += w
-    # 2) 인증/외교관
-    db = db_load(); nicks, dips = db.get("nick", {}), db.get("dip", {}); used = {}; ver = []
-    for cid, did in db["uid"].items():
-        if did in used: warn.append(f"Discord 계정 중복으로 제외: CID {cid} (이미 {used[did]}에 연결된 계정)"); continue
-        used[did] = cid; ver.append({"guild_id": GUILD_ID, "cid": cid, "discord_id": str(did), "nick": nicks.get(cid), "verified_at": now})
-    _sb_rows("sam_verified", ver); out.append(f"인증(sam_verified): 봇 {len(db['uid'])}건 → DB {_sb_count('sam_verified')}건")
-    dp = [{"guild_id": GUILD_ID, "cid": c, "ally": d.get("ally", ""), "nick": d.get("name", ""), "discord_id": str(db["uid"].get(c, 0)), "created_at": now}
-          for c, d in dips.items() if c in db["uid"]]
-    if dp: _sb_rows("sam_emp_out", dp)
-    out.append(f"외교관(sam_emp_out): {len(dp)}건")
-    # 3) 도감
-    dx = []
-    for cid in db["uid"]:
-        d = store_get(f"dex_{cid}", dex_path(cid), None)
-        if d: dx.append({"guild_id": GUILD_ID, "cid": cid, "nick": d.get("name"), "own_generals": d.get("own", []), "own_tactics": d.get("ownsk", []), "updated_at": now})
-    if dx: _sb_rows("sam_dex", dx)
-    out.append(f"도감(sam_dex): {len(dx)}명")
-    # 4) 정철
-    jc = jc_load()
-    _sb_rows("sam_iron", [{"guild_id": GUILD_ID, "stock": int(jc.get("stock", 0)), "rate": int(jc.get("rate", JC_RATE)), "pattern": JC_PAT, "updated_at": now,
-              "stock_at": datetime.datetime.fromtimestamp(jc.get("at", time.time()), datetime.timezone.utc).isoformat(),
-              "anchor": datetime.datetime.fromtimestamp(JC_ANCHOR, datetime.timezone.utc).isoformat()}], conflict="guild_id")
-    out.append(f"정철(sam_iron): 보유 {jc.get('stock', 0)}개")
-    # 5) 호환 저장소(sam_store): 봇이 실제로 읽는 원본 JSON
-    names = ["verified", "jungchul", "alliance", "leave"] + [f"dex_{c}" for c in db["uid"]]; n = 0
-    for nm in names:
-        v = _cache.get((GUILD_ID, nm))
-        if v is not None: _sb_put(nm, v); n += 1
-    out.append(f"저장소(sam_store): {n}개 항목")
-    return out, warn
-
-
-HR_SYNC_HOURS = int(os.environ.get("HR_SYNC_HOURS", "6"))   # 0이면 끔(기본 6시간). 설정하면 N시간마다 인사 탭을 DB에 자동 반영
-
-
-@tasks.loop(hours=max(HR_SYNC_HOURS, 1))
-async def hr_sync_loop():
-    try:
-        out, warn = await asyncio.to_thread(hr_import)
-        log.info("인사 자동 반영: %s", " | ".join(out))
-        if warn: log.warning("인사 자동 반영 경고: %s", " | ".join(warn))
-    except Exception: log.exception("인사 자동 반영 오류")
 
 
 async def update_roster_tenant(it, 파일):
@@ -1389,14 +1354,54 @@ async def update_roster_tenant(it, 파일):
                            + ("\n⚠️ " + "\n⚠️ ".join(warn) if warn else ""), ephemeral=True)
 
 
-@bot.tree.command(name="명단업데이트", description="[관리자] 명단을 새로 반영합니다 (엑셀 첨부 또는 구글 시트)")
+class MemberAddModal(CtxModal, title="동맹원 추가"):
+    cid = discord.ui.TextInput(label="CID (캐릭터 ID)", placeholder="게임 내 캐릭터 ID (숫자)", max_length=30)
+    nick = discord.ui.TextInput(label="닉네임", placeholder="게임 내 닉네임", max_length=25)
+    job = discord.ui.TextInput(label="직업", placeholder="예) 천공", max_length=10, required=False)
+
+    async def on_submit(self, it: discord.Interaction):
+        await it.response.defer(ephemeral=True)
+        if not is_staff(it): return await it.followup.send("간부만 사용할 수 있습니다.", ephemeral=True)
+        gid = cur_gid(); cid = Roster.norm_uid(self.cid.value); nick = re.sub(r"\s+", " ", self.nick.value).strip(); job = self.job.value.strip()
+        if not cid.isdigit(): return await it.followup.send("❌ CID는 숫자로 입력해 주세요.", ephemeral=True)
+        if not nick: return await it.followup.send("❌ 닉네임을 입력해 주세요.", ephemeral=True)
+        try: r = await asyncio.to_thread(member_add, gid, cid, nick, job)
+        except Exception as e:
+            log.exception("동맹원 추가 실패"); return await it.followup.send(f"❌ 실패: {str(e)[:200]}", ephemeral=True)
+        await it.followup.send(r, ephemeral=True)
+
+
+def member_add(gid, cid, nick, job):
+    """게임 엑셀(일배치)에 아직 없는 사람을 명단에 직접 넣는다. 엑셀에 나타나기 전까지 MANUAL_KEEP_DAYS일 동안 이탈 처리하지 않는다."""
+    _sb_ensure_tenant(gid)
+    ex = _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&cid=eq.{cid}&select=cid,name") or []
+    if ex: return f"이미 명단에 있습니다: **{ex[0].get('name') or '-'}** ({cid})"
+    dupn = _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&name=eq.{urllib.parse.quote(nick, safe='')}&select=cid") or []
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    _sb_rows("sam_emp", [{"guild_id": gid, "cid": cid, "name": nick, "job": job, "updated_at": now, "extra": {"조별": "", "manual_at": now}}])
+    _sb_req("DELETE", f"sam_emp_left?guild_id=eq.{gid}&cid=eq.{cid}", prefer="return=minimal")      # 이탈자였다면 복귀
+    roster_load_db(gid)
+    return (f"✅ 동맹원을 추가했습니다: **{nick}** ({cid})" + (f" · {job}" if job else "")
+            + f"\n게임 엑셀에 반영되기 전까지 {MANUAL_KEEP_DAYS}일간 명단에 유지됩니다. 이제 인증하기에서 이 CID로 인증할 수 있습니다."
+            + (f"\n⚠️ 같은 닉네임의 다른 CID가 이미 있습니다: {', '.join(r['cid'] for r in dupn)}" if dupn else ""))
+
+
+@bot.tree.command(name="동맹원추가", description="[간부] 게임 엑셀(매일 오전 8시 반영)에 아직 없는 동맹원을 명단에 직접 추가합니다")
+async def cmd_member_add(it: discord.Interaction):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if not is_staff(it): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
+    if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
+    await it.response.send_modal(MemberAddModal())
+
+
+@bot.tree.command(name="명단업데이트", description="[관리자] 게임 명단 엑셀(.xlsx)을 올려 명단을 새로 반영합니다")
 @admin_only
-@app_commands.describe(파일="새 명단 엑셀(.xlsx). 비우면 구글 시트에서 받아옵니다")
+@app_commands.describe(파일="게임에서 받은 명단 엑셀(.xlsx)")
 async def update_roster(it: discord.Interaction, 파일: discord.Attachment = None):
     if not is_admin(it):
         return await it.response.send_message("관리자만 사용할 수 있습니다.", ephemeral=True)
     await it.response.defer(ephemeral=True)
-    if cur_gid() != GUILD_ID: return await update_roster_tenant(it, 파일)      # 다른 서버: 홈 서버 파일을 건드리지 않고 DB에 저장
+    if SB_ON: return await update_roster_tenant(it, 파일)      # 홈 서버도 다른 서버와 똑같이: 엑셀을 올려 DB에 저장(시트로는 제어하지 않음)
     try: roster.load()
     except Exception: pass
     before = set(roster.by_uid)
@@ -1420,11 +1425,6 @@ async def update_roster(it: discord.Interaction, 파일: discord.Attachment = No
     tk = refresh_talk()
     log.info("명단 업데이트 by %s (%s)", it.user, src)
     extra = (f"\n상황판: 멤버 {len(roster.members)}명" + (f", 톡방 {tk}명" if tk is not None else "") + " 반영") if roster.members else "\n상황판: 인사 탭의 열이 달라 반영하지 못했습니다(봇 창 로그 확인)."
-    if SB_ON:                                                       # 시트 → DB 반영(빠진 멤버는 이탈자 표로 이동)
-        try:
-            o, w = await asyncio.to_thread(hr_import)
-            extra += "\nDB 반영: " + " / ".join(o) + "".join("\n⚠️ " + x for x in w)
-        except Exception as e: log.exception("DB 반영 실패"); extra += f"\n⚠️ DB 반영 실패: {str(e)[:150]}"
     out = write_html()
     if out: extra += f"\n인사데이터 HTML 파일 갱신: {out.name}"
     sy = await sync_members(it.guild)
