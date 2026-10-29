@@ -1286,9 +1286,33 @@ def hr_import(now=None, rows=None, gid=GUILD_ID):
                    "war_merit": _num(g.get("주간 무훈")), "contribution": _num(g.get("주간 공헌")),
                    "camp": (m.group(1).strip() if m else g.get("주둔지", "")), "camp_x": int(m.group(2)) if m else None,
                    "camp_y": int(m.group(3)) if m else None, "siege_count": _num(g.get("주 공성 횟수"))})
+    # 이번 명단에서 빠진 사람 = 접었거나 동맹을 나간 사람 → 이탈자 표(sam_emp_left)로 옮기고 sam_emp에서 제외
+    old = _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid,name,job,extra&limit=100000") or []
+    gone = [r for r in old if r["cid"] not in merged]
+    moved = 0
+    if gone and len(old) >= 10 and len(gone) > len(old) * 0.5:      # 파일이 잘못 올라온 경우 전원이 이탈 처리되는 사고 방지
+        warn.append(f"이번 명단에서 빠진 사람이 {len(gone)}/{len(old)}명으로 너무 많아 이탈 처리를 건너뛰었습니다. 명단 파일을 확인해 주세요.")
+        gone = []
     _sb_rows("sam_emp", ro); _sb_rows("sam_emp_stat", st, conflict="guild_id,cid,snap_date")
+    if gone:
+        last = {}                                                  # 이탈 직전 마지막 인사 수치를 함께 보관(sam_emp 삭제 시 sam_emp_stat은 같이 지워지므로)
+        for i in range(0, len(gone), 100):
+            ids = ",".join(r["cid"] for r in gone[i:i + 100])
+            for x in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&cid=in.({ids})&order=snap_date.desc&select=cid,snap_date,title,prosperity,war_merit,contribution,camp,siege_count&limit=100000") or []:
+                last.setdefault(x["cid"], x)
+        lf = [{"guild_id": gid, "cid": r["cid"], "name": r.get("name") or "", "job": r.get("job") or "", "left_date": snap, "left_at": now,
+               "extra": r.get("extra") or {}, "last_stat": last.get(r["cid"])} for r in gone]
+        _sb_rows("sam_emp_left", lf)
+        for i in range(0, len(gone), 100):
+            _sb_req("DELETE", f"sam_emp?guild_id=eq.{gid}&cid=in.({','.join(r['cid'] for r in gone[i:i + 100])})", prefer="return=minimal")
+        moved = len(gone)
+    back = [r["cid"] for r in (_sb_req("GET", f"sam_emp_left?guild_id=eq.{gid}&select=cid&limit=100000") or []) if r["cid"] in merged]
+    for i in range(0, len(back), 100):                              # 다시 명단에 나타난 사람은 이탈자 표에서 뺀다
+        _sb_req("DELETE", f"sam_emp_left?guild_id=eq.{gid}&cid=in.({','.join(back[i:i + 100])})", prefer="return=minimal")
     out = [f"명단(sam_emp): 시트 {len(rows) - hi - 1}줄 → 중복 {dup}건 병합 → {len(ro)}명 (DB 총 {_sb_count('sam_emp', gid)}명)",
            f"인사 수치(sam_emp_stat): {snap} 기준 {len(st)}건 (DB 총 {_sb_count('sam_emp_stat', gid)}건)"]
+    if moved: out.append(f"이탈자(sam_emp_left): {moved}명을 이탈 처리했습니다 — " + ", ".join(f"{r.get('name') or '-'}({r['cid']})" for r in gone[:8]) + (" 외" if moved > 8 else ""))
+    if back: out.append(f"복귀: 이탈자 표에 있던 {len(back)}명이 다시 명단에 있어 이탈 해제했습니다.")
     return out, warn
 
 
