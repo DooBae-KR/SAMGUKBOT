@@ -64,10 +64,20 @@ function _hrLink(sh, n) {
   function pick(col) { return col ? '=IFERROR(INDEX(\'' + hr.getName() + "'!$" + _colLetter(col) + ':$' + _colLetter(col) + ', MATCH($A{r}&"", ' + U + ', 0)), "")' : '=""'; }
   var f = [];
   for (var r = 2; r <= n; r++) {
-    var row = [pick(c.name), pick(c.job), pick(c.title), '=IF(ISNUMBER(MATCH($A{r}&"", ' + U + ', 0)), "OK", "인사탭에 없음")'];
+    var row = [pick(c.name), pick(c.job), pick(c.title), '=IF(ISNUMBER(MATCH($A{r}&"", ' + U + ', 0)), "OK", IF($I{r}<>"", "외교관", "인사탭에 없음"))'];
     f.push(row.map(function (x) { return x.replace(/\{r\}/g, r); }));
   }
   sh.getRange(2, 5, n - 1, 4).setFormulas(f);
+}
+
+// 외교관 탭: 동맹명 | CID | 닉네임
+function _dipTab(data, now) {
+  var s = _sheet('외교관'), rows = [['동맹명', 'CID', '닉네임', '디스코드 ID', '등록일']], dip = data.dip || {};
+  Object.keys(dip).map(function (k) { return [dip[k].ally, k, dip[k].name, String((data.uid || {})[k] || ''), dip[k].t || '']; })
+    .sort(function (a, b) { return String(a[0]).localeCompare(String(b[0])) || String(a[2]).localeCompare(String(b[2])); })
+    .forEach(function (r) { rows.push(r); });
+  s.clear(); s.getRange(1, 2, rows.length, 1).setNumberFormat('@'); s.getRange(1, 4, rows.length, 1).setNumberFormat('@');
+  s.getRange(1, 1, rows.length, 5).setValues(rows);
 }
 
 // 사람이 보기 쉬운 탭
@@ -78,7 +88,10 @@ function _mirror(name, data, now) {
     Object.keys(data.uid || {}).forEach(function (k) { out.push([k, String((data.nick || {})[k] || ''), String(data.uid[k]), now]); });
     sh.getRange(1, 1, out.length, 1).setNumberFormat('@');
     sh.getRange(1, 1, out.length, 4).setValues(out);
+    var al = [['동맹명(외교관)']]; Object.keys(data.uid || {}).forEach(function (k) { al.push([String(((data.dip || {})[k] || {}).ally || '')]); });
+    sh.getRange(1, 9, al.length, 1).setValues(al);
     _hrLink(sh, out.length);
+    _dipTab(data, now);
   } else if (name.indexOf('dex_') === 0) {
     var s3 = _sheet('도감선택');
     if (s3.getLastRow() === 0) s3.appendRow(['CID', '닉네임', '보유 장수 수', '보유 장수', '보유 전법 수', '보유 전법', '갱신']);

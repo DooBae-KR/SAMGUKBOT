@@ -20,6 +20,7 @@ SHEET_NAME = os.environ.get("SHEET_NAME", "")            # 비우면 첫 시트
 VERIFY_CHANNEL_ID = int(os.environ.get("VERIFY_CHANNEL_ID", "0"))  # 인증 안내 채널
 MEMBER_ROLE = os.environ.get("MEMBER_ROLE", "동맹원")
 OFFICER_ROLE = os.environ.get("OFFICER_ROLE", "간부")
+DIPLOMAT_ROLE = os.environ.get("DIPLOMAT_ROLE", "외교관")     # 외교 목적으로 들어온 타 동맹원 역할
 OFFICER_TITLES = {s.replace(" ", "") for s in os.environ.get("OFFICER_TITLES", "태위,군주,사공,사도,대장군,대홍려,진군장군,무군장군,익군장군,안국장군,분무장군,복파장군,파로장군,호위장군").split(",") if s.strip()}
 MAX_TRIES = int(os.environ.get("MAX_TRIES", "5"))
 SHEET_ID = os.environ.get("SHEET_ID", "")          # 구글 시트에서 명단을 받을 때(선택)
@@ -251,6 +252,44 @@ class VerifyModal(discord.ui.Modal, title="연맹 인증"):
         await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
 
 
+# ---------- 외교관 인증 ----------
+class DipModal(discord.ui.Modal, title="외교관 등록"):
+    ally = discord.ui.TextInput(label="동맹명", placeholder="소속 동맹 이름", max_length=12)
+    uid = discord.ui.TextInput(label="CID (캐릭터 ID)", placeholder="게임 내 캐릭터 ID", max_length=30)
+    nick = discord.ui.TextInput(label="닉네임", placeholder="게임 내 닉네임", max_length=20)
+
+    async def on_submit(self, it: discord.Interaction):
+        db = db_load(); did = str(it.user.id); dip = db.setdefault("dip", {})
+        ally, uid, name = self.ally.value.strip(), Roster.norm_uid(self.uid.value), self.nick.value.strip()
+        err = None
+        if not (ally and uid and name): err = "동맹명, CID, 닉네임을 모두 입력해 주세요."
+        elif roster.by_uid.get(uid): err = "우리 연맹 명단에 있는 CID입니다. 일반 인증(인증하기)을 이용해 주세요."
+        elif uid in db["uid"] and db["uid"][uid] != did: err = "이미 다른 계정으로 등록된 CID입니다. 관리자에게 문의하세요."
+        elif did in db["uid"].values() and db["uid"].get(uid) != did: err = "이미 인증된 계정입니다. 관리자에게 문의하세요."
+        role = discord.utils.get(it.guild.roles, name=DIPLOMAT_ROLE) if it.guild else None
+        if not err and role is None: err = f"서버에 '{DIPLOMAT_ROLE}' 역할이 없습니다. 관리자에게 문의하세요."
+        if err: return await it.response.send_message(f"❌ {err}", ephemeral=True)
+        await it.response.defer(ephemeral=True); notes = []
+        nick = f"[{ally}] {name}"[:32]
+        try: await it.user.edit(nick=nick, reason="외교관 등록")
+        except discord.Forbidden: notes.append("별명 변경 권한이 없습니다(서버 주인이거나 봇 역할이 낮음).")
+        try: await it.user.add_roles(role, reason="외교관 등록")
+        except discord.Forbidden: return await it.followup.send("❌ 역할을 부여할 권한이 없습니다. 관리자에게 문의하세요.", ephemeral=True)
+        stamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
+        db["uid"][uid] = did; dip[uid] = {"ally": ally, "name": name, "t": stamp}; db.setdefault("nick", {})[uid] = name; db_save(db)
+        try: await lv_send(it.guild, f"🤝 **외교관 등록** — {it.user.mention} · **[{ally}] {name}** · CID `{uid}`\n잘못 등록된 경우 `/외교관해제`로 정리하세요.")
+        except Exception: log.exception("외교관 등록 알림 실패")
+        await it.followup.send(f"✅ 외교관 등록 완료! 별명: **{nick}** · 역할: **{role.name}**" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
+
+
+class DipView(discord.ui.View):
+    def __init__(self): super().__init__(timeout=None)
+
+    @discord.ui.button(label="외교관 등록", style=discord.ButtonStyle.success, custom_id="dip_btn")
+    async def go(self, it: discord.Interaction, _):
+        await it.response.send_modal(DipModal())
+
+
 class VerifyView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
 
@@ -379,7 +418,9 @@ async def sync_members(guild: discord.Guild):
     off_role = discord.utils.get(guild.roles, name=OFFICER_ROLE)
     res = {"nick": 0, "role": 0, "removed": 0, "fail": 0, "total": 0}
     db = db_load(); nicks = db.setdefault("nick", {}); nchg = False; missing = []
+    dips = db.get("dip", {})
     for uid, did in list(db["uid"].items()):
+        if uid in dips: continue                                          # 외교관은 명단(인사 탭) 대조 대상이 아님
         m = guild.get_member(int(did))
         if m is None: continue
         res["total"] += 1
@@ -422,7 +463,7 @@ class Bot(discord.Client):
         refresh_talk()
         await asyncio.to_thread(lambda: (db_load(), jc_load()))      # 시트에 저장된 인증·정철 상태를 미리 불러옴
         await start_web()
-        self.add_view(VerifyView())
+        self.add_view(VerifyView()); self.add_view(DipView())
         g = discord.Object(GUILD_ID); self.tree.copy_global_to(guild=g); await self.tree.sync(guild=g)
 
     async def on_ready(self):
@@ -457,6 +498,33 @@ async def sync_loop():
     except Exception: log.exception("주기 동기화 실패")
 
 admin = app_commands.default_permissions(manage_roles=True)
+
+
+@bot.tree.command(name="외교관패널", description="외교관 등록 버튼 패널을 이 채널에 게시합니다")
+@admin
+async def dip_panel(it: discord.Interaction):
+    await it.response.defer(ephemeral=True)
+    try: await it.channel.send("**외교관 등록**\n외교 목적으로 방문하신 분은 버튼을 눌러 동맹명 · CID · 닉네임을 입력해 주세요. `[동맹명] 닉네임` 별명과 외교관 역할이 자동으로 설정됩니다.", view=DipView())
+    except discord.Forbidden: return await it.followup.send("❌ 이 채널에서 봇이 메시지를 보낼 수 없습니다. 채널 권한을 확인해 주세요.", ephemeral=True)
+    await it.followup.send("게시했습니다.", ephemeral=True)
+
+
+@bot.tree.command(name="외교관해제", description="[관리자] 외교관 등록을 해제합니다(역할 회수, 별명 초기화, 재등록 가능)")
+@admin
+@app_commands.describe(cid="해제할 외교관의 CID")
+async def dip_remove(it: discord.Interaction, cid: str):
+    if not is_admin(it): return await it.response.send_message("관리자만 사용할 수 있습니다.", ephemeral=True)
+    db = db_load(); uid = Roster.norm_uid(cid); d = db.get("dip", {}).pop(uid, None)
+    if d is None: return await it.response.send_message("외교관으로 등록된 CID가 아닙니다.", ephemeral=True)
+    did = db["uid"].pop(uid, None); db.get("nick", {}).pop(uid, None); db_save(db)
+    m = it.guild.get_member(int(did)) if did else None; note = ""
+    if m:
+        role = discord.utils.get(it.guild.roles, name=DIPLOMAT_ROLE)
+        try:
+            if role and role in m.roles: await m.remove_roles(role, reason=f"외교관 해제({it.user.display_name})")
+            await m.edit(nick=None, reason=f"외교관 해제({it.user.display_name})")
+        except discord.Forbidden: note = " (역할/별명 변경 권한 부족 — 직접 정리해 주세요)"
+    await it.response.send_message(f"**[{d['ally']}] {d['name']}** 외교관 등록을 해제했습니다.{note}", ephemeral=True)
 
 
 @bot.tree.command(name="인증패널", description="인증 버튼 패널을 이 채널에 게시합니다")
