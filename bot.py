@@ -563,6 +563,7 @@ class Bot(discord.Client):
         log.info("로그인: %s", self.user)
         if SYNC_MINUTES and not sync_loop.is_running(): sync_loop.start()
         if not jc_loop.is_running(): jc_loop.start()
+        if SB_ON and HR_SYNC_HOURS and not hr_sync_loop.is_running(): hr_sync_loop.start()
 
     async def on_member_join(self, m: discord.Member):
         if m.guild.id != GUILD_ID or m.bot: return
@@ -827,25 +828,55 @@ def _sb_count(table):
     return len(_sb_req("GET", f"{table}?guild_id=eq.{GUILD_ID}&select=guild_id&limit=100000") or [])
 
 
+def _num(v):
+    try: return int(float(str(v).replace(",", "").strip() or 0))
+    except ValueError: return 0
+
+
+def hr_import(now=None):
+    """인사 탭을 읽어 중복(같은 CID)을 하나로 묶고, 사람 정보와 주간 수치를 나눠 저장한다.
+    sam_roster: CID·멤버·직업·조별 / sam_roster_stat: 직위·번영·주간 무훈·주간 공헌·주둔지·주 공성 횟수(날짜별)."""
+    now = now or datetime.datetime.now(datetime.timezone.utc).isoformat()
+    snap = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")   # KST 날짜
+    rows = list(csv.reader(io.StringIO(fetch_sheet_csv())))
+    uidc = COL_UID + ["캐릭터 ID", "캐릭터ID", "CID"]
+    hi = next((i for i, r in enumerate(rows) if roster._find(r, uidc) is not None), None)
+    if hi is None: raise RuntimeError("인사 탭에서 CID 열을 찾지 못했습니다.")
+    H = [h.strip() for h in rows[hi]]; ic = roster._find(H, uidc); merged, dup, warn = {}, 0, []
+    for r in rows[hi + 1:]:
+        cid = Roster.norm_uid(r[ic]) if ic < len(r) else ""
+        if not cid: continue
+        rec = {h: (r[i].strip() if i < len(r) else "") for i, h in enumerate(H) if i != ic and h}
+        if cid in merged:                                  # 같은 CID가 여러 줄이면 하나로 합침(뒤 줄의 값이 우선, 빈 칸은 앞 값 유지)
+            dup += 1; merged[cid].update({k: v for k, v in rec.items() if v != ""})
+        else: merged[cid] = rec
+    names = {}
+    for cid, rec in merged.items():
+        if rec.get("멤버"): names.setdefault(rec["멤버"], []).append(cid)
+    same = {n: c for n, c in names.items() if len(c) > 1}
+    if same: warn.append("이름은 같고 CID가 다른 멤버: " + ", ".join(f"{n}({'/'.join(c)})" for n, c in list(same.items())[:5]))
+    ro, st = [], []
+    for cid, g in merged.items():
+        ro.append({"guild_id": GUILD_ID, "cid": cid, "name": g.get("멤버", ""), "job": g.get("직업", ""), "updated_at": now,
+                   "extra": {"조별": g.get("조별", "")}})
+        m = re.match(r"\s*([^(]*)\(\s*(\d+)\s*,\s*(\d+)\s*\)", g.get("주둔지", ""))
+        st.append({"guild_id": GUILD_ID, "cid": cid, "snap_date": snap, "title": g.get("직위", ""), "prosperity": _num(g.get("번영")),
+                   "war_merit": _num(g.get("주간 무훈")), "contribution": _num(g.get("주간 공헌")),
+                   "camp": (m.group(1).strip() if m else g.get("주둔지", "")), "camp_x": int(m.group(2)) if m else None,
+                   "camp_y": int(m.group(3)) if m else None, "siege_count": _num(g.get("주 공성 횟수"))})
+    _sb_rows("sam_roster", ro); _sb_rows("sam_roster_stat", st, conflict="guild_id,cid,snap_date")
+    out = [f"명단(sam_roster): 시트 {len(rows) - hi - 1}줄 → 중복 {dup}건 병합 → {len(ro)}명 (DB 총 {_sb_count('sam_roster')}명)",
+           f"인사 수치(sam_roster_stat): {snap} 기준 {len(st)}건 (DB 총 {_sb_count('sam_roster_stat')}건)"]
+    return out, warn
+
+
 def migrate_to_db():
     """시트(인사 탭 + 봇_저장)의 값을 그대로 읽어 sam_* 테이블에 넣는다. 여러 번 실행해도 안전(덮어쓰기)."""
     if not SB_ON: raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY가 설정되지 않았습니다.")
     now = datetime.datetime.now(datetime.timezone.utc).isoformat(); out, warn = [], []
     ally = ally_load(); _sb_ensure_tenant(); _sb_put_tenant(ally); out.append(f"동맹: {ally['server']}서버 {ally['name']}")
-    # 1) 인사 탭 → sam_roster (시트 값 그대로, 나머지 열은 extra)
-    rows = list(csv.reader(io.StringIO(fetch_sheet_csv())))
-    uidc = COL_UID + ["캐릭터 ID", "캐릭터ID", "CID"]
-    hi = next((i for i, r in enumerate(rows) if roster._find(r, uidc) is not None), None)
-    if hi is None: raise RuntimeError("인사 탭에서 CID 열을 찾지 못했습니다.")
-    H = [h.strip() for h in rows[hi]]; ic = roster._find(H, uidc); ro = []; seen = set()
-    for r in rows[hi + 1:]:
-        cid = Roster.norm_uid(r[ic]) if ic < len(r) else ""
-        if not cid or cid in seen: continue
-        seen.add(cid); g = lambda k: (r[H.index(k)].strip() if k in H and H.index(k) < len(r) else "")
-        ro.append({"guild_id": GUILD_ID, "cid": cid, "name": g("멤버"), "job": g("직업"), "title": g("직위"), "updated_at": now,
-                   "extra": {h: (r[i].strip() if i < len(r) else "") for i, h in enumerate(H) if i != ic and h and h not in ("멤버", "직업", "직위")}})
-    _sb_req("DELETE", f"sam_roster?guild_id=eq.{GUILD_ID}", prefer="return=minimal"); _sb_rows("sam_roster", ro)
-    out.append(f"명단(sam_roster): 시트 {len(ro)}명 → DB {_sb_count('sam_roster')}명")
+    # 1) 인사 탭 → sam_roster(사람) + sam_roster_stat(날짜별 수치)
+    o, w = hr_import(now); out += o; warn += w
     # 2) 인증/외교관
     db = db_load(); nicks, dips = db.get("nick", {}), db.get("dip", {}); used = {}; ver = []
     for cid, did in db["uid"].items():
@@ -876,6 +907,18 @@ def migrate_to_db():
         if v is not None: _sb_put(nm, v); n += 1
     out.append(f"저장소(sam_store): {n}개 항목")
     return out, warn
+
+
+HR_SYNC_HOURS = int(os.environ.get("HR_SYNC_HOURS", "0"))   # 0이면 끔. 설정하면 N시간마다 인사 탭을 DB에 자동 반영
+
+
+@tasks.loop(hours=max(HR_SYNC_HOURS, 1))
+async def hr_sync_loop():
+    try:
+        out, warn = await asyncio.to_thread(hr_import)
+        log.info("인사 자동 반영: %s", " | ".join(out))
+        if warn: log.warning("인사 자동 반영 경고: %s", " | ".join(warn))
+    except Exception: log.exception("인사 자동 반영 오류")
 
 
 @bot.tree.command(name="db이관", description="[관리자] 시트(인사 탭·봇_저장)의 값을 Supabase DB로 이관합니다")
