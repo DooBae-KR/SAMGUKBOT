@@ -226,7 +226,7 @@ def _sb_put(name, data, gid=GUILD_ID):
 
 def _sb_put_tenant(d, gid=GUILD_ID):
     _sb_req("POST", "sam_alli?on_conflict=guild_id",
-            [{"guild_id": gid, "name": d["name"], "config": {"alliance": d["name"], "server": d["server"]}}],
+            [{"guild_id": gid, "name": d["name"], "game_server": str(d["server"]), "config": {"alliance": d["name"], "server": d["server"]}}],
             prefer="resolution=merge-duplicates,return=minimal")
 
 
@@ -1300,8 +1300,10 @@ def hr_import(now=None, rows=None, gid=GUILD_ID):
             ids = ",".join(r["cid"] for r in gone[i:i + 100])
             for x in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&cid=in.({ids})&order=snap_date.desc&select=cid,snap_date,title,prosperity,war_merit,contribution,camp,siege_count&limit=100000") or []:
                 last.setdefault(x["cid"], x)
+        al = (_sb_req("GET", f"sam_alli?guild_id=eq.{gid}&select=name,game_server") or [{}])[0]      # 서버 번호 + 동맹명으로 sam_alli에 FK
+        fk = {"game_server": al["game_server"], "ally_name": al["name"]} if al.get("game_server") and al.get("name") else {}
         lf = [{"guild_id": gid, "cid": r["cid"], "name": r.get("name") or "", "job": r.get("job") or "", "left_date": snap, "left_at": now,
-               "extra": r.get("extra") or {}, "last_stat": last.get(r["cid"])} for r in gone]
+               "extra": r.get("extra") or {}, "last_stat": last.get(r["cid"]), **{"game_server": None, "ally_name": None, **fk}} for r in gone]
         _sb_rows("sam_emp_left", lf)
         for i in range(0, len(gone), 100):
             _sb_req("DELETE", f"sam_emp?guild_id=eq.{gid}&cid=in.({','.join(r['cid'] for r in gone[i:i + 100])})", prefer="return=minimal")
