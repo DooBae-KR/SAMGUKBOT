@@ -368,13 +368,13 @@ class VerifyModal(CtxModal, title="연맹 인증"):
             if not job or not nick: err = "명단에 직업/닉네임이 없습니다. 직업과 닉네임을 직접 입력해 주세요."
             elif jobs and job not in jobs: err = f"직업은 다음 중 하나여야 합니다: {', '.join(jobs)}"
         if err:
-            db["tries"][did] = tries + 1; db_save(db)
+            db["tries"][did] = tries + 1; db.setdefault("tried", {})[did] = uid; db_save(db)     # 어떤 CID로 실패했는지 기록(관리자가 CID로 초기화할 수 있게)
             return await it.response.send_message(f"❌ {err} (남은 시도 {MAX_TRIES - tries - 1}회)", ephemeral=True)
         await it.response.defer(ephemeral=True)
         try: role, notes = await apply_verification(it.user, uid, job, nick, info)
         except Exception as e:
             log.exception("역할 부여 실패"); return await it.followup.send(f"처리 중 오류: {e}", ephemeral=True)
-        db["uid"][uid] = did; db.setdefault("nick", {})[uid] = nick; db["tries"].pop(did, None); db_save(db)
+        db["uid"][uid] = did; db.setdefault("nick", {})[uid] = nick; db["tries"].pop(did, None); db.get("tried", {}).pop(did, None); db_save(db)
         await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
 
 
@@ -1459,11 +1459,15 @@ async def hr_link(it: discord.Interaction):
     await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp, cur_gid())}\n멤버 {len(roster.members)}명 기준", ephemeral=True)
 
 
-@bot.tree.command(name="인증해제", description="CID의 인증 기록을 지웁니다(재인증 허용)")
+@bot.tree.command(name="인증해제", description="[관리자] CID의 인증 기록을 지우고 실패 횟수를 초기화합니다(재인증 허용)")
 @admin
 async def unlink(it: discord.Interaction, uid: str):
-    db = db_load(); uid = Roster.norm_uid(uid); r = db["uid"].pop(uid, None); db_save(db)
-    await it.response.send_message("해제했습니다." if r else "기록이 없습니다.", ephemeral=True)
+    db = db_load(); uid = Roster.norm_uid(uid); r = db["uid"].pop(uid, None)
+    fails = [d for d, c in db.get("tried", {}).items() if c == uid]              # 그 CID로 인증하다 실패한 계정의 실패 횟수도 초기화
+    for d in fails: db["tries"].pop(d, None); db["tried"].pop(d, None)
+    db_save(db)
+    msg = ("인증 기록을 해제했습니다." if r else "인증 기록은 없습니다.") + (f" 실패 횟수를 초기화했습니다({len(fails)}명)." if fails else " 이 CID로 실패한 기록은 없습니다.")
+    await it.response.send_message(msg, ephemeral=True)
 
 
 # ---------- 정철 타이머 ----------
