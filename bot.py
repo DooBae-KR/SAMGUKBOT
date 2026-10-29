@@ -182,7 +182,7 @@ def _sb_req(method, path, body=None, prefer=None):
 def _sb_ensure_tenant():
     global _sb_tenant_ok
     if _sb_tenant_ok: return
-    _sb_req("POST", "sam_tenant?on_conflict=guild_id", [{"guild_id": GUILD_ID, "name": "default"}],
+    _sb_req("POST", "sam_alli?on_conflict=guild_id", [{"guild_id": GUILD_ID, "name": "default"}],
             prefer="resolution=ignore-duplicates,return=minimal")
     _sb_tenant_ok = True
 
@@ -200,7 +200,7 @@ def _sb_put(name, data):
 
 
 def _sb_put_tenant(d):
-    _sb_req("POST", "sam_tenant?on_conflict=guild_id",
+    _sb_req("POST", "sam_alli?on_conflict=guild_id",
             [{"guild_id": GUILD_ID, "name": d["name"], "config": {"alliance": d["name"], "server": d["server"]}}],
             prefer="resolution=merge-duplicates,return=minimal")
 
@@ -838,7 +838,7 @@ def _num(v):
 
 def hr_import(now=None):
     """인사 탭을 읽어 중복(같은 CID)을 하나로 묶고, 사람 정보와 주간 수치를 나눠 저장한다.
-    sam_roster: CID·멤버·직업·조별 / sam_roster_stat: 직위·번영·주간 무훈·주간 공헌·주둔지·주 공성 횟수(날짜별)."""
+    sam_emp: CID·멤버·직업·조별 / sam_emp_stat: 직위·번영·주간 무훈·주간 공헌·주둔지·주 공성 횟수(날짜별)."""
     now = now or datetime.datetime.now(datetime.timezone.utc).isoformat()
     snap = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")   # KST 날짜
     rows = list(csv.reader(io.StringIO(fetch_sheet_csv())))
@@ -867,9 +867,9 @@ def hr_import(now=None):
                    "war_merit": _num(g.get("주간 무훈")), "contribution": _num(g.get("주간 공헌")),
                    "camp": (m.group(1).strip() if m else g.get("주둔지", "")), "camp_x": int(m.group(2)) if m else None,
                    "camp_y": int(m.group(3)) if m else None, "siege_count": _num(g.get("주 공성 횟수"))})
-    _sb_rows("sam_roster", ro); _sb_rows("sam_roster_stat", st, conflict="guild_id,cid,snap_date")
-    out = [f"명단(sam_roster): 시트 {len(rows) - hi - 1}줄 → 중복 {dup}건 병합 → {len(ro)}명 (DB 총 {_sb_count('sam_roster')}명)",
-           f"인사 수치(sam_roster_stat): {snap} 기준 {len(st)}건 (DB 총 {_sb_count('sam_roster_stat')}건)"]
+    _sb_rows("sam_emp", ro); _sb_rows("sam_emp_stat", st, conflict="guild_id,cid,snap_date")
+    out = [f"명단(sam_emp): 시트 {len(rows) - hi - 1}줄 → 중복 {dup}건 병합 → {len(ro)}명 (DB 총 {_sb_count('sam_emp')}명)",
+           f"인사 수치(sam_emp_stat): {snap} 기준 {len(st)}건 (DB 총 {_sb_count('sam_emp_stat')}건)"]
     return out, warn
 
 
@@ -878,7 +878,7 @@ def migrate_to_db():
     if not SB_ON: raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY가 설정되지 않았습니다.")
     now = datetime.datetime.now(datetime.timezone.utc).isoformat(); out, warn = [], []
     ally = ally_load(); _sb_ensure_tenant(); _sb_put_tenant(ally); out.append(f"동맹: {ally['server']}서버 {ally['name']}")
-    # 1) 인사 탭 → sam_roster(사람) + sam_roster_stat(날짜별 수치)
+    # 1) 인사 탭 → sam_emp(사람) + sam_emp_stat(날짜별 수치)
     o, w = hr_import(now); out += o; warn += w
     # 2) 인증/외교관
     db = db_load(); nicks, dips = db.get("nick", {}), db.get("dip", {}); used = {}; ver = []
@@ -888,8 +888,8 @@ def migrate_to_db():
     _sb_rows("sam_verified", ver); out.append(f"인증(sam_verified): 봇 {len(db['uid'])}건 → DB {_sb_count('sam_verified')}건")
     dp = [{"guild_id": GUILD_ID, "cid": c, "ally": d.get("ally", ""), "nick": d.get("name", ""), "discord_id": str(db["uid"].get(c, 0)), "created_at": now}
           for c, d in dips.items() if c in db["uid"]]
-    if dp: _sb_rows("sam_diplomat", dp)
-    out.append(f"외교관(sam_diplomat): {len(dp)}건")
+    if dp: _sb_rows("sam_emp_out", dp)
+    out.append(f"외교관(sam_emp_out): {len(dp)}건")
     # 3) 도감
     dx = []
     for cid in db["uid"]:
@@ -899,10 +899,10 @@ def migrate_to_db():
     out.append(f"도감(sam_dex): {len(dx)}명")
     # 4) 정철
     jc = jc_load()
-    _sb_rows("sam_jungchul", [{"guild_id": GUILD_ID, "stock": int(jc.get("stock", 0)), "rate": int(jc.get("rate", JC_RATE)), "pattern": JC_PAT, "updated_at": now,
+    _sb_rows("sam_iron", [{"guild_id": GUILD_ID, "stock": int(jc.get("stock", 0)), "rate": int(jc.get("rate", JC_RATE)), "pattern": JC_PAT, "updated_at": now,
               "stock_at": datetime.datetime.fromtimestamp(jc.get("at", time.time()), datetime.timezone.utc).isoformat(),
               "anchor": datetime.datetime.fromtimestamp(JC_ANCHOR, datetime.timezone.utc).isoformat()}], conflict="guild_id")
-    out.append(f"정철(sam_jungchul): 보유 {jc.get('stock', 0)}개")
+    out.append(f"정철(sam_iron): 보유 {jc.get('stock', 0)}개")
     # 5) 호환 저장소(sam_store): 봇이 실제로 읽는 원본 JSON
     names = ["verified", "jungchul", "alliance", "leave"] + [f"dex_{c}" for c in db["uid"]]; n = 0
     for nm in names:
