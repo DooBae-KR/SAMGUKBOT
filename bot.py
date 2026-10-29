@@ -1420,6 +1420,22 @@ async def cmd_member_add(it: discord.Interaction):
     await it.response.send_modal(MemberAddModal())
 
 
+@bot.tree.command(name="db이관", description="[제작자] 구글 시트 인사 탭의 명단을 DB에 한 번 이관합니다(비상용)")
+async def cmd_db_migrate(it: discord.Interaction):
+    owner = await perm_owner()
+    if it.user.id != owner.id: return await it.response.send_message("제작자만 사용할 수 있습니다.", ephemeral=True)
+    if not SB_ON: return await it.response.send_message("DB가 연결되지 않았습니다.", ephemeral=True)
+    if not (SHEET_ID and ROSTER_GID): return await it.response.send_message("SHEET_ID / ROSTER_GID가 설정되지 않았습니다.", ephemeral=True)
+    await it.response.defer(ephemeral=True)
+    try:
+        rows = await asyncio.to_thread(lambda: list(csv.reader(io.StringIO(fetch_sheet_csv()))))
+        out, warn = await asyncio.to_thread(hr_import, None, rows, GUILD_ID)
+        n = await asyncio.to_thread(roster_load_db, GUILD_ID)
+    except Exception as e:
+        log.exception("DB 이관 실패"); return await it.followup.send(f"❌ 이관 실패: {str(e)[:300]}", ephemeral=True)
+    await it.followup.send("✅ 시트 인사 탭을 DB로 이관했습니다.\n" + "\n".join("• " + x for x in out) + f"\n• 봇 명단 {n}명으로 갱신" + ("\n⚠️ " + "\n⚠️ ".join(warn) if warn else ""), ephemeral=True)
+
+
 @bot.tree.command(name="명단업데이트", description="[관리자] 게임 명단 엑셀(.xlsx)을 올려 명단을 새로 반영합니다")
 @admin_only
 @app_commands.describe(파일="게임에서 받은 명단 엑셀(.xlsx)")
