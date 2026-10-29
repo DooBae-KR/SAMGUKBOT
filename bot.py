@@ -3,7 +3,7 @@
 - UID를 엑셀 명단과 대조해 검증 → 별명을 [직업]닉네임 으로 변경 → 역할(동맹원/간부) 부여
 """
 import urllib.parse, urllib.error, hmac, hashlib, unicodedata
-import tempfile, os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue, contextvars
+import base64, tempfile, os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue, contextvars
 from aiohttp import web
 from pathlib import Path
 import discord
@@ -837,6 +837,55 @@ class AllyApplyModal(CtxModal, title="동맹 등록 신청"):
         except Exception:
             log.exception("제작자 알림 실패")
             await it.followup.send("신청은 접수됐지만 제작자에게 알림을 보내지 못했습니다. 제작자에게 직접 알려 주세요.", ephemeral=True)
+
+
+# ---------- 후원 안내 ----------
+DONATE_PATH = Path(os.environ.get("DONATE_PATH", "donate.json"))
+DONATE_TEXT = "주에 한번씩 제작자의 서버비를 위해 열심히 일할 커피가 필요합니다.\n후원 한번씩 해주시면 감사하겠습니다!"
+DONATE_MAX = 2 * 1024 * 1024                              # QR 이미지 최대 크기
+
+
+def donate_get():
+    """후원 안내(문구 + QR 이미지). 서버와 관계없이 홈 서버 저장소 한 곳에서 읽는다."""
+    tok = _CTX.set(GUILD_ID)
+    try: return store_get("donate", DONATE_PATH, None) or {}
+    finally: _CTX.reset(tok)
+
+
+def donate_put(d):
+    tok = _CTX.set(GUILD_ID)
+    try: store_set("donate", DONATE_PATH, d)
+    finally: _CTX.reset(tok)
+
+
+@bot.tree.command(name="후원", description="제작자 서버비 후원 안내(카카오 QR)를 봅니다")
+async def cmd_donate(it: discord.Interaction):
+    await it.response.defer(ephemeral=True)
+    d = await asyncio.to_thread(donate_get); text = d.get("text") or DONATE_TEXT
+    if d.get("img"):
+        f = discord.File(io.BytesIO(base64.b64decode(d["img"])), filename="donate" + d.get("ext", ".png"))
+        return await it.followup.send(text, file=f, ephemeral=True)
+    await it.followup.send(text + "\n\n(QR 이미지를 준비 중입니다.)", ephemeral=True)
+
+
+@bot.tree.command(name="후원안내설정", description="[제작자] 후원 QR 이미지와 안내 문구를 설정합니다")
+@app_commands.describe(이미지="카카오 QR 이미지(png/jpg)", 문구="안내 문구(비우면 기본 문구)")
+async def cmd_donate_set(it: discord.Interaction, 이미지: discord.Attachment = None, 문구: str = ""):
+    owner = await perm_owner()
+    if it.user.id != owner.id: return await it.response.send_message("제작자만 사용할 수 있습니다.", ephemeral=True)
+    await it.response.defer(ephemeral=True)
+    d = await asyncio.to_thread(donate_get); d = dict(d)
+    if 이미지 is not None:
+        ext = Path(이미지.filename).suffix.lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".webp") or not (이미지.content_type or "").startswith("image/"):
+            return await it.followup.send("❌ png/jpg 이미지만 올릴 수 있습니다.", ephemeral=True)
+        if 이미지.size > DONATE_MAX: return await it.followup.send("❌ 이미지는 2MB 이하로 올려 주세요.", ephemeral=True)
+        d["img"] = base64.b64encode(await 이미지.read()).decode("ascii"); d["ext"] = ext
+    if 문구.strip(): d["text"] = 문구.strip().replace("\\n", "\n")[:800]
+    await asyncio.to_thread(donate_put, d)
+    f = discord.File(io.BytesIO(base64.b64decode(d["img"])), filename="donate" + d.get("ext", ".png")) if d.get("img") else None
+    await it.followup.send("✅ 설정했습니다. 미리보기:\n\n" + (d.get("text") or DONATE_TEXT), file=f, ephemeral=True) if f else \
+        await it.followup.send("✅ 설정했습니다. (이미지는 아직 없습니다)\n\n" + (d.get("text") or DONATE_TEXT), ephemeral=True)
 
 
 def admin_only(f): return f          # 디스코드 기본 권한으로 숨기지 않고, 함수 안(is_admin)에서 판정(제작자가 승인한 관리자도 사용)
