@@ -924,17 +924,6 @@ async def hr_sync_loop():
     except Exception: log.exception("인사 자동 반영 오류")
 
 
-@bot.tree.command(name="db이관", description="[관리자] 시트(인사 탭·봇_저장)의 값을 Supabase DB로 이관합니다")
-@admin_only
-async def cmd_migrate(it: discord.Interaction):
-    if not is_admin(it): return await it.response.send_message("관리자만 사용할 수 있습니다.", ephemeral=True)
-    await it.response.defer(ephemeral=True)
-    try: out, warn = await asyncio.to_thread(migrate_to_db)
-    except Exception as e:
-        log.exception("DB 이관 실패"); return await it.followup.send(f"❌ 이관 실패: {str(e)[:300]}", ephemeral=True)
-    await it.followup.send("✅ **DB 이관 완료**\n" + "\n".join("• " + x for x in out) + ("\n\n⚠️ " + "\n⚠️ ".join(warn) if warn else ""), ephemeral=True)
-
-
 @bot.tree.command(name="명단업데이트", description="[관리자] 명단을 새로 반영합니다 (엑셀 첨부 또는 구글 시트)")
 @admin_only
 @app_commands.describe(파일="새 명단 엑셀(.xlsx). 비우면 구글 시트에서 받아옵니다")
