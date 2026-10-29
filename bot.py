@@ -662,11 +662,10 @@ class Bot(discord.Client):
     async def on_member_join(self, m: discord.Member):
         if not licensed(m.guild.id) or m.bot: return
         set_gid(m.guild.id)
-        text = f"{m.mention} 환영합니다! 아래 **인증하기** 버튼을 눌러 CID · 직업 · 닉네임을 입력해 주세요."
         ch = m.guild.get_channel(VERIFY_CHANNEL_ID) if VERIFY_CHANNEL_ID else None
         try:
-            if ch: await ch.send(text, view=VerifyView())
-            else: await m.send(text, view=VerifyView())
+            if ch: await ch.send(f"{m.mention} 환영합니다! 채팅창에 `/인증` 을 입력하면 나에게만 보이는 인증 창이 열립니다. CID · 직업 · 닉네임을 입력해 주세요.")
+            else: await m.send("환영합니다! 아래 **인증하기** 버튼을 눌러 CID · 직업 · 닉네임을 입력해 주세요. (서버에서 `/인증` 으로도 열 수 있습니다)", view=VerifyView())
         except discord.Forbidden: log.warning("안내 메시지 전송 실패: %s", m)
 
 
@@ -729,6 +728,12 @@ async def dip_remove(it: discord.Interaction, cid: str):
             await m.edit(nick=None, reason=f"외교관 해제({it.user.display_name})")
         except discord.Forbidden: note = " (역할/별명 변경 권한 부족 — 직접 정리해 주세요)"
     await it.response.send_message(f"**[{d['ally']}] {d['name']}** 외교관 등록을 해제했습니다.{note}", ephemeral=True)
+
+
+@bot.tree.command(name="인증", description="CID 인증 창을 엽니다(나에게만 보임)")
+async def cmd_verify(it: discord.Interaction):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    await it.response.send_message("**연맹 인증**\n버튼을 눌러 CID · 직업 · 닉네임을 입력하면 별명과 역할이 자동으로 설정됩니다.", view=VerifyView(), ephemeral=True)
 
 
 @bot.tree.command(name="인증패널", description="인증 버튼 패널을 이 채널에 게시합니다")
@@ -952,6 +957,7 @@ async def donate_loop():
 
 CMD_HELP = {
     "동맹원": [("/동맹등록", "서버 번호·동맹명을 등록(승인 전 서버는 제작자에게 신청)"),
+             ("/인증", "CID 인증 창 열기(나에게만 보임)"),
              ("/도감", "내 보유 장수·전법을 체크하는 개인 링크"),
              ("/후원", "제작자 서버비 후원 안내(카카오 QR)"),
              ("/명령어", "내 역할로 쓸 수 있는 명령어 보기")],
