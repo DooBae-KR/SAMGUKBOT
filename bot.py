@@ -954,7 +954,7 @@ CMD_HELP = {
     "간부": [("/인사", "인사데이터(상황판) 링크"),
            ("/공성등록", "공성 주둔지 등록"), ("/공성", "정철 개수·공성 예상 일정"), ("/공성취소", "등록한 공성 취소"),
            ("/공성예약", "공성 시각 예약(30분 전 간부 호출)"), ("/공성예약취소", "공성 예약 취소"),
-           ("/정철설정", "정철 보유량 맞추기")],
+           ("/정철설정", "정철 보유량 맞추기"), ("/동맹수정", "등록된 서버 번호·동맹명 수정")],
 }
 
 
@@ -1168,10 +1168,17 @@ async def start_web():
 @bot.tree.command(name="동맹등록", description="서버 번호(숫자)와 동맹명을 등록합니다. 승인 전 서버는 제작자에게 신청됩니다")
 async def cmd_ally(it: discord.Interaction):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
-    if licensed(it.guild_id):                              # 이미 승인된 서버: 간부가 정보 수정
-        if not is_staff(it): return await it.response.send_message("간부만 수정할 수 있습니다.", ephemeral=True)
-        return await it.response.send_modal(AllyModal())
+    if licensed(it.guild_id):                              # 이미 등록된 서버는 한 번만 등록 가능 → 수정은 /동맹수정
+        return await it.response.send_message("이미 등록된 동맹입니다. 정보 변경은 간부가 `/동맹수정`으로 해 주세요.", ephemeral=True)
     await it.response.send_modal(AllyApplyModal())         # 승인 전 서버: 제작자에게 신청
+
+
+@bot.tree.command(name="동맹수정", description="[간부] 등록된 서버 번호·동맹명을 수정합니다")
+async def cmd_ally_edit(it: discord.Interaction):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if not licensed(it.guild_id): return await it.response.send_message("먼저 `/동맹등록`으로 동맹을 등록해 주세요.", ephemeral=True)
+    if not is_staff(it): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
+    await it.response.send_modal(AllyModal())
 
 
 # ---------- 시트 → Supabase 이관 ----------
