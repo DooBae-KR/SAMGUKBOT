@@ -1594,33 +1594,79 @@ def unit_state(deck, heroes, hd):
                 for hero_slots in r[1]:
                     for cell in hero_slots:
                         for x in re.split(r"[/>+,]", cell): names.add(_nk(x))
-    return {"hs": hs, "G": G, "U": U, "deck": names, "picks": [], "styles": " ".join((hd.get(h) or {}).get("style", "") for h in hs)}
+    st = {"hs": hs, "G": G, "U": U, "deck": names, "picks": [], "healed": any("치유" in (hd.get(h) or {}).get("sktrait", "") or "회복" in ((hd.get(h) or {}).get("desc") or "") for h in hs),
+          "styles": " ".join((hd.get(h) or {}).get("style", "") for h in hs)}
+    st["trait"] = unit_trait(st, hd); return st
 
 
-def pick_tactics(st, count, own_s, used, hd, skd, skn):
-    """한 부대에 전법을 count개 더 고른다. 점수: ① 장수 기술이 필요로 하는 이상상태를 부여(+6) ② 부대가 부여하는 이상상태를 활용(+4)
-    ③ 티어덱 추천(+3) ④ 장수 역할(병기·책략·보조) 적합(+2). 부대가 만들지 못하는 이상상태를 전제로 하면 -3."""
-    G, U, styles = st["G"], st["U"], st["styles"]
+_TI = {}
+DOT_ST = {"화공", "연소", "짐독"}
+ORDER = {"지휘": 1, "패시브": 2, "액티브": 3, "추격": 5}          # 발동 순서: 지휘 → 패시브 → 액티브 → (4: 평타) → 추격
 
-    def fit(sname):
-        tr = (skd.get(sname) or {}).get("trait", "")
-        return (tr == "병기" and "병기" in styles) or (tr == "책략" and "책략" in styles) or (tr in ("보조", "치유", "방어") and any(x in styles for x in ("보조", "치유", "방어")))
+
+def tact_info(name, skd):
+    """전법 분류: 종류·계열, 부여/활용 이상상태, 딜 방식(도트딜=누적 / 한방딜=고배율 / 일반딜), 회복류 여부."""
+    t = skd.get(name) or {}
+    desc = re.sub(r"\s+", " ", t.get("desc") or "")
+    key = (name, desc)
+    if key in _TI: return _TI[key]
+    g, u = status_of(desc)
+    pc = [float(x) for x in re.findall(r"→ ?(\d+(?:\.\d+)?)%의? ?(?:책략|병기|책략과 병기|병기와 책략)?(?:\s?피해)", desc)]
+    peak, total = (max(pc), sum(pc)) if pc else (0, 0)
+    rep = bool(re.search(r"매 턴|턴 시작 시|턴 종료 시|총 \d회|\d회 발동|행동 시", desc)) and bool(pc)
+    dot = bool(g & DOT_ST) or rep
+    burst = (peak >= 250 or total >= 300) and not dot
+    heal = t.get("trait") == "치유" or bool(re.search(r"병력을? 회복|치유율|회유이?\(?가?\)? ?\d|정신 회복|심리", desc))
+    kind = "도트딜" if dot else "한방딜" if burst else "일반딜" if pc else "회복" if heal else "지원"
+    info = {"type": t.get("type", ""), "trait": t.get("trait", ""), "g": g - {"정화"}, "u": u - {"디버프"}, "peak": peak, "kind": kind, "heal": heal,
+            "flood": "홍수" in g, "threat": "위협" in g, "uses_flood": "홍수" in u or "홍수" in desc and t.get("trait") == "책략"}
+    _TI[key] = info; return info
+
+
+def unit_trait(st, hd):
+    """부대 주력 계열: 장수 기술 계열(책략/병기) 다수결."""
+    c = {"책략": 0, "병기": 0}
+    for h in st["hs"]:
+        tr = (hd.get(h) or {}).get("sktrait", "")
+        for k in c:
+            if k in tr: c[k] += 1
+        for k in c:
+            if k in (hd.get(h) or {}).get("style", ""): c[k] += 0.5
+    return "책략" if c["책략"] > c["병기"] else "병기" if c["병기"] > c["책략"] else ""
+
+
+def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜"):
+    """한 부대에 전법을 count개 더 고른다.
+    ① 딜 방식: 선호(기본 도트딜)와 같으면 +3, 반대 방식(한방딜)이면 -1.5  ② 책략 부대는 홍수 부여(+5)·홍수 활용(+3),
+    병기 부대는 위협 부여(+6)  ③ 장수 기술이 필요로 하는 이상상태를 부여 +6 / 부대 이상상태 활용 +4  ④ 회복류가 없으면 회복류 +3 (회유·정신 회복 포함)
+    ⑤ 티어덱 +3, 계열 적합 +2  ⑥ 지휘·패시브로 먼저 깔리는 이상상태 부여는 +1(발동 순서가 빠름)."""
+    G, U = st["G"], st["U"]
+    trait = st.setdefault("trait", "")
     for _ in range(count):
         best = None
         for k in sorted(own_s - used):
-            n = skn.get(k, k); g, u = status_of((skd.get(n) or {}).get("desc")); why = []; sc = 0.0
+            n = skn.get(k, k); ti = tact_info(n, skd); g, u = ti["g"] | (status_of((skd.get(n) or {}).get("desc"))[0] & {"정화"}), ti["u"]
+            why = []; sc = 0.0
             need = {x for x in U if x != "디버프"} - G
             for x in sorted((g - {"정화"}) & need): sc += 6; why.append(f"{x} 부여")
-            anyg = any(y != "정화" for y in G)
-            if "디버프" in U and not anyg and any(x != "정화" for x in g): sc += 4; why.append("디버프 부여")
-            for x in sorted(u & (G | ({"디버프"} if anyg else set()))): sc += 4; why.append(f"{x} 활용")
-            if u - G - g - {"디버프"}: sc -= 3
+            for x in sorted(u & G): sc += 4; why.append(f"{x} 활용")
+            if trait == "책략":
+                if ti["flood"] and "홍수" not in G: sc += 5; why.append("홍수 부여")
+                elif ti["trait"] == "책략" and "홍수" in G and ("홍수" in u or ti["uses_flood"]): sc += 3; why.append("홍수 활용")
+            if trait == "병기" and ti["threat"] and "위협" not in G: sc += 6; why.append("위협 부여")
+            if (u - G - g) - {"디버프"}: sc -= 3
+            if ti["kind"] == deal: sc += 3; why.append(deal)
+            elif ti["kind"] in ("한방딜", "도트딜"): sc -= 1.5
+            if (ti["heal"] or ti["kind"] == "회복") and not st["healed"]: sc += 3; why.append("회복")
+            if ti["trait"] == trait and trait: sc += 2
             if k in st["deck"]: sc += 3; why.append("티어덱")
-            if fit(n): sc += 2; why.append("역할")
+            if ti["type"] in ("지휘", "패시브") and g: sc += 1
             sc += {"전설": 0.6, "영웅": 0.3}.get((skd.get(n) or {}).get("grade"), 0)
-            if best is None or sc > best[0]: best = (sc, k, n, why, g, u)
+            if best is None or sc > best[0]: best = (sc, k, n, why, g, u, ti)
         if best is None: return
-        _, k, n, why, g, u = best; used.add(k); G |= g; U |= u; st["picks"].append((n, "·".join(why[:2]) or "보유 전법"))
+        _, k, n, why, g, u, ti = best; used.add(k); G |= g; U |= u
+        if ti["heal"] or ti["kind"] == "회복": st["healed"] = True
+        st["picks"].append((n, "·".join(dict.fromkeys(why))[:30] if False else "·".join(list(dict.fromkeys(why))[:2]) or "보유 전법"))
 
 
 def finish_tactics(st, hd, skd):
@@ -1630,10 +1676,11 @@ def finish_tactics(st, hd, skd):
         tr = (skd.get(n) or {}).get("trait", "")
         order = sorted((h for h in st["hs"] if len(out[h]) < 2), key=lambda h: (len(out[h]), tr not in (hd.get(h) or {}).get("style", "")))
         if order: out[order[0]].append((n, why))
+    for h in out: out[h].sort(key=lambda x: ORDER.get(tact_info(x[0], skd)["type"], 3))
     return out, (sorted(st["G"] - {"정화"}), sorted(x for x in st["U"] - st["G"] if x != "디버프"))
 
 
-def recommend_decks(own_h, own_s, season, hd, skd, units=5):
+def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜"):
     """티어덱 순서대로 5부대 편성. 한 번 쓴 장수·전법은 다시 쓰지 않는다.
     덱을 통째로 못 만들면 2명 이상, 그다음 1명 이상 보유한 덱을 고르고 빈자리는 같은 역할의 미사용 보유 장수로 채운다."""
     decks = tier_data()["S1" if season == 1 else "S2"]
@@ -1678,7 +1725,7 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5):
     sts = [unit_state(deck, hs, hd) for deck, hs in plan]
     for rnd in (1, 2):                                       # 1라운드: 모든 장수가 전법 1개씩(티어덱 순서), 2라운드: 남은 전법으로 2번째 칸
         for st in sts:
-            pick_tactics(st, len(st["hs"]) if rnd == 1 else len(st["hs"]), own_s, usedS, hd, skd, skn)
+            pick_tactics(st, len(st["hs"]), own_s, usedS, hd, skd, skn, deal)
     res = []
     for (deck, hs), st in zip(plan, sts):
         tac, ss = finish_tactics(st, hd, skd)
@@ -1694,17 +1741,29 @@ def reco_chunks(text, lim=1900):
     return out + [cur] if cur else out
 
 
-def reco_text(season, res, who):
-    lines = [f"🃏 **{who} 추천덱 — 시즌{season}** (티어덱 순서 · 한 번 쓴 장수·전법은 다시 쓰지 않음 · 전법은 이상상태 궁합 기준)"]
+ICON = {"한방딜": "💥", "도트딜": "🔥", "일반딜": "⚔️", "회복": "💚", "지원": "🛡️"}
+
+
+def reco_text(season, res, who, skd=None, deal="도트딜"):
+    skd = skd or {}
+    lines = [f"🃏 **{who} 추천덱 — 시즌{season}** (티어덱 순서 · 한 번 쓴 장수·전법은 다시 쓰지 않음 · 딜 방식 **{deal}** 우선)",
+             "💥한방딜(고배율) 🔥도트딜(누적) ⚔️일반딜 💚회복 🛡️지원 · 책략↔홍수 / 병기↔위협 궁합 반영"]
     for i, (deck, unit, st) in enumerate(res, 1):
         lines.append(f"\n**{i}부대** " + (f"{deck['tier']} {deck['name']} ({'·'.join(deck['heroes'])}) · {deck.get('form') or '진형 미정'}" if deck else "티어덱 없음 · 자유 편성"))
+        allt = []
         for h, tac in unit:
             if not h["n"]: lines.append("• (보유 장수 부족)"); continue
             note = f" ← {h['src']}" if h["src"] else ""
-            lines.append(f"• {h['n']}{note} — " + (", ".join(f"{t}({w})" for t, w in tac) if tac else "전법 없음(보유 전법 부족)"))
+            def fmt(t, w):
+                ti = tact_info(t, skd); return f"{ICON[ti['kind']]}{t}[{ti['type']}·{ti['trait']}]" + (f"({w})" if w else "")
+            lines.append(f"• {h['n']}{note} — " + (", ".join(fmt(t, w) for t, w in tac) if tac else "전법 없음(보유 전법 부족)"))
+            allt += [t for t, _ in tac]
+        if allt:
+            seq = sorted(allt, key=lambda t: ORDER.get(tact_info(t, skd)["type"], 3))
+            lines.append("  ↳ 발동순서: " + " → ".join(f"{t}" for t in seq if ORDER.get(tact_info(t, skd)["type"], 3) < 4) + (" → 평타 → " if any(ORDER.get(tact_info(t, skd)["type"], 3) < 4 for t in seq) else "평타 → ") + (", ".join(t for t in seq if ORDER.get(tact_info(t, skd)["type"], 3) > 4) or "(추격 없음)"))
         if st[0] or st[1]:
             lines.append("  ↳ 이상상태: " + (f"부여 {', '.join(st[0])}" if st[0] else "부여 없음") + (f" · 부족 {', '.join(st[1])}" if st[1] else ""))
-    lines.append("\n티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다. 시즌 변경: `/추천덱 시즌:1` 또는 `시즌:2`")
+    lines.append("\n티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다. 변경: `/추천덱 시즌:2` · `딜:한방딜`")
     return "\n".join(lines)
 
 
@@ -1726,9 +1785,10 @@ def reco_build(did, season):
     if not dex.get("own"): return None, "보유 장수가 없습니다. `/도감`에서 보유 장수와 전법을 먼저 체크해 주세요."
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
-    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd)
+    deal = pref_get(did).get("deal", "도트딜")
+    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal)
     who = (roster.by_uid.get(cid) or {}).get("name") or "내"
-    return reco_text(season, res, who), None
+    return reco_text(season, res, who, skd, deal), None
 
 
 class SeasonPick(CtxView):
@@ -1749,11 +1809,13 @@ class SeasonPick(CtxView):
 
 
 @bot.tree.command(name="추천덱", description="내 보유 장수·전법으로 티어덱 순서대로 5부대를 편성해 줍니다")
-@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)")
-@app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2)])
-async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None):
+@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)", 딜="전법 우선 방식: 도트딜(누적, 기본) / 한방딜(고배율) — 고르면 기억")
+@app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2)],
+                      딜=[app_commands.Choice(name="도트딜", value="도트딜"), app_commands.Choice(name="한방딜", value="한방딜")])
+async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None, 딜: app_commands.Choice[str] = None):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
     did = it.user.id
+    if 딜 is not None: await asyncio.to_thread(pref_set, did, deal=딜.value)
     if 시즌 is None:
         saved = await asyncio.to_thread(lambda: pref_get(did).get("season"))
         if saved not in (1, 2):                                          # 처음이면 시즌을 묻는다
