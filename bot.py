@@ -621,7 +621,7 @@ BOT_CAT = "봇"
 
 
 async def bot_cat(g):
-    """서버 채널 목록 맨 아래에 있는 '봇' 카테고리(없으면 만든다). 관리자가이드·명령어로그·후원 채널을 여기에 둔다. 만들 수 없으면 None."""
+    """서버 채널 목록 맨 아래에 있는 '봇' 카테고리(없으면 만든다). 명령어로그·후원 채널을 여기에 둔다. 만들 수 없으면 None."""
     cat = discord.utils.get(g.categories, name=BOT_CAT)
     try:
         if cat is None: cat = await g.create_category(BOT_CAT, reason="봇 채널 모음(최하단)")
@@ -723,15 +723,17 @@ async def guide_post(g):
     if ch is None and me is not None and time.time() - _log_fail.get(("g", g.id), 0) > 3600:
         topic = "관리자 가이드북 (서버 관리자만 볼 수 있습니다)"
         try:
-            ch = await g.create_text_channel(GUIDE_CH, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}, topic=topic, category=await bot_cat(g), reason="관리자 가이드북 채널")
+            ch = await g.create_text_channel(GUIDE_CH, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}, topic=topic, position=0, reason="관리자 가이드북 채널")
         except Exception as e1:
             try:
-                ch = await g.create_text_channel(GUIDE_CH, topic=topic, category=await bot_cat(g), reason="관리자 가이드북 채널")
+                ch = await g.create_text_channel(GUIDE_CH, topic=topic, position=0, reason="관리자 가이드북 채널")
                 try: await ch.set_permissions(g.default_role, view_channel=False)
                 except Exception as e3: log.warning("가이드 채널 비공개 설정 실패 %s: %r", g.id, e3)
             except Exception as e2:
                 _log_fail[("g", g.id)] = time.time(); log.warning("관리자 가이드 채널 생성 실패 서버=%s 1차=%r 2차=%r", g.id, e1, e2); return None
-    if ch is not None and getattr(ch, "category", None) is None: await to_bottom(g, ch)
+    if ch is not None and getattr(ch, "category", None) is not None and ch.category.name == BOT_CAT:       # 예전에 '봇' 카테고리로 옮겨졌다면 최상단으로 되돌린다
+        try: await ch.edit(category=None, position=0, sync_permissions=False)
+        except Exception as e: log.warning("가이드 채널을 최상단으로 옮기지 못했습니다 서버=%s: %r", g.id, e)
     if ch is None or me is None or not ch.permissions_for(me).send_messages: return None
     def st():
         tok = _CTX.set(g.id)
