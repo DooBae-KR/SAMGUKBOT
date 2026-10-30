@@ -679,11 +679,11 @@ GUIDE_PATH = Path(os.environ.get("GUIDE_PATH", "guide.json"))
 GUIDE_DIR = Path(__file__).parent / "guides"
 
 
-async def _guide_channel(g, name, public, pdf, topic, text):
-    """가이드 채널을 만들고(없으면) PDF를 올린다. PDF 내용이 바뀌면 이전 글을 지우고 새로 올린다. 만들 수 없으면 None."""
+async def _guide_channel(g, name, public, prefix, topic, text):
+    """가이드 채널을 만들고(없으면) 가이드 이미지를 올린다. 이미지 내용이 바뀌면 이전 글을 지우고 새로 올린다. 만들 수 없으면 None."""
     me = g.me
-    f = GUIDE_DIR / pdf
-    if me is None or not f.exists(): return None
+    files = sorted(GUIDE_DIR.glob(prefix + "*.png"))[:10]
+    if me is None or not files: return None
     ch = discord.utils.get(g.text_channels, name=name)
     if ch is None and time.time() - _log_fail.get((name, g.id), 0) > 3600:
         mine = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True)
@@ -700,7 +700,7 @@ async def _guide_channel(g, name, public, pdf, topic, text):
     if getattr(ch, "category", None) is not None and ch.category.name == BOT_CAT:       # 예전에 '봇' 카테고리로 옮겨졌다면 최상단으로 되돌린다
         try: await ch.edit(category=None, position=0, sync_permissions=False)
         except Exception as e: log.warning("가이드 채널을 최상단으로 옮기지 못했습니다 서버=%s: %r", g.id, e)
-    key = "admin" if not public else "user"; ver = hashlib.sha1(f.read_bytes()).hexdigest()[:10]
+    key = "admin" if not public else "user"; ver = hashlib.sha1(b"".join(f.read_bytes() for f in files)).hexdigest()[:10]
 
     def st():
         tok = _CTX.set(g.id)
@@ -714,7 +714,7 @@ async def _guide_channel(g, name, public, pdf, topic, text):
         except Exception: pass
     try: await ch.purge(limit=50, check=lambda m: m.author == me)                           # 남은 봇 글도 정리
     except Exception: pass
-    m = await ch.send(text, file=discord.File(f, filename=name + ".pdf"), allowed_mentions=discord.AllowedMentions.none())
+    m = await ch.send(text, files=[discord.File(f, filename=f"{name}_{i}.png") for i, f in enumerate(files, 1)], allowed_mentions=discord.AllowedMentions.none())
 
     def sv():
         tok = _CTX.set(g.id)
@@ -726,9 +726,9 @@ async def _guide_channel(g, name, public, pdf, topic, text):
 
 
 async def guide_post(g):
-    """#관리자가이드(관리자·봇만)와 #이용자가이드(모두 읽기 전용)를 만들고 PDF 가이드를 올린다. → 관리자가이드 채널"""
-    ch = await _guide_channel(g, GUIDE_CH, False, "admin_guide.pdf", "관리자 가이드 (서버 관리자만 볼 수 있습니다)", "📘 **관리자 가이드** — 관리 페이지(`/관리`), 권한, 채널, 문제 해결을 정리했습니다. 내용이 바뀌면 이 글이 자동으로 새 버전으로 교체됩니다.")
-    await _guide_channel(g, USER_GUIDE_CH, True, "user_guide.pdf", "동맹원용 이용 가이드", "📗 **이용자 가이드** — 인증하기, 자주 쓰는 명령어, 추천덱 보는 법을 1장으로 정리했습니다. 내용이 바뀌면 이 글이 자동으로 새 버전으로 교체됩니다.")
+    """#관리자가이드(관리자·봇만)와 #이용자가이드(모두 읽기 전용)를 만들고 가이드 이미지를 올린다. → 관리자가이드 채널"""
+    ch = await _guide_channel(g, GUIDE_CH, False, "admin_guide", "관리자 가이드 (서버 관리자만 볼 수 있습니다)", "📘 **관리자 가이드** — 관리 페이지(`/관리`), 권한, 채널, 문제 해결을 정리했습니다. 내용이 바뀌면 이 글이 자동으로 새 버전으로 교체됩니다.")
+    await _guide_channel(g, USER_GUIDE_CH, True, "user_guide", "동맹원용 이용 가이드", "📗 **이용자 가이드** — 인증하기, 자주 쓰는 명령어, 추천덱 보는 법을 1장으로 정리했습니다. 내용이 바뀌면 이 글이 자동으로 새 버전으로 교체됩니다.")
     return ch
 
 
