@@ -374,6 +374,7 @@ class VerifyModal(CtxModal, title="연맹 인증"):
         try: role, notes = await apply_verification(it.user, uid, job, nick, info)
         except Exception as e:
             log.exception("역할 부여 실패"); return await it.followup.send(f"처리 중 오류: {e}", ephemeral=True)
+        db = db_load()                                                  # 역할 부여(await) 중에 다른 사람의 실패 기록이 바뀌었을 수 있으니 최신본에 반영(덮어쓰기 방지)
         db["uid"][uid] = did; db.setdefault("nick", {})[uid] = nick; db["tries"].pop(did, None); db.get("tried", {}).pop(did, None); db_save(db)
         await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
 
