@@ -70,7 +70,7 @@ td.win{background:#10261e}td.lose{background:#2a1714}td.neu{background:#1e2216}
 .dogam{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px}
 .dg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
 .dg img{width:100%;aspect-ratio:120/188;object-fit:cover;border-radius:6px}
-.dg.off{opacity:.38}.trs{display:block;margin-top:4px;color:var(--gold,#e0b65a)!important}.trs select{background:#0b1312;color:inherit;border:1px solid var(--line);border-radius:6px;padding:1px 4px;font-size:11px}
+.dg.off{opacity:.38}.trs{display:block;margin-top:4px;color:var(--gold,#e0b65a)!important}.tra{display:block;margin-top:3px;font-size:10px}.tra input{width:28px;background:#0b1312;color:inherit;border:1px solid var(--line);border-radius:4px;font-size:10px;padding:0 2px;margin-right:2px}.tra em{display:block;font-style:normal;opacity:.7}.trs select{background:#0b1312;color:inherit;border:1px solid var(--line);border-radius:6px;padding:1px 4px;font-size:11px}
 .dg b{display:block;margin-top:4px;font-size:12px}.dg span{font-size:11px;color:var(--mut)}
 #tip{position:fixed;z-index:50;pointer-events:none;max-width:340px;background:#0a0f0eF2;border:1px solid var(--jade);border-radius:10px;padding:10px 12px;font-size:12.5px;display:none;box-shadow:0 8px 30px #000a}
 #tip h4{font:700 14px var(--serif);margin-bottom:4px}
@@ -367,7 +367,7 @@ let OWN=new Set();
 try{OWN=new Set(CFG.t?CFG.own:JSON.parse(localStorage.getItem('own')||'[]'))}catch(e){}
 let OWNSK=new Set();
 try{OWNSK=new Set(CFG.t?CFG.ownsk:JSON.parse(localStorage.getItem('ownsk')||'[]'))}catch(e){}
-let TR={};
+let TR={};const trN=n=>{const v=TR[n];return !v?0:typeof v==='object'?(v.n|0):(v|0)};const trA=n=>{const v=TR[n];return v&&typeof v==='object'&&Array.isArray(v.a)?v.a.map(x=>x|0):[0,0,0,0]};
 try{TR=CFG.t?(CFG.tr||{}):JSON.parse(localStorage.getItem('tr')||'{}')}catch(e){}
 let _st=null,_tm=null;
 function _status(m,ok){if(!CFG.t)return;if(!_st){_st=document.createElement('div');_st.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99;padding:7px 12px;border-radius:8px;font:13px system-ui;background:#222;color:#fff;box-shadow:0 2px 8px #0004';document.body.appendChild(_st)}_st.textContent=m;_st.style.background=ok===false?'#b3261e':ok?'#1b7a4b':'#444'}
@@ -532,7 +532,7 @@ dogam(){
   return `<h1>장수 도감</h1><p class="sub">${dsBar()}가지고 있는 장수를 눌러 켜세요. 장수 전용 전법은 장수를 가지면 자동 보유입니다. 그 외 학습 전법은 전법 도감에서 따로 눌러야 하고, 덱 진행도(%)는 장수 + 전용 전법 + 학습 전법을 모두 합쳐 계산합니다. 선택은 자동으로 저장됩니다.</p>
   <div class="bar"><b>보유 ${[...OWN].length}명 · 직접 고른 전법 ${OWNSK.size}개</b><button data-all>전체 선택</button><button data-clear>초기화</button></div>
   <div class="dogam">${used.map(n=>{const on=OWN.has(n);const sk=EXCL[n]?['전용: '+EXCL[n]]:[];
-    const x=HD[n]||{};return `<div class="dg ${on?'on':''}" data-own="${n}" title="${esc(((x.sk||'')+' — '+(x.desc||'')).slice(0,300))}">${IMG(n)?`<img src="${IMG(n)}" loading="lazy" onerror="this.outerHTML='<div class=noimg>${n}</div>'">`:`<div class="noimg">${n}</div>`}<b>${n}${x.season==2?' <i class="s2">S2</i>':''}</b><span class="hi">${[x.nation,x.pos,x.troop].filter(Boolean).join(' · ')}</span><span>${on?(sk.length?sk.join(' · '):'전용 전법 미확인'):'미보유'}</span>${on?`<span class="trs" data-trs="${n}">초월 <select data-trsel="${n}">${[0,1,2,3,4,5].map(i=>`<option value="${i}"${(TR[n]||0)===i?' selected':''}>${i}</option>`).join('')}</select></span>`:''}</div>`}).join('')}</div>
+    const x=HD[n]||{};return `<div class="dg ${on?'on':''}" data-own="${n}" title="${esc(((x.sk||'')+' — '+(x.desc||'')).slice(0,300))}">${IMG(n)?`<img src="${IMG(n)}" loading="lazy" onerror="this.outerHTML='<div class=noimg>${n}</div>'">`:`<div class="noimg">${n}</div>`}<b>${n}${x.season==2?' <i class="s2">S2</i>':''}</b><span class="hi">${[x.nation,x.pos,x.troop].filter(Boolean).join(' · ')}</span><span>${on?(sk.length?sk.join(' · '):'전용 전법 미확인'):'미보유'}</span>${on?`<span class="trs" data-trs="${n}">초월 <select data-trsel="${n}">${[0,1,2,3,4,5].map(i=>`<option value="${i}"${trN(n)===i?' selected':''}>${i}</option>`).join('')}</select>${trN(n)?`<span class="tra">${['무','지','통','선'].map((l,i)=>`${l}<input type="number" min="0" max="${trN(n)*10}" value="${trA(n)[i]}" data-tra="${n}|${i}">`).join(' ')}<em>남은 ${trN(n)*10-trA(n).reduce((a,b)=>a+b,0)}</em></span>`:''}</span>`:''}</div>`}).join('')}</div>
   ${recHTML()}
   <div class="sec">내 덱 완성도 <small style="font-weight:400">(장수 + 전용 전법 + 학습 전법)</small></div>
   <div class="comp">${rows.map(({d,s})=>`<div class="cp ${s.tp===100?'full':''}"><div class="cph"><b>${d.name}</b><span class="tag ${d.menu==='pvp'?'pvp':'dev'}">${d.menu==='pvp'?'PvP 0티어':'개척'}</span><span class="big">${s.tp}%</span></div>
@@ -649,7 +649,7 @@ document.addEventListener('click',e=>{
   if(e.target.closest('[data-clear]')){OWN.clear();OWNSK.clear();TR={};saveOwn();render();return}
   const o=e.target.closest('[data-open]');if(o)openDet(o.dataset.open);
 });
-document.addEventListener('change',e=>{if(e.target.dataset&&e.target.dataset.trsel){const n=e.target.dataset.trsel,v=+e.target.value;if(v>0)TR[n]=v;else delete TR[n];saveOwn();return}if(e.target.id==='dsel'){DSEASON=+e.target.value;try{localStorage.setItem('ds',DSEASON)}catch(x){};const y=scrollY;render();scrollTo(0,y)}});
+document.addEventListener('change',e=>{if(e.target.dataset&&e.target.dataset.trsel){const n=e.target.dataset.trsel,v=+e.target.value;if(v>0){let a=trA(n),cap=v*10;while(a.reduce((x,y)=>x+y,0)>cap){let i=a.lastIndexOf(Math.max(...a));a[i]--}TR[n]={n:v,a}}else delete TR[n];saveOwn();render();return}if(e.target.dataset&&e.target.dataset.tra){const[n,i]=e.target.dataset.tra.split('|'),a=trA(n),cap=trN(n)*10;let v=Math.max(0,Math.min(cap,+e.target.value||0));const rest=a.reduce((x,y,j)=>x+(j==+i?0:y),0);v=Math.min(v,cap-rest);a[+i]=v;TR[n]={n:trN(n),a};saveOwn();render();return}if(e.target.id==='dsel'){DSEASON=+e.target.value;try{localStorage.setItem('ds',DSEASON)}catch(x){};const y=scrollY;render();scrollTo(0,y)}});
 window.addEventListener('hashchange',()=>{let h=location.hash.slice(1);if(OLD[h]){DSEASON=OLD[h][1];h=OLD[h][0]}if(V[h]&&h!==cur){cur=h;render()}});
 if(!V[cur])cur='pvp';render();
 </script>

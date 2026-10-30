@@ -1358,7 +1358,21 @@ async def web_dex_save(request):
     if not pr: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
     set_gid(pr[0]); cid = pr[1]
     clean = lambda v: sorted({str(x)[:30] for x in v if isinstance(x, str)})[:600] if isinstance(v, list) else []
-    clean_tr = lambda v: {str(k)[:30]: max(0, min(5, int(n))) for k, n in v.items() if isinstance(n, (int, float)) and not isinstance(n, bool) and n > 0}if isinstance(v, dict) else {}   # 초월 0~5
+    def clean_tr(v):   # 초월: 장수 → {n: 0~5, a:[무력,지력,통솔,선공 분배, 합계 ≤ 10×n]}
+        out = {}
+        if not isinstance(v, dict): return out
+        for k, x in v.items():
+            try:
+                n = int(x.get("n", 0)) if isinstance(x, dict) else int(x)
+                a = [max(0, int(t)) for t in (x.get("a") or [])][:4] if isinstance(x, dict) else []
+            except Exception: continue
+            n = max(0, min(5, n)); a += [0] * (4 - len(a))
+            if n <= 0: continue
+            cap = n * 10
+            for q in range(4):
+                a[q] = min(a[q], cap); cap -= a[q]
+            out[str(k)[:30]] = {"n": n, "a": a}
+        return out
     info = roster.by_uid.get(cid) or {}
     data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")), "tr": clean_tr(b.get("tr")),
             "at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")}
@@ -2136,7 +2150,7 @@ class RecoVote(CtxView):
 
 _HS = {"at": 0.0, "d": {}}
 HERO_GID = os.environ.get("HERO_GID", "817745317")             # 구글 시트 '무장' 탭
-TR_BONUS = 10                                                     # 초월 1단계당 각 스탯 +10 (최대 5단계)
+TR_BONUS = 10                                                     # 초월 1단계당 자유 분배 10포인트 (최대 5단계)
 
 
 def hero_stats():
@@ -2175,7 +2189,12 @@ def hero_eff(names, tr):
     for n in names:
         b = hs.get(n)
         if not b: continue
-        t = max(0, min(5, int(tr.get(n, 0) or 0))); out[n] = {k: v + TR_BONUS * t for k, v in b.items()}; out[n]["tr"] = t
+        x = tr.get(n) or 0
+        t = max(0, min(5, int(x.get("n", 0) if isinstance(x, dict) else x)))
+        a = [int(q) for q in x.get("a", [])][:4] if isinstance(x, dict) else []
+        a += [0] * (4 - len(a))
+        if sum(a) > TR_BONUS * t: a = [0, 0, 0, 0]
+        out[n] = {k: b[k] + a[q] for q, k in enumerate(("atk", "intl", "lead", "init"))}; out[n]["tr"] = t
     return out
 
 
