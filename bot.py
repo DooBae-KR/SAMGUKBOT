@@ -617,13 +617,44 @@ async def sync_members(guild: discord.Guild):
     return res
 
 
+LOG_CH = "명령어로그"
+_log_fail = {}                                                  # 서버 ID → 채널 생성 실패 시각(1시간 동안 재시도 안 함)
+
+
+async def log_channel(g, create=True):
+    """#명령어로그 채널(관리자·봇만 볼 수 있음). 없으면 자동으로 만든다. 만들 수 없으면 None."""
+    me = g.me
+    ch = discord.utils.get(g.text_channels, name=LOG_CH)
+    if ch is None and create and me is not None and time.time() - _log_fail.get(g.id, 0) > 3600:
+        try:
+            ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
+            ch = await g.create_text_channel(LOG_CH, overwrites=ow, topic="명령어 사용 기록 (서버 관리자만 볼 수 있습니다)", reason="명령어 로그 채널 자동 생성")
+        except Exception:
+            _log_fail[g.id] = time.time(); log.warning("명령어 로그 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id); return None
+    return ch if ch and me is not None and ch.permissions_for(me).send_messages else None
+
+
+async def cmd_log(it: discord.Interaction):
+    """명령어 사용 기록을 #명령어로그에 남긴다. 실패해도 명령 실행에는 영향 없음."""
+    try:
+        ch = await log_channel(it.guild)
+        if ch is None or it.command is None: return
+        opts = " ".join(f"{k}={str(v)[:40]}" for k, v in (it.namespace.__dict__.items() if it.namespace else []) if v not in (None, ""))
+        name = it.command.qualified_name
+        await ch.send(f"🧾 <t:{int(time.time())}:T> **/{name}**" + (f" `{opts[:200]}`" if opts else "") + f" — {discord.utils.escape_markdown(it.user.display_name)} (`{it.user.id}`) · #{getattr(it.channel, 'name', '-')}",
+                      allowed_mentions=discord.AllowedMentions.none())
+    except Exception: log.warning("명령어 로그 기록 실패", exc_info=True)
+
+
 class GuildTree(app_commands.CommandTree):
     """모든 명령 실행 전에: ① 처리할 서버를 정하고 ② 허가되지 않은 서버는 /동맹등록 외에는 막는다."""
     async def interaction_check(self, it: discord.Interaction):
         set_gid(it.guild_id)
         if it.guild_id is None:
             await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True); return False
-        if licensed(it.guild_id) or (it.command and it.command.name in ("동맹등록", "명령어")): return True
+        if licensed(it.guild_id) or (it.command and it.command.name in ("동맹등록", "명령어")):
+            if it.command is not None: asyncio.create_task(cmd_log(it))
+            return True
         await it.response.send_message("🔒 이 서버는 제작자의 승인이 필요합니다. `/동맹등록`으로 신청해 주세요.", ephemeral=True); return False
 
 
@@ -657,7 +688,7 @@ class Bot(discord.Client):
         if not jc_loop.is_running(): jc_loop.start()
         if not donate_loop.is_running(): donate_loop.start()
         hg = self.get_guild(GUILD_ID)
-        if hg: await verify_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
+        if hg: await verify_channel(hg); await log_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
 
@@ -810,7 +841,7 @@ async def pm_setup_guild(gid):
         if discord.utils.get(g.roles, name=nm): continue
         try: await g.create_role(name=nm, reason="제작자 승인 — 기본 역할 생성"); made.append(nm)
         except Exception: fail.append(nm)
-    vc = await verify_channel(g)
+    vc = await verify_channel(g); await log_channel(g)
     out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)")
     return out + (f" / 생성 실패(봇에 '역할 관리' 권한 필요): {', '.join(fail)}" if fail else "")
 
