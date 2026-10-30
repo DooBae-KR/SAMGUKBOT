@@ -1464,24 +1464,33 @@ def alt_link(gid, main_cid, raw, replace=False):
     return ok, bad
 
 
-@bot.tree.command(name="부캐", description="내 부계정을 닉네임으로 연결합니다. 예) 닉네임1,닉네임2 (비우면 내 부계정 목록)")
-@app_commands.describe(닉네임="부계정 닉네임을 쉼표로 구분해 입력", 방식="추가(기본): 기존에 더함 / 교체: 입력한 목록으로 바꿈")
+@bot.tree.command(name="부캐", description="부계정을 닉네임으로 연결합니다. 예) 닉네임1,닉네임2 (비우면 목록). 관리자는 본캐를 지정해 대신 연결")
+@app_commands.describe(닉네임="부계정 닉네임을 쉼표로 구분해 입력", 본캐="[관리자] 본캐 닉네임(비우면 나의 본캐)", 방식="추가(기본): 기존에 더함 / 교체: 입력한 목록으로 바꿈")
 @app_commands.choices(방식=[app_commands.Choice(name="추가", value="add"), app_commands.Choice(name="교체", value="replace")])
-async def cmd_alt(it: discord.Interaction, 닉네임: str = "", 방식: app_commands.Choice[str] = None):
+async def cmd_alt(it: discord.Interaction, 닉네임: str = "", 본캐: str = "", 방식: app_commands.Choice[str] = None):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
     if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
-    gid = cur_gid(); did = str(it.user.id)
-    main = next((c for c, d in db_load()["uid"].items() if str(d) == did), None)
-    if not main: return await it.response.send_message("먼저 `/인증`으로 본캐 CID 인증을 해 주세요.", ephemeral=True)
+    gid = cur_gid(); did = str(it.user.id); target = ""
+    if 본캐.strip():                                                         # 관리자: 다른 사람의 본캐를 지정
+        if not is_admin(it): return await it.response.send_message("본캐를 지정하는 기능은 관리자만 사용할 수 있습니다.", ephemeral=True)
+        nm = re.sub(r"\s+", " ", 본캐).strip()
+        cs = [c for c, v in roster_for(gid).by_uid.items() if v.get("name") == nm]
+        if not cs: return await it.response.send_message(f"❌ 명단에 없는 본캐 닉네임입니다: {nm}", ephemeral=True)
+        if len(cs) > 1: return await it.response.send_message(f"❌ 같은 닉네임이 {len(cs)}명이라 구분할 수 없습니다 (CID {', '.join(cs)}).", ephemeral=True)
+        main, target = cs[0], nm
+    else:
+        main = next((c for c, d in db_load()["uid"].items() if str(d) == did), None)
+        if not main: return await it.response.send_message("먼저 `/인증`으로 본캐 CID 인증을 해 주세요.", ephemeral=True)
     await it.response.defer(ephemeral=True)
+    who = f"**{target}**" if target else "내"
     try:
         if not 닉네임.strip():
             rows = await asyncio.to_thread(lambda: _sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&main_cid=eq.{main}&select=alt_name,alt_cid&order=created_at") or [])
-            return await it.followup.send("**내 부계정**\n" + ("\n".join(f"• {r['alt_name']} ({r['alt_cid']})" for r in rows) if rows else "연결된 부계정이 없습니다. `/부캐 닉네임1,닉네임2` 로 연결하세요."), ephemeral=True)
+            return await it.followup.send(f"{who} 부계정\n" + ("\n".join(f"• {r['alt_name']} ({r['alt_cid']})" for r in rows) if rows else "연결된 부계정이 없습니다. `/부캐 닉네임1,닉네임2` 로 연결하세요."), ephemeral=True)
         ok, bad = await asyncio.to_thread(alt_link, gid, main, 닉네임, bool(방식 and 방식.value == "replace"))
     except Exception as e:
         log.exception("부캐 연결 실패"); return await it.followup.send(f"❌ 실패: {str(e)[:200]}", ephemeral=True)
-    lines = [f"**부계정 연결 결과** — 연결 {len(ok)}명 · 제외 {len(bad)}명"]
+    lines = [f"**{target or '내'} 부계정 연결 결과** — 연결 {len(ok)}명 · 제외 {len(bad)}명"]
     if ok: lines += ["", "✅ 연결됨"] + [f"• {n} ({c})" for n, c in ok]
     if bad: lines += ["", "❌ 제외됨 (닉네임을 확인해 다시 입력해 주세요)"] + [f"• {n} — {why}" for n, why in bad]
     await it.followup.send("\n".join(lines)[:1900], ephemeral=True)
