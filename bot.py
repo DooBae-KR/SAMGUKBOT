@@ -2051,18 +2051,48 @@ def pref_set(did, **kw):
 PREF_PATH = Path(os.environ.get("PREF_PATH", "pref.json"))
 
 
-def reco_build(did, season):
-    """내 도감(보유 장수·전법) 기준 추천덱 문장. 오류면 (None, 안내문)."""
+def reco_run(did, season):
+    """내 도감(보유 장수·전법) 기준 추천 계산. → (오류 안내문 또는 None, 결과, 이름, 딜 방식, 장수 데이터, 전법 데이터)"""
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
-    if not cid: return None, "먼저 `/인증`으로 CID 인증을 해 주세요."
+    if not cid: return "먼저 `/인증`으로 CID 인증을 해 주세요.", None, None, None, None, None
     dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
-    if not dex.get("own"): return None, "보유 장수가 없습니다. `/도감`에서 보유 장수와 전법을 먼저 체크해 주세요."
+    if not dex.get("own"): return "보유 장수가 없습니다. `/도감`에서 보유 장수와 전법을 먼저 체크해 주세요.", None, None, None, None, None
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
     deal = pref_get(did).get("deal", "도트딜")
     res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal)
     who = (roster.by_uid.get(cid) or {}).get("name") or "내"
-    return reco_text(season, res, who, skd, deal), None
+    return None, res, who, deal, hd, skd
+
+
+def reco_build(did, season):
+    """추천덱 문장. 오류면 (None, 안내문)."""
+    err, res, who, deal, hd, skd = reco_run(did, season)
+    return (None, err) if err else (reco_text(season, res, who, skd, deal), None)
+
+
+def reco_images(did, season):
+    """추천덱 카드 이미지. → (이미지 PNG 바이트 목록, 오류 안내문)"""
+    err, res, who, deal, hd, skd = reco_run(did, season)
+    if err: return None, err
+    import reco_img
+    return reco_img.render(res, season, who, deal, hd, skd, lambda t: tact_info(t, skd), lambda ty: ORDER.get(ty, 3)), None
+
+
+async def reco_deliver(it, did, season, first_edit=False):
+    """장수 카드 이미지로 추천덱을 보낸다(나에게만 보임). 이미지를 못 그리면 글로 보낸다."""
+    try: imgs, err = await asyncio.to_thread(reco_images, did, season)
+    except Exception:
+        log.exception("추천덱 이미지 생성 실패"); imgs, err = None, None
+    if err or not imgs:
+        text, e2 = await asyncio.to_thread(reco_build, did, season); chunks = reco_chunks(err or e2 or text)
+        if first_edit: await it.edit_original_response(content=chunks[0], view=None); chunks = chunks[1:]
+        for c in chunks: await it.followup.send(c, ephemeral=True)
+        return
+    files = [discord.File(io.BytesIO(b), filename=f"추천덱_{i}.png") for i, b in enumerate(imgs, 1)]
+    head = f"🃏 **추천덱 — 시즌{season}**  ·  `/추천덱 시즌:2` `/추천덱 딜:한방딜` 로 바꿀 수 있어요."
+    if first_edit: await it.edit_original_response(content=head, attachments=files, view=None)
+    else: await it.followup.send(head, files=files, ephemeral=True)
 
 
 class SeasonPick(CtxView):
@@ -2071,9 +2101,7 @@ class SeasonPick(CtxView):
     async def _pick(self, it, season):
         await it.response.defer(ephemeral=True)
         await asyncio.to_thread(pref_set, self.did, season=season)          # 선택값 기억
-        text, err = await asyncio.to_thread(reco_build, self.did, season)
-        ch = reco_chunks(err or text); await it.edit_original_response(content=ch[0], view=None)
-        for c in ch[1:]: await it.followup.send(c, ephemeral=True)
+        await reco_deliver(it, self.did, season, first_edit=True)
 
     @discord.ui.button(label="시즌1", style=discord.ButtonStyle.primary)
     async def s1(self, it, _): await self._pick(it, 1)
@@ -2098,8 +2126,7 @@ async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = N
     else:
         season = 시즌.value; await asyncio.to_thread(pref_set, did, season=season)
     await it.response.defer(ephemeral=True)
-    text, err = await asyncio.to_thread(reco_build, did, season)
-    for chunk in reco_chunks(err or text): await it.followup.send(chunk, ephemeral=True)
+    await reco_deliver(it, did, season)
 
 
 @bot.tree.command(name="도감", description="내 보유 장수·전법을 체크하는 개인 링크를 받습니다(시트에 자동 저장)")
