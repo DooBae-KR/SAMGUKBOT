@@ -1286,7 +1286,13 @@ def adm_state(gid):
                 adm.setdefault(str(m.id), {"id": str(m.id), "name": str(m), "src": "discord"})
                 if adm[str(m.id)]["src"] == "discord": adm[str(m.id)]["name"] = str(m)
     if OWNER_ID: adm.setdefault(str(OWNER_ID), {"id": str(OWNER_ID), "name": "", "src": "owner"})["src"] = "owner"
-    return {"ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
+    db = db_load(); gg = bot.get_guild(gid); tr = []
+    for d, n in (db.get("tries") or {}).items():
+        if not n: continue
+        m = gg.get_member(int(d)) if gg and str(d).isdigit() else None
+        tr.append({"d": str(d), "name": str(m) if m else "", "cid": (db.get("tried") or {}).get(d, ""), "n": n, "lock": n >= MAX_TRIES})
+    tr.sort(key=lambda x: (-x["lock"], -x["n"]))
+    return {"tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
@@ -1347,6 +1353,16 @@ async def web_admin_api(request):
             d = str(body.get("id", "")).strip()
             if not (d.isascii() and d.isdigit()): raise ValueError("사용자 ID가 올바르지 않습니다.")
             await adm_revoke(gid, int(d), uid); msg = "✅ 관리자 권한을 뺐습니다."
+        elif op == "tries_reset":
+            k = str(body.get("id", "")).strip()
+            if not (k.isascii() and k.isdigit()): raise ValueError("ID가 올바르지 않습니다.")
+            def rs():
+                set_gid(gid); db = db_load(); hit = [d for d in list(db.get("tries", {})) if d == k or db.get("tried", {}).get(d) == k]
+                for d in hit: db["tries"].pop(d, None); db.get("tried", {}).pop(d, None)
+                db_save(db); return len(hit)
+            n = await asyncio.to_thread(rs)
+            if not n: raise ValueError("해당 ID(디스코드 ID 또는 CID)의 실패 기록이 없습니다.")
+            msg = f"✅ 인증 실패 횟수를 초기화했습니다 ({n}건)."
         elif op != "state": raise ValueError("알 수 없는 요청입니다.")
         st = await asyncio.to_thread(lambda: (set_gid(gid), adm_state(gid))[1])
     except ValueError as e: return web.json_response({"error": str(e)}, status=400)

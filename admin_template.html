@@ -23,7 +23,7 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
 #toast.err{background:#3a1d1d;border-color:var(--verm)}.mute{color:var(--mute);font-size:12.5px}
 </style></head><body>
 <header><div class="wrap"><h1>🛠️ 관리 페이지</h1><div class="sub"><span id="dot" class="live"></span><span id="ally">불러오는 중…</span> · DB와 4초마다 자동 동기화</div></div></header>
-<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="adm">관리자 권한</button></div></nav>
+<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="adm">관리자 권한</button><button data-t="cmd">명령어 권한</button><button data-t="try">인증 횟수 제한</button></div></nav>
 <main><div class="wrap">
 <div class="tab on" id="talk">
  <div class="card"><h2>톡방 참여자 <span class="mute" id="tcnt"></span></h2><p class="lead">여러 명은 줄바꿈이나 쉼표로 구분해 한 번에 추가할 수 있습니다. 명단에 없는 이름은 ⚠️로 표시됩니다.</p>
@@ -40,6 +40,14 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
  <div class="card"><h2>공동관리자 추가</h2><p class="lead">관리자만 다른 사람에게 관리자 권한을 줄 수 있습니다. 간부 역할은 관리 기능을 쓸 수 없습니다. 디스코드 설정에서 개발자 모드를 켠 뒤 프로필 → "사용자 ID 복사"로 ID를 얻습니다.</p>
   <div class="row"><input id="ai" inputmode="numeric" placeholder="디스코드 사용자 ID"><button class="b" id="abtn">권한 부여</button></div></div>
  <div class="card"><h2>현재 관리자</h2><ul id="alist"></ul></div>
+</div>
+<div class="tab" id="cmd">
+ <div class="card"><h2>명령어 권한</h2><p class="lead">역할별로 쓸 수 있는 명령어입니다. 관리자는 간부·동맹원 명령어도 모두 쓸 수 있고, 간부는 동맹원 명령어와 간부 명령어를 씁니다. 관리자 권한은 "관리자 권한" 탭에서 부여합니다.</p><div id="clist"></div></div>
+</div>
+<div class="tab" id="try">
+ <div class="card"><h2>인증 횟수 제한 <span class="mute" id="tmax"></span></h2><p class="lead">CID 인증에 실패하면 디스코드 계정별로 횟수가 쌓이고, 한도에 이르면 잠깁니다. 잠긴 계정은 여기서 바로 풀 수 있습니다.</p>
+  <div class="row"><input id="ti" inputmode="numeric" placeholder="CID 또는 디스코드 ID"><button class="b" id="tbtn2">실패 횟수 초기화</button></div></div>
+ <div class="card"><ul id="trlist"></ul></div>
 </div>
 </div></main><div id="toast"></div>
 <script>
@@ -58,6 +66,9 @@ function render(){if(!S)return;const a=S.ally||{};$("#ally").textContent=(a.serv
  const man=S.members.filter(m=>m.m);$("#mcnt").textContent="("+man.length+"명)";
  $("#mlist").innerHTML=man.map(m=>`<li><span class="n">${esc(m.n)} <span class="mute">${esc(m.c)}${m.j?" · "+esc(m.j):""}</span></span><span class="tag w">엑셀 반영 대기</span></li>`).join("")||'<li class="mute">없습니다</li>';
  $("#mall").textContent="전체 명단 "+S.members.length+"명";
+ $("#clist").innerHTML=[["동맹원","동맹원"],["간부","간부"],["관리자","관리자"]].map(([k,t])=>`<h2 style="margin-top:12px;font-size:15px">${t} 전용</h2><ul>`+(S.cmds[k]||[]).map(c=>`<li><span class="n"><b>${esc(c[0])}</b> <span class="mute">${esc(c[1])}</span></span></li>`).join("")+"</ul>").join("");
+ $("#tmax").textContent="(한도 "+S.maxTries+"회)";
+ $("#trlist").innerHTML=S.tries.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">디스코드 ${esc(x.d)}${x.cid?" · 시도한 CID "+esc(x.cid):""}</span></span><span class="tag ${x.lock?"w":""}">${x.n}/${S.maxTries}${x.lock?" 잠김":""}</span><button class="b g" data-tr="${esc(x.d)}">초기화</button></li>`).join("")||'<li class="mute">실패 기록이 없습니다</li>';
  $("#alist").innerHTML=S.admins.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">${esc(x.id)}</span></span>${x.src=="owner"?'<span class="tag o">제작자</span>':x.src=="discord"?'<span class="tag">디스코드 관리자</span>':'<span class="tag o">부여됨</span>'}${x.src=="grant"&&x.id!=S.me?`<button class="b d" data-rev="${esc(x.id)}">권한 빼기</button>`:""}</li>`).join("")}
 $("#tbtn").onclick=async()=>{const v=$("#tadd").value.split(/[\n,]/).map(x=>x.trim()).filter(Boolean);if(!v.length)return toast("이름을 입력해 주세요",1);if(await api({op:"talk",req:{op:"add",names:v}}))$("#tadd").value=""};
 $("#tlist").onclick=async e=>{const d=e.target.dataset;if(d.del&&confirm(d.del+" 님을 톡방 목록에서 삭제할까요?"))api({op:"talk",req:{op:"remove",names:[d.del]}});
@@ -66,5 +77,7 @@ $("#tq").oninput=render;
 $("#mbtn").onclick=async()=>{if(await api({op:"member_add",cid:$("#mc").value,nick:$("#mn").value,job:$("#mj").value})){$("#mc").value=$("#mn").value=$("#mj").value=""}};
 $("#abtn").onclick=async()=>{if(await api({op:"admin_add",id:$("#ai").value}))$("#ai").value=""};
 $("#alist").onclick=e=>{const id=e.target.dataset.rev;if(id&&confirm("이 사용자의 관리자 권한을 뺄까요?"))api({op:"admin_remove",id})};
+$("#tbtn2").onclick=async()=>{if(await api({op:"tries_reset",id:$("#ti").value}))$("#ti").value=""};
+$("#trlist").onclick=e=>{const id=e.target.dataset.tr;if(id)api({op:"tries_reset",id})};
 api({op:"state"});setInterval(()=>{if(!busy&&!document.hidden)api({op:"state"},1)},4000);
 </script></body></html>
