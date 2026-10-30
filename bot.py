@@ -626,11 +626,17 @@ async def log_channel(g, create=True):
     me = g.me
     ch = discord.utils.get(g.text_channels, name=LOG_CH)
     if ch is None and create and me is not None and time.time() - _log_fail.get(g.id, 0) > 3600:
+        topic = "명령어 사용 기록 (서버 관리자만 볼 수 있습니다)"
         try:
             ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
-            ch = await g.create_text_channel(LOG_CH, overwrites=ow, topic="명령어 사용 기록 (서버 관리자만 볼 수 있습니다)", reason="명령어 로그 채널 자동 생성")
-        except Exception:
-            _log_fail[g.id] = time.time(); log.warning("명령어 로그 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id); return None
+            ch = await g.create_text_channel(LOG_CH, overwrites=ow, topic=topic, reason="명령어 로그 채널 자동 생성")
+        except Exception as e1:
+            try:                                                   # 권한 덮어쓰기가 거부되면 일반 채널로 만든 뒤 비공개 설정을 따로 시도
+                ch = await g.create_text_channel(LOG_CH, topic=topic, reason="명령어 로그 채널 자동 생성")
+                try: await ch.set_permissions(g.default_role, view_channel=False)
+                except Exception as e3: log.warning("로그 채널 비공개 설정 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e3)
+            except Exception as e2:
+                _log_fail[g.id] = time.time(); log.warning("명령어 로그 채널 생성 실패 서버=%s 1차=%r 2차=%r (봇에 '채널 관리' 권한이 있는지 확인)", g.id, e1, e2); return None
     return ch if ch and me is not None and ch.permissions_for(me).send_messages else None
 
 
