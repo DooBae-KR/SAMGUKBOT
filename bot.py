@@ -1702,6 +1702,7 @@ async def siege_add(it: discord.Interaction, 레벨: app_commands.Choice[int], �
     await it.response.send_message(
         f"📌 **{n}번** {siege_name(e)} 등록 — 필요 정철 **{cost:,}**개\n"
         f"정철 도달 예상 <t:{int(fund)}:f> (<t:{int(fund)}:R>) · 도달하면 보유 정철에서 {cost:,}개를 자동 차감하고 건축을 시작합니다.\n"
+        f"(봇 계산 보유 정철 약 {int(jc_stock_now(st)):,}개. 게임 내 실제 수량과 다르면 `/정철설정`으로 맞춰야 예상 시각이 정확합니다.)\n"
         f"축성 예상 완료 **{fmt_t(end)}**{night}\n"
         f"정철 도달 {ALERT_MIN}분 전, 도달·건축 시작, 축성 완료 때 알려 드립니다. 전체 일정은 `/공성`으로 확인하세요.")
 
