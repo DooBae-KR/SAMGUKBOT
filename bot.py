@@ -1002,7 +1002,7 @@ async def cmd_help(it: discord.Interaction, 역할: app_commands.Choice[str] = N
     lines = [f"📖 **{role}이(가) 사용할 수 있는 명령어**" + (" (제작자 조회)" if role != mine or (역할 and it.user.id == owner.id) else ""), "\n**[공통]**"]
     lines += [f"`{c}` — {d}" for c, d in CMD_HELP["동맹원"]]
     if role == "간부":
-        lines.append("\n**[간부 전용]**"); lines += [f"`{c}` — {d}" for c, d in CMD_HELP["간부"]]
+        lines.append("\n**[간부 전용]**"); lines += [f"`{c}` — {d}" for c, d in CMD_HELP["간부"] if it.user.id == owner.id or staff_ok(it, c)]
         if is_admin(it) or it.user.id == owner.id: lines.append("\n**[관리자 전용]**"); lines += [f"`{c}` — {d}" for c, d in CMD_HELP["관리자"]]
     await it.response.send_message("\n".join(lines), ephemeral=True)
 
@@ -1292,7 +1292,7 @@ def adm_state(gid):
         m = gg.get_member(int(d)) if gg and str(d).isdigit() else None
         tr.append({"d": str(d), "name": str(m) if m else "", "cid": (db.get("tried") or {}).get(d, ""), "n": n, "lock": n >= MAX_TRIES})
     tr.sort(key=lambda x: (-x["lock"], -x["n"]))
-    return {"tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
+    return {"titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
@@ -1353,6 +1353,16 @@ async def web_admin_api(request):
             d = str(body.get("id", "")).strip()
             if not (d.isascii() and d.isdigit()): raise ValueError("사용자 ID가 올바르지 않습니다.")
             await adm_revoke(gid, int(d), uid); msg = "✅ 관리자 권한을 뺐습니다."
+        elif op == "cmdperm_set":
+            cmd, ts = str(body.get("cmd", "")), body.get("titles")
+            if cmd not in staff_cmds(): raise ValueError("설정할 수 없는 명령어입니다.")
+            if not isinstance(ts, list): raise ValueError("직책 목록이 올바르지 않습니다.")
+            def sv():
+                set_gid(gid); ok = set(known_titles()); ts2 = [title_norm(t) for t in ts]
+                if any(t not in ok for t in ts2): raise ValueError("알 수 없는 직책이 포함되어 있습니다.")
+                d = dict(store_get("cmdperm", CMDPERM_PATH, {}) or {}); d[cmd] = sorted(set(ts2)); store_set("cmdperm", CMDPERM_PATH, d)
+            await asyncio.to_thread(sv)
+            msg = f"✅ {cmd} 권한을 " + (", ".join(sorted(set(title_norm(t) for t in ts))) + " 직책으로 제한했습니다." if ts else "간부 전체로 되돌렸습니다.")
         elif op == "tries_reset":
             k = str(body.get("id", "")).strip()
             if not (k.isascii() and k.isdigit()): raise ValueError("ID가 올바르지 않습니다.")
@@ -1394,7 +1404,7 @@ async def cmd_ally(it: discord.Interaction):
 async def cmd_ally_edit(it: discord.Interaction):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
     if not licensed(it.guild_id): return await it.response.send_message("먼저 `/동맹등록`으로 동맹을 등록해 주세요.", ephemeral=True)
-    if not is_staff(it): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
+    if not staff_ok(it, "/동맹수정"): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
     await it.response.send_modal(AllyModal())
 
 
@@ -1515,7 +1525,7 @@ class MemberAddModal(CtxModal, title="동맹원 추가"):
 
     async def on_submit(self, it: discord.Interaction):
         await it.response.defer(ephemeral=True)
-        if not is_staff(it): return await it.followup.send("간부만 사용할 수 있습니다.", ephemeral=True)
+        if not staff_ok(it, "/동맹수정"): return await it.followup.send("간부만 사용할 수 있습니다.", ephemeral=True)
         gid = cur_gid(); cid = Roster.norm_uid(self.cid.value); nick = re.sub(r"\s+", " ", self.nick.value).strip(); job = self.job.value.strip()
         if not cid.isdigit(): return await it.followup.send("❌ CID는 숫자로 입력해 주세요.", ephemeral=True)
         if not nick: return await it.followup.send("❌ 닉네임을 입력해 주세요.", ephemeral=True)
@@ -1543,7 +1553,7 @@ def member_add(gid, cid, nick, job):
 @bot.tree.command(name="동맹원추가", description="[간부] 게임 엑셀(매일 오전 8시 반영)에 아직 없는 동맹원을 명단에 직접 추가합니다")
 async def cmd_member_add(it: discord.Interaction):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
-    if not is_staff(it): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
+    if not staff_ok(it, "/동맹원추가"): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
     if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
     await it.response.send_modal(MemberAddModal())
 
@@ -1972,7 +1982,7 @@ async def cmd_admin_page(it: discord.Interaction):
 
 @bot.tree.command(name="인사", description="[간부] 인사데이터(상황판) 링크를 받습니다")
 async def hr_link(it: discord.Interaction):
-    if not is_staff(it): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
+    if not staff_ok(it, "/인사"): return await it.response.send_message("간부만 사용할 수 있습니다.", ephemeral=True)
     if not roster.members: return await it.response.send_message("명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", ephemeral=True)
     exp = int(time.time()) + HR_HOURS * 3600
     await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp, cur_gid())}\n멤버 {len(roster.members)}명 기준", ephemeral=True)
@@ -2051,6 +2061,40 @@ def is_staff(it):
     return isinstance(it.user, discord.Member) and (it.user.guild_permissions.administrator or (it.guild_id, it.user.id) in PERM or any(r.name == OFFICER_ROLE for r in it.user.roles))
 
 
+CMDPERM_PATH = Path(os.environ.get("CMDPERM_PATH", "cmdperm.json"))
+
+
+def staff_cmds(): return [c for c, _ in CMD_HELP["간부"]]
+
+
+def title_norm(t): return (t or "").replace(" ", "")
+
+
+def known_titles():
+    """이 서버에서 고를 수 있는 직책: 기본 간부 직책 + 명단에 있는 직책."""
+    ts = {t for t in OFFICER_TITLES}
+    ts |= {title_norm(v.get("title")) for v in roster.by_uid.values() if v.get("title")}
+    return sorted(t for t in ts if t)
+
+
+def my_title(did):
+    cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
+    return title_norm((roster.by_uid.get(cid) or {}).get("title")) if cid else ""
+
+
+def cmd_titles(cmd):
+    """그 명령어를 쓸 수 있게 제한한 직책 목록(비어 있으면 간부 전체)."""
+    return list(((store_get("cmdperm", CMDPERM_PATH, {}) or {}).get(cmd)) or [])
+
+
+def staff_ok(it, cmd):
+    """간부 명령어 사용 가능 여부. 관리자(디스코드 관리자·승인 관리자)는 항상 가능, 간부는 관리자가 정한 직책 제한을 따른다."""
+    if not is_staff(it): return False
+    if is_admin(it): return True
+    lim = cmd_titles(cmd)
+    return not lim or my_title(it.user.id) in lim
+
+
 def jc_plan(st):
     """등록 순서대로 정철이 모이는 시각을 시뮬레이션. 앞선 공성에 쓴 정철은 차감하고 계산 → [(공성, 도달시각, 차감 후 잔여)]"""
     cur = st["stock"]; n = _tick_n(st["at"]); t = st["at"]; out = []
@@ -2103,7 +2147,7 @@ def siege_rows(st, now=None):
 @app_commands.describe(레벨="건설할 성지(관문) 레벨", 연결안됨="아군 성지/관문과 관로로 연결되지 않음(추가 소모)", 타진영="타 진영 시작 지역 성지(총량 +50%)")
 @app_commands.choices(레벨=[app_commands.Choice(name=jc_label(k), value=k) for k in sorted(COST)])
 async def siege_add(it: discord.Interaction, 레벨: app_commands.Choice[int], 연결안됨: bool = False, 타진영: bool = False):
-    if not is_staff(it): return await it.response.send_message("간부 이상만 등록할 수 있습니다.", ephemeral=True)
+    if not staff_ok(it, "/공성등록"): return await it.response.send_message("간부 이상만 등록할 수 있습니다.", ephemeral=True)
     st = jc_load(); lv = 레벨.value; cost = jc_need(lv, 연결안됨, 타진영)
     tags = ("연결 안 됨 " if 연결안됨 else "") + ("타 진영 " if 타진영 else "")
     st.setdefault("sieges", []).append({"user": it.user.id, "name": it.user.display_name, "channel": it.channel_id, "level": lv, "cost": cost, "tags": tags, "soon": False, "reg": time.time()})
@@ -2126,7 +2170,7 @@ async def siege_add(it: discord.Interaction, 레벨: app_commands.Choice[int], �
 
 @bot.tree.command(name="공성", description="[간부] 현재 정철 개수와 진행 중인 공성 예상 일정을 봅니다(대외비)")
 async def siege_view(it: discord.Interaction):
-    if not is_staff(it): return await it.response.send_message("간부 이상만 볼 수 있습니다. (대외비)", ephemeral=True)
+    if not staff_ok(it, "/공성"): return await it.response.send_message("간부 이상만 볼 수 있습니다. (대외비)", ephemeral=True)
     st = jc_load(); now = time.time(); cur = jc_stock_now(st, now)
     nxt = JC_ANCHOR + (_tick_n(now) + 1) * JC_STEP
     head = f"🪙 현재 정철 약 **{int(cur):,}**개 · 5분마다 13·13·14개 지급(시간당 160개) · 다음 지급 <t:{int(nxt)}:R>"
@@ -2143,7 +2187,7 @@ async def siege_view(it: discord.Interaction):
 @bot.tree.command(name="공성취소", description="[간부] 등록한 공성을 취소합니다(번호 생략 시 마지막 등록)")
 @app_commands.describe(번호="/공성 목록의 번호", 전체="모두 취소")
 async def siege_cancel(it: discord.Interaction, 번호: int = 0, 전체: bool = False):
-    if not is_staff(it): return await it.response.send_message("간부 이상만 취소할 수 있습니다.", ephemeral=True)
+    if not staff_ok(it, "/공성취소"): return await it.response.send_message("간부 이상만 취소할 수 있습니다.", ephemeral=True)
     st = jc_load(); sg = st.setdefault("sieges", [])
     if 전체: n = len(sg); sg.clear(); st["reserve"] = []; msg = f"공성 {n}건을 모두 취소했습니다."
     elif not sg: return await it.response.send_message("취소할 공성이 없습니다.", ephemeral=True)
@@ -2192,7 +2236,7 @@ def siege_check(st, cost, now=None):
 @app_commands.describe(레벨="건설할 성지(관문) 레벨", 시각="공성하고 싶은 시각 예) 21:00 / 내일 21시 30분 / 10.29 21:00", 연결안됨="아군 성지/관문과 관로로 연결되지 않음(추가 소모)", 타진영="타 진영 시작 지역 성지(총량 +50%)", 확인만="예약하지 않고 가능 여부만 확인")
 @app_commands.choices(레벨=[app_commands.Choice(name=jc_label(k), value=k) for k in sorted(COST)])
 async def siege_reserve(it: discord.Interaction, 레벨: app_commands.Choice[int], 시각: str, 연결안됨: bool = False, 타진영: bool = False, 확인만: bool = False):
-    if not is_staff(it): return await it.response.send_message("간부 이상만 사용할 수 있습니다.", ephemeral=True)
+    if not staff_ok(it, "/공성예약"): return await it.response.send_message("간부 이상만 사용할 수 있습니다.", ephemeral=True)
     now = time.time(); T = parse_when(시각, now)
     if T is None: return await it.response.send_message("시각을 읽지 못했습니다. 예) `21:00`, `내일 21시 30분`, `10.29 21:00`", ephemeral=True)
     if T <= now: return await it.response.send_message("이미 지난 시각입니다.", ephemeral=True)
@@ -2222,7 +2266,7 @@ async def siege_reserve(it: discord.Interaction, 레벨: app_commands.Choice[int
 @bot.tree.command(name="공성예약취소", description="[간부] 공성 예약을 취소합니다(번호 생략 시 마지막 예약)")
 @app_commands.describe(번호="/공성 의 예약 번호")
 async def siege_reserve_cancel(it: discord.Interaction, 번호: int = 0):
-    if not is_staff(it): return await it.response.send_message("간부 이상만 사용할 수 있습니다.", ephemeral=True)
+    if not staff_ok(it, "/공성예약취소"): return await it.response.send_message("간부 이상만 사용할 수 있습니다.", ephemeral=True)
     st = jc_load(); rs = sorted(st.setdefault("reserve", []), key=lambda r: r["t"])
     if not rs: return await it.response.send_message("취소할 예약이 없습니다.", ephemeral=True)
     i = (번호 or len(rs)) - 1
@@ -2235,7 +2279,7 @@ async def siege_reserve_cancel(it: discord.Interaction, 번호: int = 0):
 @bot.tree.command(name="정철설정", description="[간부] 현재 정철 보유량을 맞춥니다")
 @app_commands.describe(보유량="지금 동맹 정철 보유량")
 async def jc_set(it: discord.Interaction, 보유량: int):
-    if not is_staff(it): return await it.response.send_message("간부 이상만 설정할 수 있습니다.", ephemeral=True)
+    if not staff_ok(it, "/정철설정"): return await it.response.send_message("간부 이상만 설정할 수 있습니다.", ephemeral=True)
     if 보유량 < 0: return await it.response.send_message("0 이상의 숫자를 입력하세요.", ephemeral=True)
     st = jc_load(); st["stock"] = 보유량; st["at"] = time.time()
     jc_save(st)

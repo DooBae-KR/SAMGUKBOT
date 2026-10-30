@@ -42,6 +42,7 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
  <div class="card"><h2>현재 관리자</h2><ul id="alist"></ul></div>
 </div>
 <div class="tab" id="cmd">
+ <div class="card"><h2>간부 명령어 직책별 권한</h2><p class="lead">직책을 선택하면 그 직책만 해당 명령어를 쓸 수 있습니다. 아무것도 선택하지 않으면 간부 역할 전체가 쓸 수 있습니다. 관리자는 항상 쓸 수 있고, 클릭하면 바로 저장됩니다.</p><div id="plist"></div></div>
  <div class="card"><h2>명령어 권한</h2><p class="lead">역할별로 쓸 수 있는 명령어입니다. 관리자는 간부·동맹원 명령어도 모두 쓸 수 있고, 간부는 동맹원 명령어와 간부 명령어를 씁니다. 관리자 권한은 "관리자 권한" 탭에서 부여합니다.</p><div id="clist"></div></div>
 </div>
 <div class="tab" id="try">
@@ -67,6 +68,7 @@ function render(){if(!S)return;const a=S.ally||{};$("#ally").textContent=(a.serv
  $("#mlist").innerHTML=man.map(m=>`<li><span class="n">${esc(m.n)} <span class="mute">${esc(m.c)}${m.j?" · "+esc(m.j):""}</span></span><span class="tag w">엑셀 반영 대기</span></li>`).join("")||'<li class="mute">없습니다</li>';
  $("#mall").textContent="전체 명단 "+S.members.length+"명";
  $("#clist").innerHTML=[["동맹원","동맹원"],["간부","간부"],["관리자","관리자"]].map(([k,t])=>`<h2 style="margin-top:12px;font-size:15px">${t} 전용</h2><ul>`+(S.cmds[k]||[]).map(c=>`<li><span class="n"><b>${esc(c[0])}</b> <span class="mute">${esc(c[1])}</span></span></li>`).join("")+"</ul>").join("");
+ $("#plist").innerHTML=S.staffCmds.map(c=>{const sel=S.cmdperm[c[0]]||[];return `<div style="padding:10px 0;border-top:1px solid var(--line)"><b>${esc(c[0])}</b> <span class="mute">${esc(c[1])}</span><div class="row" style="margin-top:6px;gap:6px">${S.titles.map(t=>`<button class="b ${sel.includes(t)?"":"g"}" style="padding:3px 10px;font-size:12px;flex:0 0 auto" data-pc="${esc(c[0])}" data-pt="${esc(t)}">${esc(t)}</button>`).join("")}<span class="tag ${sel.length?"w":""}" style="align-self:center">${sel.length?"제한: "+sel.length+"개 직책":"간부 전체"}</span></div></div>`}).join("");
  $("#tmax").textContent="(한도 "+S.maxTries+"회)";
  $("#trlist").innerHTML=S.tries.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">디스코드 ${esc(x.d)}${x.cid?" · 시도한 CID "+esc(x.cid):""}</span></span><span class="tag ${x.lock?"w":""}">${x.n}/${S.maxTries}${x.lock?" 잠김":""}</span><button class="b g" data-tr="${esc(x.d)}">초기화</button></li>`).join("")||'<li class="mute">실패 기록이 없습니다</li>';
  $("#alist").innerHTML=S.admins.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">${esc(x.id)}</span></span>${x.src=="owner"?'<span class="tag o">제작자</span>':x.src=="discord"?'<span class="tag">디스코드 관리자</span>':'<span class="tag o">부여됨</span>'}${x.src=="grant"&&x.id!=S.me?`<button class="b d" data-rev="${esc(x.id)}">권한 빼기</button>`:""}</li>`).join("")}
@@ -77,6 +79,7 @@ $("#tq").oninput=render;
 $("#mbtn").onclick=async()=>{if(await api({op:"member_add",cid:$("#mc").value,nick:$("#mn").value,job:$("#mj").value})){$("#mc").value=$("#mn").value=$("#mj").value=""}};
 $("#abtn").onclick=async()=>{if(await api({op:"admin_add",id:$("#ai").value}))$("#ai").value=""};
 $("#alist").onclick=e=>{const id=e.target.dataset.rev;if(id&&confirm("이 사용자의 관리자 권한을 뺄까요?"))api({op:"admin_remove",id})};
+$("#plist").onclick=e=>{const d=e.target.dataset;if(!d.pc)return;const cur=(S.cmdperm[d.pc]||[]).slice(),i=cur.indexOf(d.pt);i<0?cur.push(d.pt):cur.splice(i,1);api({op:"cmdperm_set",cmd:d.pc,titles:cur})};
 $("#tbtn2").onclick=async()=>{if(await api({op:"tries_reset",id:$("#ti").value}))$("#ti").value=""};
 $("#trlist").onclick=e=>{const id=e.target.dataset.tr;if(id)api({op:"tries_reset",id})};
 api({op:"state"});setInterval(()=>{if(!busy&&!document.hidden)api({op:"state"},1)},4000);
