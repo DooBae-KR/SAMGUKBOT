@@ -652,6 +652,83 @@ async def cmd_log(it: discord.Interaction):
     except Exception: log.warning("명령어 로그 기록 실패", exc_info=True)
 
 
+GUIDE_CH, GUIDE_VER = "관리자가이드", 1
+APP_ID = os.environ.get("APP_ID", "1563493671473520740")
+GUIDE_PATH = Path(os.environ.get("GUIDE_PATH", "guide.json"))
+
+
+def guide_pages():
+    inv = f"https://discord.com/oauth2/authorize?client_id={APP_ID}&permissions=2550254672&scope=bot+applications.commands"
+    return [
+        "📘 **관리자 가이드북 ①  처음 시작하기**\n"
+        "이 채널은 서버 관리자와 봇만 볼 수 있습니다.\n\n"
+        "**1. 동맹 등록**: `/동맹등록`으로 서버 번호(숫자)와 동맹명을 신청합니다. 제작자가 승인하면 `동맹원`·`간부`·`외교관` 역할과 `#인증` 채널이 자동으로 만들어집니다. (등록은 한 번만, 이후 수정은 `/동맹수정`)\n"
+        "**2. 명단 올리기**: 게임 명단 엑셀(.xlsx)을 `/명단업데이트`로 올립니다. 게임 엑셀은 매일 오전 8시에 갱신됩니다. 명단에서 빠진 사람은 자동으로 이탈자로 옮겨집니다.\n"
+        "**3. 인증 안내**: 동맹원은 `#인증` 채널에서 `/인증`으로 CID 인증을 합니다(5회 실패하면 잠김). 인증하면 `[직책]닉네임`으로 별명이 바뀌고, 직책에 따라 `동맹원`/`간부` 역할이 부여됩니다.\n"
+        "**4. 봇 권한**: 채널 관리·역할 관리·별명 관리가 필요합니다. 봇 역할은 `동맹원`·`간부`·`외교관` 역할보다 위에 있어야 합니다.",
+
+        "📘 **관리자 가이드북 ②  관리 페이지 (`/관리`)**\n"
+        "`/관리`를 입력하면 나에게만 보이는 링크가 나옵니다(본인 전용 · 6시간 유효 · 공유 금지). 간부는 쓸 수 없고 관리자만 쓸 수 있습니다. 저장하면 바로 DB에 반영되고, 화면은 4초마다 자동으로 갱신됩니다.\n\n"
+        "• **톡방 참여자**: 추가·삭제·이름 수정. 명단에 없는 이름은 ⚠️로 표시됩니다.\n"
+        "• **동맹원 추가**: 게임 엑셀에 아직 없는 사람을 CID·닉네임으로 직접 추가(엑셀에 반영되기 전 3일간 유지).\n"
+        "• **부캐**: 본캐를 고르고 부캐 닉네임을 쉼표로 넣으면 명단과 대조해 연결합니다. 오타·없는 닉네임은 제외하고 이유를 알려 줍니다.\n"
+        "• **관리자 권한**: 디스코드 사용자 ID로 공동관리자를 추가/제거합니다. 본인과 제작자의 권한은 뺄 수 없습니다.\n"
+        "• **명령어 권한**: 역할별 명령어 표, 그리고 **간부 명령어를 직책별로 제한**하는 화면(`전체`를 누르면 간부 전체 허용).\n"
+        "• **인증 횟수 제한**: 실패 횟수가 쌓인 계정과 잠긴 계정을 보고 바로 초기화합니다.",
+
+        "📘 **관리자 가이드북 ③  권한 구조**\n"
+        "• **동맹원**: `/인증` `/부캐` `/도감` `/추천덱` `/후원` `/명령어`\n"
+        "• **간부**(`간부` 역할): 위 + `/인사` `/공성등록` `/공성` `/공성취소` `/공성예약` `/공성예약취소` `/정철설정` `/동맹수정` `/동맹원추가`\n"
+        "• **관리자**(디스코드 서버 관리자, 또는 `/관리`에서 부여받은 사람): 위 전부 + `/관리` `/인증해제` `/명단업데이트` `/명단새로고침` `/외교관해제` `/부캐`의 본캐 지정\n"
+        "• 간부 명령어는 `/관리` → 명령어 권한에서 **직책별로 제한**할 수 있습니다. 제한에 걸리면 \"권한이 없습니다.\"가 표시됩니다. 관리자는 제한과 관계없이 항상 사용 가능합니다.\n"
+        "• 모든 명령어 사용 기록은 `#명령어로그`(관리자·봇만 열람)에 남습니다.",
+
+        "📘 **관리자 가이드북 ④  자주 겪는 문제**\n"
+        "• **채널·역할이 안 만들어져요** → 봇 역할에 `채널 관리`·`역할 관리` 권한이 있는지 확인하세요. 아래 초대 링크를 다시 열어 승인하면 봇을 내보내지 않고 권한만 갱신됩니다.\n"
+        f"  {inv}\n"
+        "• **인증이 잠겼어요** → `/관리` → 인증 횟수 제한에서 초기화하거나 `/인증해제`(CID)를 사용합니다.\n"
+        "• **CID가 명단에 없다고 해요** → 닉네임·CID 오타를 확인하고, 신규 가입자는 `/관리` → 동맹원 추가로 먼저 넣어 주세요.\n"
+        "• **링크가 만료됐어요** → `/관리`·`/인사`를 다시 입력하면 새 링크가 나옵니다.\n"
+        "• **한 사람이 부계정이 여럿이에요** → `/관리` → 부캐에서 본캐에 연결합니다.\n"
+        "• **봇이 응답이 없어요** → 잠시 후 다시 시도하고, 계속되면 제작자에게 문의하세요.",
+    ]
+
+
+async def guide_post(g):
+    """#관리자가이드(관리자·봇만 열람)를 만들고 가이드북을 올린다. 버전이 바뀌면 이전 글을 지우고 새로 올린다. 만들 수 없으면 None."""
+    me = g.me
+    ch = discord.utils.get(g.text_channels, name=GUIDE_CH)
+    if ch is None and me is not None and time.time() - _log_fail.get(("g", g.id), 0) > 3600:
+        topic = "관리자 가이드북 (서버 관리자만 볼 수 있습니다)"
+        try:
+            ch = await g.create_text_channel(GUIDE_CH, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}, topic=topic, reason="관리자 가이드북 채널")
+        except Exception as e1:
+            try:
+                ch = await g.create_text_channel(GUIDE_CH, topic=topic, reason="관리자 가이드북 채널")
+                try: await ch.set_permissions(g.default_role, view_channel=False)
+                except Exception as e3: log.warning("가이드 채널 비공개 설정 실패 %s: %r", g.id, e3)
+            except Exception as e2:
+                _log_fail[("g", g.id)] = time.time(); log.warning("관리자 가이드 채널 생성 실패 서버=%s 1차=%r 2차=%r", g.id, e1, e2); return None
+    if ch is None or me is None or not ch.permissions_for(me).send_messages: return None
+    def st():
+        tok = _CTX.set(g.id)
+        try: return dict(store_get("guide", GUIDE_PATH, {}) or {})
+        finally: _CTX.reset(tok)
+    cur = await asyncio.to_thread(st)
+    if cur.get("ver") == GUIDE_VER and cur.get("ch") == getattr(ch, "id", None): return ch
+    for mid in cur.get("ids", []):                                     # 예전 가이드 글 정리
+        try: await (await ch.fetch_message(mid)).delete()
+        except Exception: pass
+    ids = []
+    for page in guide_pages():
+        m = await ch.send(page, allowed_mentions=discord.AllowedMentions.none()); ids.append(m.id)
+    def sv():
+        tok = _CTX.set(g.id)
+        try: store_set("guide", GUIDE_PATH, {"ver": GUIDE_VER, "ch": getattr(ch, "id", None), "ids": ids})
+        finally: _CTX.reset(tok)
+    await asyncio.to_thread(sv); return ch
+
+
 class GuildTree(app_commands.CommandTree):
     """모든 명령 실행 전에: ① 처리할 서버를 정하고 ② 허가되지 않은 서버는 /동맹등록 외에는 막는다."""
     async def interaction_check(self, it: discord.Interaction):
@@ -694,7 +771,7 @@ class Bot(discord.Client):
         if not jc_loop.is_running(): jc_loop.start()
         if not donate_loop.is_running(): donate_loop.start()
         hg = self.get_guild(GUILD_ID)
-        if hg: await verify_channel(hg); await log_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
+        if hg: await verify_channel(hg); await log_channel(hg); await guide_post(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
 
@@ -847,7 +924,7 @@ async def pm_setup_guild(gid):
         if discord.utils.get(g.roles, name=nm): continue
         try: await g.create_role(name=nm, reason="제작자 승인 — 기본 역할 생성"); made.append(nm)
         except Exception: fail.append(nm)
-    vc = await verify_channel(g); await log_channel(g)
+    vc = await verify_channel(g); await log_channel(g); await guide_post(g)
     out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)")
     return out + (f" / 생성 실패(봇에 '역할 관리' 권한 필요): {', '.join(fail)}" if fail else "")
 
@@ -2034,6 +2111,7 @@ async def cmd_admin_page(it: discord.Interaction):
     if not is_admin(it): return await it.response.send_message("권한이 없습니다.", ephemeral=True)
     if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
     exp = int(time.time()) + ADM_HOURS * 3600
+    asyncio.create_task(guide_post(it.guild))                                   # 가이드북 채널이 없으면 만든다
     await it.response.send_message(f"🛠️ 관리 페이지 (본인 전용 · {ADM_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/admin?t={adm_token(it.user.id, exp, it.guild_id)}", ephemeral=True)
 
 
