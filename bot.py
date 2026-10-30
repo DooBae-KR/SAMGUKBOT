@@ -680,7 +680,7 @@ GUIDE_PATH = Path(os.environ.get("GUIDE_PATH", "guide.json"))
 GUIDE_DIR = Path(__file__).parent / "guides"
 
 
-async def _guide_channel(g, name, public, prefix, topic, text):
+async def _guide_channel(g, name, public, prefix, topic, text, force=False):
     """가이드 채널을 만들고(없으면) 가이드 이미지를 올린다. 이미지 내용이 바뀌면 이전 글을 지우고 새로 올린다. 만들 수 없으면 None."""
     me = g.me
     files = sorted(GUIDE_DIR.glob(prefix + "*.png"))[:10]
@@ -709,7 +709,7 @@ async def _guide_channel(g, name, public, prefix, topic, text):
         finally: _CTX.reset(tok)
     allst = await asyncio.to_thread(st); cur = allst.get(key) or {}
     if key == "admin" and not cur and allst.get("ids"): cur = {"ids": allst["ids"]}          # 예전(텍스트 가이드북) 글 정리용
-    if cur.get("ver") == ver and cur.get("ch") == getattr(ch, "id", None): return ch
+    if not force and cur.get("ver") == ver and cur.get("ch") == getattr(ch, "id", None): return ch
     for mid in cur.get("ids", []):                                                          # 앞서 올린 안내글 삭제
         try: await (await ch.fetch_message(mid)).delete()
         except Exception: pass
@@ -726,11 +726,11 @@ async def _guide_channel(g, name, public, prefix, topic, text):
     await asyncio.to_thread(sv); return ch
 
 
-async def guide_post(g):
+async def guide_post(g, force=False):
     """#관리자가이드(관리자·봇만)와 #이용자가이드(모두 읽기 전용)를 만들고 가이드 이미지를 올린다. → 관리자가이드 채널"""
-    ch = await _guide_channel(g, GUIDE_CH, False, "admin_guide", "관리자 가이드 (서버 관리자만 볼 수 있습니다)", "📘 **관리자 가이드** — 관리 페이지(`/관리`), 권한, 채널, 문제 해결을 정리했습니다. 내용이 바뀌면 이 글이 자동으로 새 버전으로 교체됩니다.")
-    await _guide_channel(g, USER_GUIDE_CH, True, "user_guide", "동맹원용 이용 가이드", "📗 **이용자 가이드** — 인증하기, 자주 쓰는 명령어, 추천덱 보는 법을 1장으로 정리했습니다. 내용이 바뀌면 이 글이 자동으로 새 버전으로 교체됩니다.")
-    return ch
+    ach = await _guide_channel(g, GUIDE_CH, False, "admin_guide", "관리자 가이드 (서버 관리자만 볼 수 있습니다)", "📘 **관리자 가이드** — 관리 페이지(`/관리`), 권한, 채널, 문제 해결을 정리했습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force)
+    uch = await _guide_channel(g, USER_GUIDE_CH, True, "user_guide", "동맹원용 이용 가이드", "📗 **이용자 가이드** — 인증하기, 자주 쓰는 명령어, 추천덱 보는 법을 1장으로 정리했습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force)
+    return ach, uch
 
 
 class GuildTree(app_commands.CommandTree):
@@ -775,7 +775,7 @@ class Bot(discord.Client):
         if not jc_loop.is_running(): jc_loop.start()
         if not donate_loop.is_running(): donate_loop.start()
         hg = self.get_guild(GUILD_ID)
-        if hg: await verify_channel(hg); await log_channel(hg); await guide_post(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
+        if hg: await verify_channel(hg); await log_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
 
@@ -928,7 +928,7 @@ async def pm_setup_guild(gid):
         if discord.utils.get(g.roles, name=nm): continue
         try: await g.create_role(name=nm, reason="제작자 승인 — 기본 역할 생성"); made.append(nm)
         except Exception: fail.append(nm)
-    vc = await verify_channel(g); await log_channel(g); await guide_post(g)
+    vc = await verify_channel(g); await log_channel(g)
     out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)")
     return out + (f" / 생성 실패(봇에 '역할 관리' 권한 필요): {', '.join(fail)}" if fail else "")
 
@@ -2364,13 +2364,27 @@ async def dex_link(it: discord.Interaction):
     await it.response.send_message(f"🔗 내 도감 링크 (다른 사람에게 공유하지 마세요)\n{PUBLIC_URL}/tier?t={tier_token(cid, cur_gid())}\n장수·전법을 체크하면 자동으로 시트에 저장됩니다.", ephemeral=True)
 
 
+@bot.tree.command(name="메뉴얼업데이트", description="[제작자] 관리자·이용자 가이드(이미지)를 승인된 모든 서버의 가이드 채널에 올리거나 갱신합니다")
+@app_commands.describe(강제="내용이 같아도 다시 올립니다")
+async def cmd_manual_update(it: discord.Interaction, 강제: bool = False):
+    owner = await perm_owner()
+    if it.user.id != owner.id: return await it.response.send_message("제작자만 사용할 수 있습니다.", ephemeral=True)
+    await it.response.defer(ephemeral=True)
+    ok, bad = [], []
+    for g in list(bot.guilds):
+        if g.id != GUILD_ID and g.id not in LICENSED: continue
+        try: a, u = await guide_post(g, force=강제)
+        except Exception: log.exception("메뉴얼 업데이트 실패 %s", g.id); a = u = None
+        (ok if (a or u) else bad).append(g.name)
+    await it.followup.send(f"📚 메뉴얼 업데이트 완료 — 성공 {len(ok)}개 서버" + (f"\n⚠️ 실패(봇에 채널 관리 권한 필요): {', '.join(bad)}" if bad else "") + "\n(내용이 바뀐 서버만 새로 올립니다)" if not 강제 else f"📚 메뉴얼 강제 업데이트 — 성공 {len(ok)}개 서버" + (f"\n⚠️ 실패: {', '.join(bad)}" if bad else ""), ephemeral=True)
+
+
 @bot.tree.command(name="관리", description="[관리자] 톡방 참여자·동맹원 추가·관리자 권한을 DB와 실시간으로 관리하는 페이지 링크")
 async def cmd_admin_page(it: discord.Interaction):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
     if not is_admin(it): return await it.response.send_message("권한이 없습니다.", ephemeral=True)
     if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
     exp = int(time.time()) + ADM_HOURS * 3600
-    asyncio.create_task(guide_post(it.guild))                                   # 가이드북 채널이 없으면 만든다
     await it.response.send_message(f"🛠️ 관리 페이지 (본인 전용 · {ADM_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/admin?t={adm_token(it.user.id, exp, it.guild_id)}", ephemeral=True)
 
 
