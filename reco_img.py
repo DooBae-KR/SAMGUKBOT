@@ -70,7 +70,9 @@ def _hero_card(im, d, x, y, h, tac, hd, skd, info):
         d.text((x2 + 30, ty + 19), ti["kind"], font=_f(12), fill=kc)
         d.text((x2 + 30 + d.textlength(ti["kind"] + " ", font=_f(12)), ty + 19), f"{ti['type']}·{ti['trait']}", font=_f(12), fill=MUTE)
         ty += 44
-    if not tac: d.text((x2, ty + 6), "전법 없음", font=_f(13), fill=MUTE)
+    for _ in range(2 - len(tac[:2])):                              # 보유 전법이 모자라 비는 칸
+        d.rounded_rectangle((x2, ty, x_end, ty + 37), 6, outline=LINE, width=2)
+        d.text(((x2 + x_end) / 2, ty + 18), "전법 부족 (보유 전법 없음)", font=_f(12), fill=MUTE, anchor="mm"); ty += 44
 
 
 def _unit_h(): return 40 + 196 + 56 + 14

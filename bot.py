@@ -1954,7 +1954,7 @@ def finish_tactics(st, hd, skd):
     return out, (sorted(st["G"] - {"정화"}), sorted(x for x in st["U"] - st["G"] if x != "디버프"))
 
 
-def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", banned=()):
+def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", banned=(), votes=None):
     """티어덱 순서대로 5부대 편성. 한 번 쓴 장수·전법은 다시 쓰지 않는다.
     덱을 통째로 못 만들면 2명 이상, 그다음 1명 이상 보유한 덱을 고르고 빈자리는 같은 역할의 미사용 보유 장수로 채운다."""
     decks = tier_data()["S1" if season == 1 else "S2"]
@@ -1967,9 +1967,13 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", ba
             for a in h.split("/"): freq[a] = freq.get(a, 0) + 1
     usedH, usedS, usedD, plan = set(), set(), set(), []
 
+    votes = votes or {}                                                   # 덱 이름 → (좋아요 - 싫어요), 모든 서버 합산
+    order = sorted(range(len(decks)), key=lambda i: (-((len(decks) - i) + VOTE_W * votes.get(decks[i]["name"], 0)), i))      # 추천 점수 = 티어 순위 점수 + 투표 점수
+
     def pick(minc):
-        for i, d in enumerate(decks):
-            if i in usedD or d["name"] in banned: continue          # 싫어요가 많은 덱은 건너뛰고 다음 순위 덱으로
+        for i in order:
+            d = decks[i]
+            if i in usedD or d["name"] in banned: continue          # 내가 싫어요한 덱은 건너뛰고, 점수에 밀린 덱은 뒤 순위로
             got = []
             for slot in d["heroes"]:
                 alts = [a for a in slot.split("/") if a in own_h and a not in usedH and a not in got]
@@ -1997,9 +2001,8 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", ba
             hs.append({"n": best, "src": f"{want} 대신" if want else "자유 편성"}); usedH.add(best)
         plan.append((deck, hs))
     sts = [unit_state(deck, hs, hd) for deck, hs in plan]
-    for rnd in (1, 2):                                       # 1라운드: 모든 장수가 전법 1개씩(티어덱 순서), 2라운드: 남은 전법으로 2번째 칸
-        for st in sts:
-            pick_tactics(st, len(st["hs"]), own_s, usedS, hd, skd, skn, deal)
+    for st in sts:                                           # 추천 순위대로 부대마다 장수당 전법 2개씩(보유 전법이 모자라면 뒤 부대부터 비움)
+        pick_tactics(st, 2 * len(st["hs"]), own_s, usedS, hd, skd, skn, deal)
     res = []
     for (deck, hs), st in zip(plan, sts):
         tac, ss = finish_tactics(st, hd, skd)
@@ -2052,33 +2055,47 @@ PREF_PATH = Path(os.environ.get("PREF_PATH", "pref.json"))
 
 
 RECO_VOTE_PATH = Path(os.environ.get("RECO_VOTE_PATH", "reco_vote.json"))
-DISLIKE_LIMIT = int(os.environ.get("DISLIKE_LIMIT", "3"))          # (싫어요 - 좋아요)가 이 값 이상이면 그 서버에서 그 덱을 추천하지 않음
+VOTE_W = float(os.environ.get("VOTE_W", "1"))            # 투표 1표당 추천 순위 몇 칸 이동할지(좋아요 +, 싫어요 -)
 _vote_lock = threading.Lock()
 
 
 def vote_key(season, name): return f"S{season}|{name}"
 
 
-def reco_votes(): return store_get("reco_vote", RECO_VOTE_PATH, {}) or {}
+def _gv():
+    """투표는 모든 서버가 함께 쓴다(홈 서버 저장소에 한 곳으로 모음)."""
+    tok = _CTX.set(GUILD_ID)
+    try: return store_get("reco_vote", RECO_VOTE_PATH, {}) or {}
+    finally: _CTX.reset(tok)
+
+
+def reco_votes(): return _gv()
+
+
+def reco_scores(season):
+    """덱 이름 → (좋아요 수 - 싫어요 수). 모든 디스코드 서버의 투표를 합산."""
+    pre = f"S{season}|"
+    return {k[len(pre):]: len(v.get("u", [])) - len(v.get("d", [])) for k, v in _gv().items() if k.startswith(pre)}
 
 
 def reco_banned(did, season):
-    """추천에서 뺄 덱 이름: ① 내가 싫어요를 누른 덱 ② 서버 전체에서 (싫어요-좋아요)가 한도 이상인 덱"""
-    out, pre = set(), f"S{season}|"
-    for k, v in reco_votes().items():
-        if k.startswith(pre) and (str(did) in v.get("d", []) or len(v.get("d", [])) - len(v.get("u", [])) >= DISLIKE_LIMIT): out.add(k[len(pre):])
-    return out
+    """내가 싫어요를 누른 덱은 나에게는 다시 추천하지 않는다."""
+    pre = f"S{season}|"
+    return {k[len(pre):] for k, v in _gv().items() if k.startswith(pre) and str(did) in v.get("d", [])}
 
 
 def reco_vote(did, season, name, kind):
     """좋아요(u)/싫어요(d) 기록(같은 버튼을 다시 누르면 취소, 반대 버튼이면 바꿈). → (좋아요 수, 싫어요 수, 내 선택 'u'/'d'/None)"""
     with _vote_lock:
-        d = dict(reco_votes()); k = vote_key(season, name); e = {"u": list(d.get(k, {}).get("u", [])), "d": list(d.get(k, {}).get("d", []))}
+        d = dict(_gv()); k = vote_key(season, name); e = {"u": list(d.get(k, {}).get("u", [])), "d": list(d.get(k, {}).get("d", []))}
         mine = str(did); was = "u" if mine in e["u"] else "d" if mine in e["d"] else None
         e["u"] = [x for x in e["u"] if x != mine]; e["d"] = [x for x in e["d"] if x != mine]
         now = None if was == kind else kind
         if now: e[now].append(mine)
-        d[k] = e; store_set("reco_vote", RECO_VOTE_PATH, d)
+        d[k] = e
+        tok = _CTX.set(GUILD_ID)
+        try: store_set("reco_vote", RECO_VOTE_PATH, d)
+        finally: _CTX.reset(tok)
         return len(e["u"]), len(e["d"]), now
 
 
@@ -2117,7 +2134,7 @@ def reco_run(did, season):
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
     deal = pref_get(did).get("deal", "도트딜")
-    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal, banned=reco_banned(did, season))
+    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal, banned=reco_banned(did, season), votes=reco_scores(season))
     who = (roster.by_uid.get(cid) or {}).get("name") or "내"
     return None, res, who, deal, hd, skd
 
@@ -2148,7 +2165,7 @@ async def reco_deliver(it, did, season, first_edit=False, note=""):
         for c in chunks: await it.followup.send(c, ephemeral=True)
         return
     files = [discord.File(io.BytesIO(b), filename=f"추천덱_{i}.png") for i, b in enumerate(imgs, 1)]
-    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}**  ·  마음에 안 드는 덱은 👎 를 누르면 빼고 다시 추천해요. (👎가 {DISLIKE_LIMIT}개 이상 쌓이면 서버 전체에서 제외)"
+    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}**  ·  마음에 안 드는 덱은 👎 를 누르면 빼고 다시 추천해요. (모든 서버의 👍/👎가 합산돼 추천 순위에 반영돼요)"
     view = RecoVote(did, season, decks[:5]) if decks else None
     if first_edit: await it.edit_original_response(content=head, attachments=files, view=view)
     else: await it.followup.send(head, files=files, view=view, ephemeral=True)
