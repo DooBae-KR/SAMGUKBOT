@@ -1,0 +1,46 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>
+@page{size:A4;margin:13mm 14mm}
+*{box-sizing:border-box}body{font-family:'Noto Sans CJK KR','Noto Sans CJK SC',sans-serif;color:#1d2b28;font-size:10.5pt;line-height:1.45;margin:0}
+h1{font-size:23pt;margin:0 0 2px;color:#0f4c43}.sub{color:#5d6f6a;font-size:10pt;margin-bottom:14px}
+h2{font-size:13pt;margin:16px 0 6px;padding:4px 10px;background:#e6f3ef;border-left:4px solid #1f8f7a;color:#0f4c43}
+ol,ul{margin:4px 0 4px 18px;padding:0}li{margin:2px 0}
+table{width:100%;border-collapse:collapse;margin-top:4px}td,th{border:1px solid #cfdcd8;padding:5px 8px;text-align:left;vertical-align:top}
+th{background:#f3f8f6;font-size:10.5pt}code{background:#eef3f1;padding:1px 6px;border-radius:4px;font-family:inherit;font-weight:700;color:#0f4c43}
+.note{background:#fff7e0;border:1px solid #ecd58a;border-radius:6px;padding:7px 10px;margin-top:8px;font-size:10.5pt}
+</style></head><body>
+<h1>이용자 가이드</h1><div class="sub">삼국지 천하결전 동맹 봇 · 동맹원용 (1분 요약)</div>
+
+<h2>1. 처음 한 번 — 인증하기</h2>
+<ol>
+<li><b>#인증</b> 채널에서 <code>/인증</code>을 입력합니다. (나에게만 보입니다)</li>
+<li>게임 속 내 <b>CID</b>(숫자)를 입력합니다.</li>
+<li>인증되면 별명이 <b>[직책]닉네임</b>으로 바뀌고 <b>동맹원</b> 역할이 생깁니다. 간부 직책이면 <b>간부</b> 역할도 받습니다.</li>
+</ol>
+<div class="note">⚠️ CID를 5번 틀리면 잠깁니다. 잠기면 관리자에게 알려 주세요. 명단에 없다고 나오면 가입 직후일 수 있으니 관리자에게 추가를 요청하세요. (게임 명단은 매일 오전 8시 갱신)</div>
+
+<h2>2. 자주 쓰는 명령어</h2>
+<table>
+<tr><th style="width:24%">명령어</th><th>하는 일</th></tr>
+<tr><td><code>/인증</code></td><td>CID 인증 창 열기</td></tr>
+<tr><td><code>/부캐</code></td><td>내 부계정 연결. 예) <code>/부캐 닉네임:부캐1,부캐2</code> — 오타나 명단에 없는 닉네임은 빼고 알려 줍니다. 비워 두면 연결 목록을 봅니다.</td></tr>
+<tr><td><code>/도감</code></td><td>보유 장수·전법을 체크하는 <b>내 전용 링크</b>를 받습니다. 체크하면 자동 저장됩니다. (링크는 다른 사람에게 공유하지 마세요)</td></tr>
+<tr><td><code>/추천덱</code></td><td>내 도감 기준으로 티어덱 순서대로 <b>5부대</b>를 편성해 줍니다. 처음 한 번 시즌(1/2)을 고르면 기억합니다.</td></tr>
+<tr><td><code>/후원</code></td><td>제작자 서버비 후원 안내(카카오 QR)</td></tr>
+<tr><td><code>/명령어</code></td><td>내 역할로 쓸 수 있는 명령어 목록</td></tr>
+</table>
+
+<h2>3. 추천덱 보는 법</h2>
+<ul>
+<li>먼저 <code>/도감</code>에서 내가 가진 장수·전법을 체크해야 정확합니다.</li>
+<li>전법 앞 아이콘: 💥 한방딜(고배율) · 🔥 도트딜(누적) · ⚔️ 일반딜 · 💚 회복 · 🛡️ 지원</li>
+<li>한 번 쓴 장수·전법은 다른 부대에서 다시 쓰지 않습니다.</li>
+<li>시즌 변경: <code>/추천덱 시즌:2</code> · 딜 방식 변경: <code>/추천덱 딜:한방딜</code></li>
+</ul>
+
+<h2>4. 문제가 생기면</h2>
+<table>
+<tr><td style="width:34%">"권한이 없습니다."</td><td>간부/관리자 전용 명령어입니다. 필요하면 간부에게 요청하세요.</td></tr>
+<tr><td>인증이 잠김</td><td>관리자에게 초기화를 요청하세요.</td></tr>
+<tr><td>도감 링크가 열리지 않음</td><td><code>/도감</code>을 다시 입력해 새 링크를 받으세요.</td></tr>
+</table>
+</body></html>

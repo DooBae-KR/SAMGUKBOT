@@ -1,0 +1,64 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>
+@page{size:A4;margin:13mm 14mm}
+*{box-sizing:border-box}body{font-family:'Noto Sans CJK KR','Noto Sans CJK SC',sans-serif;color:#1d2b28;font-size:10.3pt;line-height:1.45;margin:0}
+h1{font-size:22pt;margin:0 0 2px;color:#0f4c43}.sub{color:#5d6f6a;font-size:10pt;margin-bottom:10px}
+h2{font-size:12.5pt;margin:13px 0 5px;padding:4px 10px;background:#e6f3ef;border-left:4px solid #1f8f7a;color:#0f4c43;break-after:avoid}
+ol,ul{margin:3px 0 3px 18px;padding:0}li{margin:2px 0}
+table{width:100%;border-collapse:collapse;margin-top:3px;break-inside:avoid}td,th{border:1px solid #cfdcd8;padding:4px 8px;text-align:left;vertical-align:top}
+th{background:#f3f8f6}code{background:#eef3f1;padding:1px 5px;border-radius:4px;font-family:inherit;font-weight:700;color:#0f4c43}
+.note{background:#fff7e0;border:1px solid #ecd58a;border-radius:6px;padding:6px 10px;margin-top:6px;font-size:10pt}
+.url{word-break:break-all;font-size:9pt;color:#37524c}
+</style></head><body>
+<h1>관리자 가이드</h1><div class="sub">삼국지 천하결전 동맹 봇 · 서버 관리자용</div>
+
+<h2>1. 처음 시작하기</h2>
+<ol>
+<li><b>봇 초대·권한</b>: 채널 관리 · 역할 관리 · 별명 관리 권한이 필요합니다. 봇 역할은 <b>동맹원 · 간부 · 외교관</b> 역할보다 위에 둡니다.</li>
+<li><b>동맹 등록</b>: <code>/동맹등록</code>으로 서버 번호(숫자)와 동맹명을 신청합니다. 제작자가 승인하면 역할과 <b>#인증</b> 채널이 자동으로 만들어집니다. 등록은 한 번만, 이후 수정은 <code>/동맹수정</code>입니다.</li>
+<li><b>명단 올리기</b>: 게임 명단 엑셀(.xlsx)을 <code>/명단업데이트</code>로 올립니다. (게임 엑셀은 매일 오전 8시 갱신) 명단에서 빠진 사람은 자동으로 이탈자로 옮겨집니다.</li>
+<li><b>인증 안내</b>: 동맹원은 #인증 채널에서 <code>/인증</code>으로 CID를 인증합니다. 인증하면 <b>[직책]닉네임</b> 별명과 역할이 부여됩니다. (5회 실패 시 잠김)</li>
+</ol>
+
+<h2>2. 관리 페이지 — <code>/관리</code></h2>
+<p style="margin:2px 0">관리자만 사용 · 나에게만 보이는 링크(6시간 유효, 공유 금지) · 저장 즉시 DB 반영, 4초마다 자동 갱신</p>
+<table>
+<tr><th style="width:22%">탭</th><th>기능</th></tr>
+<tr><td>톡방 참여자</td><td>추가 · 삭제 · 이름 수정. 명단에 없는 이름은 ⚠️ 표시</td></tr>
+<tr><td>동맹원 추가</td><td>게임 엑셀에 아직 없는 사람을 CID·닉네임으로 직접 추가 (엑셀 반영 전 3일 유지)</td></tr>
+<tr><td>부캐</td><td>본캐를 고르고 부캐 닉네임을 쉼표로 입력 → 명단과 대조해 연결. 오타·없는 닉네임은 제외하고 이유 안내</td></tr>
+<tr><td>관리자 권한</td><td>디스코드 사용자 ID로 공동관리자 추가/제거. 본인·제작자 권한은 뺄 수 없음</td></tr>
+<tr><td>명령어 권한</td><td>역할별 명령어 표 + <b>간부 명령어를 직책별로 제한</b> (직책 선택, <b>전체</b> = 간부 전체 허용)</td></tr>
+<tr><td>인증 횟수 제한</td><td>실패가 쌓인 계정·잠긴 계정 조회, CID 또는 디스코드 ID로 초기화</td></tr>
+</table>
+
+<h2>3. 권한 구조</h2>
+<table>
+<tr><th style="width:16%">역할</th><th>사용 가능한 명령어</th></tr>
+<tr><td>동맹원</td><td><code>/인증</code> <code>/부캐</code> <code>/도감</code> <code>/추천덱</code> <code>/후원</code> <code>/명령어</code></td></tr>
+<tr><td>간부</td><td>위 + <code>/인사</code> <code>/공성등록</code> <code>/공성</code> <code>/공성취소</code> <code>/공성예약</code> <code>/공성예약취소</code> <code>/정철설정</code> <code>/동맹수정</code> <code>/동맹원추가</code> (직책별 제한 가능)</td></tr>
+<tr><td>관리자</td><td>위 전부 + <code>/관리</code> <code>/인증해제</code> <code>/명단업데이트</code> <code>/명단새로고침</code> <code>/외교관해제</code> · <code>/부캐</code>의 본캐 지정</td></tr>
+</table>
+<ul>
+<li>제한에 걸리면 "권한이 없습니다."가 표시됩니다. 관리자는 제한과 관계없이 항상 사용할 수 있습니다.</li>
+<li><b>관리자</b> = 디스코드 서버 관리자 권한 보유자, 또는 <code>/관리</code>에서 부여받은 사람. 공동관리자는 관리자가 직접 추가합니다.</li>
+</ul>
+
+<h2>4. 봇이 만드는 채널</h2>
+<table>
+<tr><td style="width:22%"><b>#관리자가이드</b></td><td>채널 목록 최상단 · 관리자·봇만 열람 · 관리자 가이드 PDF 게시(내용이 바뀌면 자동 교체)</td></tr>
+<tr><td><b>#이용자가이드</b></td><td>채널 목록 최상단 · 모두 읽기 전용 · 동맹원용 이용 가이드 PDF 게시</td></tr>
+<tr><td><b>#인증</b></td><td>신규 인원이 CID 인증을 하는 채널</td></tr>
+<tr><td><b>#명령어로그</b></td><td>최하단 "봇" 카테고리 · 관리자·봇만 열람 · 모든 명령어 사용 기록(시각·명령어·옵션·사용자)</td></tr>
+<tr><td><b>#후원</b></td><td>최하단 "봇" 카테고리 · 후원 안내를 서버마다 한 번 게시</td></tr>
+</table>
+
+<h2>5. 자주 겪는 문제</h2>
+<table>
+<tr><td style="width:30%">채널·역할이 안 만들어짐</td><td>봇 역할에 채널 관리·역할 관리 권한 확인. 아래 초대 링크를 다시 열어 승인하면 권한만 갱신됩니다.<div class="url">discord.com/oauth2/authorize?client_id=1563493671473520740&amp;permissions=2550254672&amp;scope=bot+applications.commands</div></td></tr>
+<tr><td>인증이 잠김</td><td><code>/관리</code> → 인증 횟수 제한에서 초기화, 또는 <code>/인증해제</code></td></tr>
+<tr><td>CID가 명단에 없음</td><td>오타 확인 후, 신규 가입자는 관리 페이지 → 동맹원 추가로 먼저 등록</td></tr>
+<tr><td>링크 만료</td><td><code>/관리</code> · <code>/인사</code>를 다시 입력하면 새 링크 발급</td></tr>
+<tr><td>부계정이 여럿</td><td>관리 페이지 → 부캐에서 본캐에 연결</td></tr>
+</table>
+<div class="note">⚠️ 봇 토큰(DISCORD_TOKEN)과 관리 링크는 절대 공유하지 마세요. 초대 링크는 공개해도 안전합니다. 승인되지 않은 서버에서는 <code>/동맹등록</code>만 사용할 수 있습니다.</div>
+</body></html>
