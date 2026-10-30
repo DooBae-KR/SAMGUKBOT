@@ -1917,6 +1917,7 @@ def tact_info(name, skd):
     heal = t.get("trait") == "치유" or bool(re.search(r"병력을? 회복|치유율|회유이?\(?가?\)? ?\d|정신 회복|심리", desc))
     kind = "도트딜" if dot else "한방딜" if burst else "일반딜" if pc else "회복" if heal else "지원"
     info = {"type": t.get("type", ""), "trait": t.get("trait", ""), "g": g - {"정화"}, "u": u - {"디버프"}, "peak": peak, "kind": kind, "heal": heal,
+            "pierce": bool((m := re.search(r"관통이?\(?가?\)?[^감증]*?(증가|감소)", desc)) and m.group(1) == "증가"),   # 설명에 '관통 증가' 효과가 있는 전법(이름 아님)
             "flood": "홍수" in g, "threat": "위협" in g, "uses_flood": "홍수" in u or "홍수" in desc and t.get("trait") == "책략"}
     _TI[key] = info; return info
 
@@ -1933,15 +1934,15 @@ def unit_trait(st, hd):
     return "책략" if c["책략"] > c["병기"] else "병기" if c["병기"] > c["책략"] else ""
 
 
-PURSUE = ("황충", "손상향", "하후연", "허저")                     # 추격 전법으로 구성하는 장수 (예리한 판단=관통이 잘 어울림)
-PURSUE_PIN = "예리한판단"
-LU_COMBO = ("원문사극",)                                          # 여포 연타 구성
-LU_COUNTER = ("용감한삼군", "용맹한삼군", "일인천군")              # 여포 반격덱 구성
+PURSUE = ("황충", "손상향", "하후연", "허저")                     # 추격 전법으로 구성하는 장수 (관통 증가 효과 전법이 잘 어울림)
+LU_COMBO = ("원문사극",)                                          # 여포 연타 구성(운영 노하우)
+LU_COUNTER = ("용맹한삼군", "일인천군")                            # 여포 반격덱 구성
 
 
 def pin_tactics(st, own_s, used, hd, skd, skn):
     """장수별 고정 전법(운영 노하우)을 먼저 배정한다. → st["pin"] = {전법: 장수}
-    · 황충·손상향·하후연·허저: 예리한 판단(관통) 1개를 우선 배정 · 여포: 연타 구성이면 원문사극, 반격덱이면 용감한 삼군·일인천군"""
+    · 황충·손상향·하후연·허저(추격): 전법 **설명에 '관통 증가' 효과가 있는** 보유 전법 1개(이름이 아니라 효과로 판단)
+    · 여포: 연타 구성이면 원문사극, 반격덱이면 용맹한 삼군·일인천군"""
     st.setdefault("pin", {})
     names = [h for h in st["hs"] if h]
     def put(k, owner, why):
@@ -1950,13 +1951,15 @@ def pin_tactics(st, own_s, used, hd, skd, skn):
             if ti["heal"] or ti["kind"] == "회복": st["healed"] = True
             st["picks"].append((n, why)); st["pin"][n] = owner
     pur = [h for h in PURSUE if h in names]
-    if pur: put(PURSUE_PIN, pur[0], "관통·추격 궁합")
+    if pur:
+        cand = [k for k in sorted(own_s - used) if k in skn and tact_info(skn[k], skd)["pierce"]]
+        if cand: put(max(cand, key=lambda k: (tact_info(skn[k], skd)["type"] == "패시브", (skd.get(skn[k]) or {}).get("grade") == "전설")), pur[0], "관통 증가")
     if "여포" in names:
         counter = "반격" in (st.get("dname") or "")
         for k in (LU_COUNTER if counter else LU_COMBO): put(k, "여포", "여포 반격" if counter else "여포 연타")
 
 
-def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜"):
+def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜", pen=None):
     """한 부대에 전법을 count개 더 고른다.
     ① 딜 방식: 선호(기본 도트딜)와 같으면 +3, 반대 방식(한방딜)이면 -1.5  ② 책략 부대는 홍수 부여(+5)·홍수 활용(+3),
     병기 부대는 위협 부여(+6)  ③ 장수 기술이 필요로 하는 이상상태를 부여 +6 / 부대 이상상태 활용 +4  ④ 회복류가 없으면 회복류 +3 (회유·정신 회복 포함)
@@ -1983,6 +1986,7 @@ def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜"):
             if ti["trait"] == trait and trait: sc += 2
             if k in st["deck"]: sc += 3; why.append("티어덱")
             if ti["type"] in ("지휘", "패시브") and g: sc += 1
+            if pen: sc += pen.get(k, 0)                                  # 전법 조합 평가(내 싫어요 -4, 전체 ±0.5/표)
             if ti["type"] == "추격" and any(h in PURSUE for h in st["hs"]): sc += 3; why.append("추격 구성")
             sc += {"전설": 0.6, "영웅": 0.3}.get((skd.get(n) or {}).get("grade"), 0)
             if best is None or sc > best[0]: best = (sc, k, n, why, g, u, ti)
@@ -2006,7 +2010,7 @@ def finish_tactics(st, hd, skd):
     return out, (sorted(st["G"] - {"정화"}), sorted(x for x in st["U"] - st["G"] if x != "디버프"))
 
 
-def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", banned=(), votes=None):
+def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", banned=(), votes=None, tpen=None):
     """티어덱 순서대로 5부대 편성. 한 번 쓴 장수·전법은 다시 쓰지 않는다.
     덱을 통째로 못 만들면 2명 이상, 그다음 1명 이상 보유한 덱을 고르고 빈자리는 같은 역할의 미사용 보유 장수로 채운다."""
     decks = tier_data()["S1" if season == 1 else "S2"]
@@ -2056,7 +2060,7 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", ba
     for st, (_d, _h) in zip(sts, plan): st["dname"] = (_d or {}).get("name", "")
     for st in sts:                                           # 추천 순위대로 부대마다 장수당 전법 2개씩(보유 전법이 모자라면 뒤 부대부터 비움)
         pin_tactics(st, own_s, usedS, hd, skd, skn)
-        pick_tactics(st, 2 * len(st["hs"]) - len(st["picks"]), own_s, usedS, hd, skd, skn, deal)
+        pick_tactics(st, 2 * len(st["hs"]) - len(st["picks"]), own_s, usedS, hd, skd, skn, deal, (tpen or {}).get(st.get("dname")))
     res = []
     for (deck, hs), st in zip(plan, sts):
         tac, ss = finish_tactics(st, hd, skd)
@@ -2138,41 +2142,67 @@ def reco_banned(did, season):
     return {k[len(pre):] for k, v in _gv().items() if k.startswith(pre) and str(did) in v.get("d", [])}
 
 
-def reco_vote(did, season, name, kind):
+def reco_vote_key(did, key, kind):
     """좋아요(u)/싫어요(d) 기록(같은 버튼을 다시 누르면 취소, 반대 버튼이면 바꿈). → (좋아요 수, 싫어요 수, 내 선택 'u'/'d'/None)"""
     with _vote_lock:
-        d = dict(_gv()); k = vote_key(season, name); e = {"u": list(d.get(k, {}).get("u", [])), "d": list(d.get(k, {}).get("d", []))}
+        d = dict(_gv()); e = {"u": list(d.get(key, {}).get("u", [])), "d": list(d.get(key, {}).get("d", []))}
         mine = str(did); was = "u" if mine in e["u"] else "d" if mine in e["d"] else None
         e["u"] = [x for x in e["u"] if x != mine]; e["d"] = [x for x in e["d"] if x != mine]
         now = None if was == kind else kind
         if now: e[now].append(mine)
-        d[k] = e
+        d[key] = e
         tok = _CTX.set(GUILD_ID)
         try: store_set("reco_vote", RECO_VOTE_PATH, d)
         finally: _CTX.reset(tok)
         return len(e["u"]), len(e["d"]), now
 
 
+def reco_vote(did, season, name, kind):
+    """장수 조합(덱) 투표."""
+    return reco_vote_key(did, vote_key(season, name), kind)
+
+
+def tvote_key(season, name, tset): return f"T{season}|{name}|" + ",".join(sorted(_nk(x) for x in tset))
+
+
+def reco_tpen(did, season):
+    """전법 조합 평가 → {덱 이름: {전법(공백 제거): 점수 보정}}. 내가 싫어요한 조합의 전법은 -4, 모든 서버의 좋아요-싫어요 합은 ±0.5/표."""
+    pre = f"T{season}|"; out = {}; mine = str(did); nm = {}
+    for k, v in _gv().items():
+        if not k.startswith(pre): continue
+        name, _, ts = k[len(pre):].partition("|")
+        net = len(v.get("u", [])) - len(v.get("d", []))
+        for t in filter(None, ts.split(",")):
+            o = out.setdefault(name, {}); o[t] = o.get(t, 0) + 0.5 * net
+            if mine in v.get("d", []): o[t] -= 4
+    return out
+
+
 class RecoVote(CtxView):
-    """추천 결과 아래의 좋아요/싫어요 버튼(부대마다). 싫어요를 누르면 그 덱을 빼고 바로 다시 추천한다."""
+    """추천 결과 아래의 평가 버튼(부대마다 4개): 장수 조합 👍/👎 · 전법 조합 👍/👎.
+    장수 조합 👎 → 그 덱을 빼고 다시 추천 / 전법 조합 👎 → 같은 장수 조합에서 전법만 다시 추천."""
     def __init__(self, did, season, decks):
         super().__init__(timeout=900); self.did, self.season, self._decks = did, season, list(decks)
-        votes = reco_votes()
-        for row, (n, name) in enumerate(decks):
-            v = votes.get(vote_key(season, name), {}); mine = str(did)
-            for kind, emo in (("u", "👍"), ("d", "👎")):
-                on = mine in v.get(kind, [])
-                b = discord.ui.Button(label=f"{n}부대 {emo} {len(v.get(kind, []))}", style=(discord.ButtonStyle.success if kind == "u" else discord.ButtonStyle.danger) if on else discord.ButtonStyle.secondary, row=row)
-                b.callback = self._cb(n, name, kind); self.add_item(b)
+        votes = reco_votes(); mine = str(did)
+        for row, (n, name, tset) in enumerate(decks):
+            for scope, key, label in (("h", vote_key(season, name), "장수"), ("t", tvote_key(season, name, tset), "전법")):
+                v = votes.get(key, {})
+                for kind, emo in (("u", "👍"), ("d", "👎")):
+                    on = mine in v.get(kind, [])
+                    b = discord.ui.Button(label=f"{n}부대 {label}{emo} {len(v.get(kind, []))}", row=row, disabled=(scope == "t" and not tset),
+                                          style=(discord.ButtonStyle.success if kind == "u" else discord.ButtonStyle.danger) if on else discord.ButtonStyle.secondary)
+                    b.callback = self._cb(n, name, tset, scope, kind, key); self.add_item(b)
 
-    def _cb(self, n, name, kind):
+    def _cb(self, n, name, tset, scope, kind, key):
         async def cb(it: discord.Interaction):
-            up, dn, now = await asyncio.to_thread(reco_vote, self.did, self.season, name, kind)
-            if now == "d":                                                   # 싫어요 → 이 덱을 빼고 다시 추천
-                await it.response.edit_message(content=f"👎 **{n}부대 · {name}** 덱을 빼고 다시 추천합니다…", attachments=[], view=None)
-                await reco_deliver(it, self.did, self.season, first_edit=True, note=f"👎 **{name}** 덱을 빼고 다시 편성했어요. (싫어요 {dn}개)")
+            up, dn, now = await asyncio.to_thread(reco_vote_key, self.did, key, kind)
+            if now == "d":
+                what = "장수 조합" if scope == "h" else "전법 조합"
+                await it.response.edit_message(content=f"👎 **{n}부대 · {name}** {what}을 빼고 다시 추천합니다…", attachments=[], view=None)
+                await reco_deliver(it, self.did, self.season, first_edit=True,
+                                   note=f"👎 **{name}** " + ("덱(장수 조합)을 빼고 다시 편성했어요." if scope == "h" else "장수 조합은 그대로, 전법만 다시 골랐어요.") + f" (싫어요 {dn}개)")
             else:
-                await it.response.edit_message(view=RecoVote(self.did, self.season, [(nn, d) for nn, d in self.decks_ref]))
+                await it.response.edit_message(view=RecoVote(self.did, self.season, self.decks_ref))
         return cb
 
     @property
@@ -2254,7 +2284,7 @@ def reco_run(did, season):
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
     deal = "도트딜"                                                  # 딜 방식은 고정(누적 딜 우선) — 사용자가 고르지 않음
-    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal, banned=reco_banned(did, season), votes=reco_scores(season))
+    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal, banned=reco_banned(did, season), votes=reco_scores(season), tpen=reco_tpen(did, season))
     who = (roster.by_uid.get(cid) or {}).get("name") or "내"
     dex_tr = dex.get("tr") or {}
     return None, res, who, deal, hd, skd, dex_tr
@@ -2275,7 +2305,7 @@ def reco_images(did, season):
     eff = hero_eff([h["n"] for _d, unit, _s in res for h, _t in unit if h["n"]], tr)
     flows = [reco_flow(unit, eff, hd, info) for _d, unit, _s in res]
     imgs = reco_img.render(res, season, who, deal, hd, skd, info, lambda ty: ORDER.get(ty, 3), flows=flows, eff=eff)
-    return imgs, None, [(i, d["name"]) for i, (d, _u, _s) in enumerate(res, 1) if d]
+    return imgs, None, [(i, d["name"], tuple(t for _h, tac in u for t, _w in tac)) for i, (d, u, _s) in enumerate(res, 1) if d]
 
 
 async def reco_deliver(it, did, season, first_edit=False, note=""):
@@ -2289,7 +2319,7 @@ async def reco_deliver(it, did, season, first_edit=False, note=""):
         for c in chunks: await it.followup.send(c, ephemeral=True)
         return
     files = [discord.File(io.BytesIO(b), filename=f"추천덱_{i}.png") for i, b in enumerate(imgs, 1)]
-    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}**  ·  마음에 안 드는 덱은 👎 를 누르면 빼고 다시 추천해요. (모든 서버의 👍/👎가 합산돼 추천 순위에 반영돼요)"
+    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}**  ·  **장수 조합**과 **전법 조합**을 따로 평가할 수 있어요. 장수 👎는 그 덱을 빼고, 전법 👎는 전법만 다시 골라요. (모든 서버의 👍/👎가 합산돼 반영돼요)"
     view = RecoVote(did, season, decks[:5]) if decks else None
     if first_edit: await it.edit_original_response(content=head, attachments=files, view=view)
     else: await it.followup.send(head, files=files, view=view, ephemeral=True)
