@@ -1346,7 +1346,7 @@ async def web_tier(request):
     info = roster.by_uid.get(cid) or {}
     dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
     cfg = await asyncio.to_thread(tier_sheet_cfg)
-    cfg |= {"t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", [])}
+    cfg |= {"t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {})}
     tpl = (Path(__file__).parent / "tier_template.html").read_text("utf-8")
     return web.Response(text=tpl.replace("__CFG__", json.dumps(cfg, ensure_ascii=False)), content_type="text/html", headers={"Cache-Control": "no-store"})
 
@@ -1358,8 +1358,9 @@ async def web_dex_save(request):
     if not pr: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
     set_gid(pr[0]); cid = pr[1]
     clean = lambda v: sorted({str(x)[:30] for x in v if isinstance(x, str)})[:600] if isinstance(v, list) else []
+    clean_tr = lambda v: {str(k)[:30]: max(0, min(5, int(n))) for k, n in v.items() if isinstance(n, (int, float)) and not isinstance(n, bool) and n > 0}if isinstance(v, dict) else {}   # 초월 0~5
     info = roster.by_uid.get(cid) or {}
-    data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")),
+    data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")), "tr": clean_tr(b.get("tr")),
             "at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")}
     DEX_DIR.mkdir(exist_ok=True)
     store_set(f"dex_{cid}", dex_path(cid), data)
@@ -1696,11 +1697,19 @@ async def cmd_member_add(it: discord.Interaction):
     await it.response.send_modal(MemberAddModal())
 
 
-@bot.tree.command(name="db이관", description="[제작자] 구글 시트 인사 탭의 명단을 DB에 한 번 이관합니다(비상용)")
-async def cmd_db_migrate(it: discord.Interaction):
+@bot.tree.command(name="db이관", description="[제작자] 구글 시트의 인사 명단 또는 장수 스탯(무장 탭)을 DB로 이관합니다")
+@app_commands.describe(대상="인사: 인사 탭 명단(기본) / 장수: 무장 탭의 50렙 스탯(무력·지력·통솔·선공)")
+@app_commands.choices(대상=[app_commands.Choice(name="인사 명단", value="hr"), app_commands.Choice(name="장수 스탯", value="hero")])
+async def cmd_db_migrate(it: discord.Interaction, 대상: app_commands.Choice[str] = None):
     owner = await perm_owner()
     if it.user.id != owner.id: return await it.response.send_message("제작자만 사용할 수 있습니다.", ephemeral=True)
     if not SB_ON: return await it.response.send_message("DB가 연결되지 않았습니다.", ephemeral=True)
+    if 대상 is not None and 대상.value == "hero":
+        await it.response.defer(ephemeral=True)
+        try: n = await asyncio.to_thread(hero_import)
+        except Exception as e:
+            log.exception("장수 스탯 이관 실패"); return await it.followup.send(f"❌ 이관 실패: {str(e)[:300]}", ephemeral=True)
+        return await it.followup.send(f"✅ 시트 '무장' 탭에서 장수 {n}명의 스탯(50렙)을 DB로 가져왔습니다.", ephemeral=True)
     if not (SHEET_ID and ROSTER_GID): return await it.response.send_message("SHEET_ID / ROSTER_GID가 설정되지 않았습니다.", ephemeral=True)
     await it.response.defer(ephemeral=True)
     try:
@@ -2125,32 +2134,97 @@ class RecoVote(CtxView):
     def decks_ref(self): return self._decks
 
 
+_HS = {"at": 0.0, "d": {}}
+HERO_GID = os.environ.get("HERO_GID", "817745317")             # 구글 시트 '무장' 탭
+TR_BONUS = 10                                                     # 초월 1단계당 각 스탯 +10 (최대 5단계)
+
+
+def hero_stats():
+    """장수별 50렙 기본 스탯 {장수: {atk,intl,lead,init}} (DB, 1시간 캐시). 모든 서버 공통."""
+    if SB_ON and time.time() - _HS["at"] > 3600:
+        try:
+            rows = _sb_req("GET", "sam_hero_stat?select=hero,atk,intl,lead,init&limit=2000") or []
+            _HS["d"] = {r["hero"]: {k: float(r[k]) for k in ("atk", "intl", "lead", "init")} for r in rows}; _HS["at"] = time.time()
+        except Exception as e:
+            log.warning("장수 스탯 로드 실패: %s", e); _HS["at"] = time.time() - 3000
+    return _HS["d"]
+
+
+def hero_import(csv_text=None):
+    """구글 시트 '무장' 탭(50렙 무력·지력·통솔·선공)을 DB로 가져온다. → 가져온 장수 수"""
+    rows = list(csv.reader(io.StringIO(csv_text if csv_text is not None else fetch_sheet_csv(HERO_GID))))
+    if not rows: raise RuntimeError("무장 탭이 비어 있습니다.")
+    head = [re.sub(r"\s+", "", c) for c in rows[0]]
+    col = lambda k: next((i for i, c in enumerate(head) if c.startswith(k)), None)
+    ia, ii, il, iz = col("무력"), col("지력"), col("통솔"), col("선공")
+    if None in (ia, ii, il, iz): raise RuntimeError("무장 탭에서 무력/지력/통솔/선공 열을 찾지 못했습니다.")
+    out = []
+    for r in rows[1:]:
+        name = next((c.strip() for c in r[4:6] if c.strip()), "")
+        try: v = [float(r[x]) for x in (ia, ii, il, iz)]
+        except (ValueError, IndexError): continue
+        if name: out.append({"hero": name, "atk": v[0], "intl": v[1], "lead": v[2], "init": v[3], "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+    if not out: raise RuntimeError("가져올 장수가 없습니다.")
+    _sb_rows("sam_hero_stat", out, conflict="hero"); _HS["at"] = 0.0
+    return len(out)
+
+
+def hero_eff(names, tr):
+    """부대 장수들의 실제 스탯 = 50렙 기본값 + 초월(단계×10, 각 스탯). → {장수: {atk,intl,lead,init,tr}}"""
+    hs, out = hero_stats(), {}
+    for n in names:
+        b = hs.get(n)
+        if not b: continue
+        t = max(0, min(5, int(tr.get(n, 0) or 0))); out[n] = {k: v + TR_BONUS * t for k, v in b.items()}; out[n]["tr"] = t
+    return out
+
+
+def reco_flow(unit, eff, hd, info):
+    """부대 전투 흐름: ① 전투 시작(지휘 → 패시브) ② 턴마다 선공 높은 장수부터 행동(액티브 → 평타 → 추격).
+    장수의 고유 전법과 배운 전법 모두 포함. → {"start": {"지휘": [...], "패시브": [...]}, "turn": [(장수, 선공, [액티브], [추격])]}"""
+    start, turn = {"지휘": [], "패시브": []}, []
+    for h, tac in unit:
+        n = h["n"]
+        if not n: continue
+        sk = hd.get(n) or {}
+        skills = ([(sk["sk"], sk.get("sktype", ""))] if sk.get("sk") else []) + [(t, info(t)["type"]) for t, _ in tac]
+        for nm, ty in skills:
+            if ty in start: start[ty].append(nm)
+        turn.append((n, (eff.get(n) or {}).get("init"), [nm for nm, ty in skills if ty == "액티브"], [nm for nm, ty in skills if ty == "추격"]))
+    turn.sort(key=lambda x: -(x[1] if x[1] is not None else -1))
+    return {"start": start, "turn": turn}
+
+
 def reco_run(did, season):
     """내 도감(보유 장수·전법) 기준 추천 계산. → (오류 안내문 또는 None, 결과, 이름, 딜 방식, 장수 데이터, 전법 데이터)"""
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
-    if not cid: return "먼저 `/인증`으로 CID 인증을 해 주세요.", None, None, None, None, None
+    if not cid: return "먼저 `/인증`으로 CID 인증을 해 주세요.", None, None, None, None, None, None
     dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
-    if not dex.get("own"): return "보유 장수가 없습니다. `/도감`에서 보유 장수와 전법을 먼저 체크해 주세요.", None, None, None, None, None
+    if not dex.get("own"): return "보유 장수가 없습니다. `/도감`에서 보유 장수와 전법을 먼저 체크해 주세요.", None, None, None, None, None, None
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
     deal = pref_get(did).get("deal", "도트딜")
     res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal, banned=reco_banned(did, season), votes=reco_scores(season))
     who = (roster.by_uid.get(cid) or {}).get("name") or "내"
-    return None, res, who, deal, hd, skd
+    dex_tr = dex.get("tr") or {}
+    return None, res, who, deal, hd, skd, dex_tr
 
 
 def reco_build(did, season):
     """추천덱 문장. 오류면 (None, 안내문)."""
-    err, res, who, deal, hd, skd = reco_run(did, season)
+    err, res, who, deal, hd, skd, _tr = reco_run(did, season)
     return (None, err) if err else (reco_text(season, res, who, skd, deal), None)
 
 
 def reco_images(did, season):
     """추천덱 카드 이미지. → (이미지 PNG 바이트 목록, 오류 안내문, [(부대 번호, 덱 이름)])"""
-    err, res, who, deal, hd, skd = reco_run(did, season)
+    err, res, who, deal, hd, skd, tr = reco_run(did, season)
     if err: return None, err, []
     import reco_img
-    imgs = reco_img.render(res, season, who, deal, hd, skd, lambda t: tact_info(t, skd), lambda ty: ORDER.get(ty, 3))
+    info = lambda t: tact_info(t, skd)
+    eff = hero_eff([h["n"] for _d, unit, _s in res for h, _t in unit if h["n"]], tr)
+    flows = [reco_flow(unit, eff, hd, info) for _d, unit, _s in res]
+    imgs = reco_img.render(res, season, who, deal, hd, skd, info, lambda ty: ORDER.get(ty, 3), flows=flows, eff=eff)
     return imgs, None, [(i, d["name"]) for i, (d, _u, _s) in enumerate(res, 1) if d]
 
 
