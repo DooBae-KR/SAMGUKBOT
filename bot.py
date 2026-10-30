@@ -1966,6 +1966,7 @@ def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜"):
     for _ in range(count):
         best = None
         for k in sorted(own_s - used):
+            if k == "원문사극" and "여포" not in st["hs"]: continue          # 원문사극은 여포 전용으로 취급(다른 장수에게 배정 안 함)
             n = skn.get(k, k); ti = tact_info(n, skd); g, u = ti["g"] | (status_of((skd.get(n) or {}).get("desc"))[0] & {"정화"}), ti["u"]
             why = []; sc = 0.0
             need = {x for x in U if x != "디버프"} - G
@@ -2076,7 +2077,7 @@ ICON = {"한방딜": "💥", "도트딜": "🔥", "일반딜": "⚔️", "회복
 
 def reco_text(season, res, who, skd=None, deal="도트딜"):
     skd = skd or {}
-    lines = [f"🃏 **{who} 추천덱 — 시즌{season}** (티어덱 순서 · 한 번 쓴 장수·전법은 다시 쓰지 않음 · 딜 방식 **{deal}** 우선)",
+    lines = [f"🃏 **{who} 추천덱 — 시즌{season}** (티어덱 순서 · 한 번 쓴 장수·전법은 다시 쓰지 않음)",
              "💥한방딜(고배율) 🔥도트딜(누적) ⚔️일반딜 💚회복 🛡️지원 · 책략↔홍수 / 병기↔위협 궁합 반영"]
     for i, (deck, unit, st) in enumerate(res, 1):
         lines.append(f"\n**{i}부대** " + (f"{deck['tier']} {deck['name']} ({'·'.join(deck['heroes'])}) · {deck.get('form') or '진형 미정'}" if deck else "티어덱 없음 · 자유 편성"))
@@ -2093,7 +2094,7 @@ def reco_text(season, res, who, skd=None, deal="도트딜"):
             lines.append("  ↳ 발동순서: " + " → ".join(f"{t}" for t in seq if ORDER.get(tact_info(t, skd)["type"], 3) < 4) + (" → 평타 → " if any(ORDER.get(tact_info(t, skd)["type"], 3) < 4 for t in seq) else "평타 → ") + (", ".join(t for t in seq if ORDER.get(tact_info(t, skd)["type"], 3) > 4) or "(추격 없음)"))
         if st[0] or st[1]:
             lines.append("  ↳ 이상상태: " + (f"부여 {', '.join(st[0])}" if st[0] else "부여 없음") + (f" · 부족 {', '.join(st[1])}" if st[1] else ""))
-    lines.append("\n티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다. 변경: `/추천덱 시즌:2` · `딜:한방딜`")
+    lines.append("\n티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다. 시즌 변경: `/추천덱 시즌:2`")
     return "\n".join(lines)
 
 
@@ -2252,7 +2253,7 @@ def reco_run(did, season):
     if not dex.get("own"): return "보유 장수가 없습니다. `/도감`에서 보유 장수와 전법을 먼저 체크해 주세요.", None, None, None, None, None, None
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
-    deal = pref_get(did).get("deal", "도트딜")
+    deal = "도트딜"                                                  # 딜 방식은 고정(누적 딜 우선) — 사용자가 고르지 않음
     res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal, banned=reco_banned(did, season), votes=reco_scores(season))
     who = (roster.by_uid.get(cid) or {}).get("name") or "내"
     dex_tr = dex.get("tr") or {}
@@ -2310,13 +2311,11 @@ class SeasonPick(CtxView):
 
 
 @bot.tree.command(name="추천덱", description="내 보유 장수·전법으로 티어덱 순서대로 5부대를 편성해 줍니다")
-@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)", 딜="전법 우선 방식: 도트딜(누적, 기본) / 한방딜(고배율) — 고르면 기억")
-@app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2)],
-                      딜=[app_commands.Choice(name="도트딜", value="도트딜"), app_commands.Choice(name="한방딜", value="한방딜")])
-async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None, 딜: app_commands.Choice[str] = None):
+@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)")
+@app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2)])
+async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
     did = it.user.id
-    if 딜 is not None: await asyncio.to_thread(pref_set, did, deal=딜.value)
     if 시즌 is None:
         saved = await asyncio.to_thread(lambda: pref_get(did).get("season"))
         if saved not in (1, 2):                                          # 처음이면 시즌을 묻는다

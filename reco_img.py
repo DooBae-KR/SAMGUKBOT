@@ -122,7 +122,7 @@ def render(res, season, who, deal, hd, skd, info, order, per_image=3, flows=None
             x = PAD
             for k in ("한방딜", "도트딜", "일반딜", "회복", "지원"):
                 d.text((W - PAD - 5 * 70 + ["한방딜", "도트딜", "일반딜", "회복", "지원"].index(k) * 70, 22), k, font=_f(14), fill=KIND[k])
-            d.text((PAD, 54), f"딜 방식 {deal} 우선 · 한 번 쓴 장수·전법은 다시 쓰지 않음", font=_f(12), fill=MUTE)
+            d.text((PAD, 54), "한 번 쓴 장수·전법은 다시 쓰지 않음", font=_f(12), fill=MUTE)
         y = head
         for j, (deck, unit, st) in enumerate(part, s + 1):
             _unit(im, d, y, j, deck, unit, st, hd, skd, info, order, (flows or [None] * len(res))[j - 1], eff); y += _unit_h()
