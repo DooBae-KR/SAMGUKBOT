@@ -988,6 +988,7 @@ CMD_HELP = {
            ("/공성예약", "공성 시각 예약(30분 전 간부 호출)"), ("/공성예약취소", "공성 예약 취소"),
            ("/정철설정", "정철 보유량 맞추기"), ("/동맹수정", "등록된 서버 번호·동맹명 수정"),
            ("/동맹원추가", "게임 엑셀(오전 8시 반영)에 아직 없는 동맹원을 직접 추가")],
+    "관리자": [("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
 }
 
 
@@ -1002,6 +1003,7 @@ async def cmd_help(it: discord.Interaction, 역할: app_commands.Choice[str] = N
     lines += [f"`{c}` — {d}" for c, d in CMD_HELP["동맹원"]]
     if role == "간부":
         lines.append("\n**[간부 전용]**"); lines += [f"`{c}` — {d}" for c, d in CMD_HELP["간부"]]
+        if is_admin(it) or it.user.id == owner.id: lines.append("\n**[관리자 전용]**"); lines += [f"`{c}` — {d}" for c, d in CMD_HELP["관리자"]]
     await it.response.send_message("\n".join(lines), ephemeral=True)
 
 
@@ -1246,10 +1248,118 @@ async def web_dex_save(request):
     return web.json_response({"ok": True})
 
 
+# ---------- 관리 페이지(/관리: 관리자 전용) ----------
+ADM_HOURS = int(os.environ.get("ADM_HOURS", "6"))
+
+
+def adm_token(uid, exp, gid):
+    return f"{uid}.{exp}.{gid}." + hmac.new(TIER_SECRET.encode(), f"adm:{uid}:{exp}:{gid}".encode(), hashlib.sha256).hexdigest()[:24]
+
+
+def adm_parse(t):
+    """관리 링크 검사 → (사용자 ID, 서버 ID) 또는 None"""
+    p = (t or "").split(".")
+    if len(p) != 4 or not (p[0].isdigit() and p[1].isdigit() and p[2].isdigit()) or int(p[1]) < time.time(): return None
+    want = hmac.new(TIER_SECRET.encode(), f"adm:{p[0]}:{p[1]}:{p[2]}".encode(), hashlib.sha256).hexdigest()[:24]
+    return (int(p[0]), int(p[2])) if hmac.compare_digest(p[3], want) else None
+
+
+def adm_is_admin(uid, gid):
+    """링크를 쓰는 동안에도 매번 관리자인지 다시 확인(권한을 빼면 바로 막힌다)."""
+    if (gid, uid) in PERM or uid == OWNER_ID: return True
+    g = bot.get_guild(gid); m = g.get_member(uid) if g else None
+    return bool(m and m.guild_permissions.administrator)
+
+
+def adm_state(gid):
+    """관리 페이지에 보여줄 현재 DB 상태."""
+    ally = store_get("alliance", ALLY_PATH, {}) or {}
+    names, tdate, _ = talk_get()
+    emp = _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid,name,job,extra&order=name&limit=5000") or []
+    mem = [{"c": e["cid"], "n": e.get("name") or "", "j": e.get("job") or "", "m": 1 if (e.get("extra") or {}).get("manual_at") else 0} for e in emp]
+    perms = _sb_req("GET", f"sam_perm?guild_id=eq.{gid}&status=eq.approved&select=discord_id,user_name,decided_at,requested_at") or []
+    adm = {str(p["discord_id"]): {"id": str(p["discord_id"]), "name": p.get("user_name") or "", "src": "grant"} for p in perms}
+    g = bot.get_guild(gid)
+    if g:
+        for m in g.members:
+            if not m.bot and m.guild_permissions.administrator:
+                adm.setdefault(str(m.id), {"id": str(m.id), "name": str(m), "src": "discord"})
+                if adm[str(m.id)]["src"] == "discord": adm[str(m.id)]["name"] = str(m)
+    if OWNER_ID: adm.setdefault(str(OWNER_ID), {"id": str(OWNER_ID), "name": "", "src": "owner"})["src"] = "owner"
+    return {"ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
+
+
+async def adm_grant(gid, did, by):
+    try: u = await bot.fetch_user(did)
+    except Exception: raise ValueError("디스코드에서 찾을 수 없는 사용자 ID입니다.")
+    if u.bot: raise ValueError("봇은 관리자로 지정할 수 없습니다.")
+    g = bot.get_guild(gid)
+    if g and not g.get_member(did): raise ValueError("이 서버에 참여하지 않은 사용자입니다.")
+    def work():
+        set_gid(gid); ally = store_get("alliance", ALLY_PATH, {}) or {}; now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        sv = str(ally.get("server") or "")
+        row = {"guild_id": gid, "discord_id": did, "guild_name": g.name if g else "", "user_name": str(u), "reason": "관리 페이지에서 부여",
+               "ally_name": ally.get("name") or "", "game_server": sv if sv.isdigit() else None, "status": "approved",
+               "requested_at": now, "decided_at": now, "decided_by": by}
+        _sb_req("POST", "sam_perm?on_conflict=guild_id,discord_id", [row], "resolution=merge-duplicates,return=minimal")
+    await asyncio.to_thread(work); PERM.add((gid, did)); LICENSED.add(gid); return str(u)
+
+
+async def adm_revoke(gid, did, by):
+    if did == OWNER_ID: raise ValueError("제작자의 권한은 뺄 수 없습니다.")
+    if did == by: raise ValueError("본인의 권한은 뺄 수 없습니다. (잠금 방지)")
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    await asyncio.to_thread(_sb_req, "PATCH", f"sam_perm?guild_id=eq.{gid}&discord_id=eq.{did}", {"status": "revoked", "decided_at": now, "decided_by": by}, "return=minimal")
+    PERM.discard((gid, did))
+    g = bot.get_guild(gid); m = g.get_member(did) if g else None
+    if m and m.guild_permissions.administrator: raise ValueError("부여 권한은 뺐지만, 이 사용자는 디스코드 서버 관리자 권한이 있어 계속 관리자입니다.")
+
+
+async def web_admin(request):
+    p = adm_parse(request.query.get("t"))
+    if not p or not adm_is_admin(p[0], p[1]): return web.Response(status=403, text="링크가 만료되었거나 권한이 없습니다. 디스코드에서 /관리 를 다시 입력해 주세요.")
+    tpl = (Path(__file__).parent / "admin_template.html").read_text("utf-8")
+    return web.Response(text=tpl.replace("__T__", request.query.get("t")), content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+
+async def web_admin_api(request):
+    p = adm_parse(request.query.get("t"))
+    if not p or not adm_is_admin(p[0], p[1]): return web.json_response({"error": "링크가 만료되었거나 권한이 없습니다. 디스코드에서 /관리 를 다시 입력해 주세요."}, status=403)
+    uid, gid = p
+    if request.content_length and request.content_length > 200_000: return web.json_response({"error": "요청이 너무 큽니다."}, status=413)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
+    if not isinstance(body, dict): return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
+    op, msg = body.get("op"), ""
+    try:
+        if op == "talk":
+            await asyncio.to_thread(lambda: (set_gid(gid), talk_apply(body.get("req") or {}))[1])
+        elif op == "member_add":
+            cid, nick, job = str(body.get("cid", "")).strip(), re.sub(r"\s+", " ", str(body.get("nick", ""))).strip(), str(body.get("job", "")).strip()[:20]
+            if not (cid.isascii() and cid.isdigit() and 4 <= len(cid) <= 14): raise ValueError("CID는 숫자만 입력해 주세요.")
+            if not nick or len(nick) > 20: raise ValueError("닉네임을 1~20자로 입력해 주세요.")
+            msg = await asyncio.to_thread(lambda: (set_gid(gid), member_add(gid, cid, nick, job))[1])
+        elif op == "admin_add":
+            d = str(body.get("id", "")).strip()
+            if not (d.isascii() and d.isdigit() and 15 <= len(d) <= 20): raise ValueError("디스코드 사용자 ID(숫자 17~19자리)를 입력해 주세요.")
+            msg = f"✅ {await adm_grant(gid, int(d), uid)} 님에게 관리자 권한을 부여했습니다."
+        elif op == "admin_remove":
+            d = str(body.get("id", "")).strip()
+            if not (d.isascii() and d.isdigit()): raise ValueError("사용자 ID가 올바르지 않습니다.")
+            await adm_revoke(gid, int(d), uid); msg = "✅ 관리자 권한을 뺐습니다."
+        elif op != "state": raise ValueError("알 수 없는 요청입니다.")
+        st = await asyncio.to_thread(lambda: (set_gid(gid), adm_state(gid))[1])
+    except ValueError as e: return web.json_response({"error": str(e)}, status=400)
+    except Exception as e:
+        log.exception("관리 페이지 오류"); return web.json_response({"error": "처리 중 오류가 발생했습니다: " + str(e)[:120]}, status=500)
+    st["msg"] = msg; st["me"] = str(uid); return web.json_response(st)
+
+
 async def start_web():
     if not WEB_PORT: return
     app = web.Application(); app.router.add_get("/", web_index)
     app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
+    app.router.add_get("/admin", web_admin); app.router.add_post("/api/admin", web_admin_api)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()
@@ -1833,6 +1943,15 @@ async def dex_link(it: discord.Interaction):
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(it.user.id)), None)
     if not cid: return await it.response.send_message("먼저 인증(CID 등록)을 완료해 주세요.", ephemeral=True)
     await it.response.send_message(f"🔗 내 도감 링크 (다른 사람에게 공유하지 마세요)\n{PUBLIC_URL}/tier?t={tier_token(cid, cur_gid())}\n장수·전법을 체크하면 자동으로 시트에 저장됩니다.", ephemeral=True)
+
+
+@bot.tree.command(name="관리", description="[관리자] 톡방 참여자·동맹원 추가·관리자 권한을 DB와 실시간으로 관리하는 페이지 링크")
+async def cmd_admin_page(it: discord.Interaction):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if not is_admin(it): return await it.response.send_message("관리자만 사용할 수 있습니다. (간부는 사용할 수 없습니다)", ephemeral=True)
+    if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
+    exp = int(time.time()) + ADM_HOURS * 3600
+    await it.response.send_message(f"🛠️ 관리 페이지 (본인 전용 · {ADM_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/admin?t={adm_token(it.user.id, exp, it.guild_id)}", ephemeral=True)
 
 
 @bot.tree.command(name="인사", description="[간부] 인사데이터(상황판) 링크를 받습니다")

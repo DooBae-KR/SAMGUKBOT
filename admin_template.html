@@ -1,0 +1,70 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>관리 페이지</title>
+<style>
+:root{color-scheme:dark;--bg:#0e1716;--raise:#14211f;--line:#263a36;--text:#e8e3d3;--mute:#93a49e;--jade:#5ecfb1;--gold:#e0b65a;--verm:#ea5a42}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 'Noto Sans KR','Malgun Gothic',sans-serif}
+.wrap{max-width:900px;margin:auto;padding:0 16px}
+header{padding:28px 0 10px}h1{margin:0;font-size:24px}.sub{color:var(--mute);font-size:13px;margin-top:4px}
+.live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--jade);margin-right:6px}.live.off{background:var(--verm)}
+nav{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);z-index:3}nav .wrap{display:flex;gap:4px;overflow:auto}
+nav button{background:none;border:0;color:var(--mute);font:500 14px inherit;padding:12px 14px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+nav button.on{color:var(--text);border-color:var(--gold)}
+main{padding:20px 0 80px}.tab{display:none}.tab.on{display:block}
+.card{background:var(--raise);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+h2{margin:0 0 4px;font-size:17px}.lead{color:var(--mute);font-size:13px;margin:0 0 12px}
+input,textarea{background:#0b1312;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit;width:100%}
+textarea{min-height:80px}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1 1 140px}
+button.b{background:var(--jade);color:#062;border:0;border-radius:8px;padding:9px 16px;font:600 14px inherit;cursor:pointer;flex:0 0 auto}
+button.b.d{background:none;color:var(--verm);border:1px solid var(--verm);padding:4px 10px;font-size:12px}
+button.b.g{background:none;color:var(--mute);border:1px solid var(--line);padding:4px 10px;font-size:12px}
+ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items:center;padding:7px 4px;border-top:1px solid var(--line)}li span.n{flex:1;word-break:break-all}
+.tag{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}.tag.w{color:var(--gold);border-color:var(--gold)}.tag.o{color:var(--jade);border-color:var(--jade)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d3a34;border:1px solid var(--jade);padding:10px 18px;border-radius:10px;display:none;max-width:90vw;z-index:9}
+#toast.err{background:#3a1d1d;border-color:var(--verm)}.mute{color:var(--mute);font-size:12.5px}
+</style></head><body>
+<header><div class="wrap"><h1>🛠️ 관리 페이지</h1><div class="sub"><span id="dot" class="live"></span><span id="ally">불러오는 중…</span> · DB와 4초마다 자동 동기화</div></div></header>
+<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="adm">관리자 권한</button></div></nav>
+<main><div class="wrap">
+<div class="tab on" id="talk">
+ <div class="card"><h2>톡방 참여자 <span class="mute" id="tcnt"></span></h2><p class="lead">여러 명은 줄바꿈이나 쉼표로 구분해 한 번에 추가할 수 있습니다. 명단에 없는 이름은 ⚠️로 표시됩니다.</p>
+  <textarea id="tadd" placeholder="닉네임1, 닉네임2&#10;닉네임3"></textarea><div class="row" style="margin-top:8px"><button class="b" id="tbtn">추가</button></div></div>
+ <div class="card"><input id="tq" placeholder="이름 검색"><ul id="tlist"></ul></div>
+</div>
+<div class="tab" id="mem">
+ <div class="card"><h2>동맹원 직접 추가</h2><p class="lead">게임 엑셀(매일 오전 8시 반영)에 아직 없는 사람을 넣습니다. 엑셀에 나타나기 전까지 3일간 명단에 유지됩니다.</p>
+  <div class="row"><input id="mc" inputmode="numeric" placeholder="CID (숫자)"><input id="mn" placeholder="닉네임"><input id="mj" placeholder="직책 (선택)"></div>
+  <div class="row" style="margin-top:8px"><button class="b" id="mbtn">추가</button></div></div>
+ <div class="card"><h2>직접 추가한 동맹원 <span class="mute" id="mcnt"></span></h2><ul id="mlist"></ul><p class="mute" id="mall"></p></div>
+</div>
+<div class="tab" id="adm">
+ <div class="card"><h2>공동관리자 추가</h2><p class="lead">관리자만 다른 사람에게 관리자 권한을 줄 수 있습니다. 간부 역할은 관리 기능을 쓸 수 없습니다. 디스코드 설정에서 개발자 모드를 켠 뒤 프로필 → "사용자 ID 복사"로 ID를 얻습니다.</p>
+  <div class="row"><input id="ai" inputmode="numeric" placeholder="디스코드 사용자 ID"><button class="b" id="abtn">권한 부여</button></div></div>
+ <div class="card"><h2>현재 관리자</h2><ul id="alist"></ul></div>
+</div>
+</div></main><div id="toast"></div>
+<script>
+const T="__T__",$=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let S=null,busy=false;
+function toast(m,e){const t=$("#toast");t.textContent=m;t.className=e?"err":"";t.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display="none",e?5000:2800)}
+async function api(body,quiet){busy=true;try{const r=await fetch("/api/admin?t="+encodeURIComponent(T),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+ const j=await r.json();$("#dot").className="live"+(r.ok?"":" off");
+ if(!r.ok){if(!quiet)toast(j.error||"오류",1);return null}
+ S=j;render();if(j.msg)toast(j.msg.replace(/\*\*/g,""));return j}catch(e){$("#dot").className="live off";if(!quiet)toast("서버에 연결할 수 없습니다",1);return null}finally{busy=false}}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll("nav button,.tab").forEach(x=>x.classList.remove("on"));b.classList.add("on");$("#"+b.dataset.t).classList.add("on")});
+function render(){if(!S)return;const a=S.ally||{};$("#ally").textContent=(a.server?a.server+"서버 · ":"")+(a.name||"동맹 미등록");
+ const names=new Set(S.members.map(m=>m.n)),q=$("#tq").value.trim();
+ $("#tcnt").textContent="("+S.talk.length+"명)";
+ $("#tlist").innerHTML=S.talk.filter(n=>!q||n.includes(q)).map(n=>`<li><span class="n">${esc(n)}</span>${names.has(n)?"":'<span class="tag w">⚠️ 명단에 없음</span>'}<button class="b g" data-ren="${esc(n)}">이름 수정</button><button class="b d" data-del="${esc(n)}">삭제</button></li>`).join("")||'<li class="mute">참여자가 없습니다</li>';
+ const man=S.members.filter(m=>m.m);$("#mcnt").textContent="("+man.length+"명)";
+ $("#mlist").innerHTML=man.map(m=>`<li><span class="n">${esc(m.n)} <span class="mute">${esc(m.c)}${m.j?" · "+esc(m.j):""}</span></span><span class="tag w">엑셀 반영 대기</span></li>`).join("")||'<li class="mute">없습니다</li>';
+ $("#mall").textContent="전체 명단 "+S.members.length+"명";
+ $("#alist").innerHTML=S.admins.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">${esc(x.id)}</span></span>${x.src=="owner"?'<span class="tag o">제작자</span>':x.src=="discord"?'<span class="tag">디스코드 관리자</span>':'<span class="tag o">부여됨</span>'}${x.src=="grant"&&x.id!=S.me?`<button class="b d" data-rev="${esc(x.id)}">권한 빼기</button>`:""}</li>`).join("")}
+$("#tbtn").onclick=async()=>{const v=$("#tadd").value.split(/[\n,]/).map(x=>x.trim()).filter(Boolean);if(!v.length)return toast("이름을 입력해 주세요",1);if(await api({op:"talk",req:{op:"add",names:v}}))$("#tadd").value=""};
+$("#tlist").onclick=async e=>{const d=e.target.dataset;if(d.del&&confirm(d.del+" 님을 톡방 목록에서 삭제할까요?"))api({op:"talk",req:{op:"remove",names:[d.del]}});
+ if(d.ren){const n=prompt("새 이름",d.ren);if(n&&n!==d.ren)api({op:"talk",req:{op:"rename",from:d.ren,to:n}})}};
+$("#tq").oninput=render;
+$("#mbtn").onclick=async()=>{if(await api({op:"member_add",cid:$("#mc").value,nick:$("#mn").value,job:$("#mj").value})){$("#mc").value=$("#mn").value=$("#mj").value=""}};
+$("#abtn").onclick=async()=>{if(await api({op:"admin_add",id:$("#ai").value}))$("#ai").value=""};
+$("#alist").onclick=e=>{const id=e.target.dataset.rev;if(id&&confirm("이 사용자의 관리자 권한을 뺄까요?"))api({op:"admin_remove",id})};
+api({op:"state"});setInterval(()=>{if(!busy&&!document.hidden)api({op:"state"},1)},4000);
+</script></body></html>
