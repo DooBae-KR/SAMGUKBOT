@@ -1954,7 +1954,7 @@ def finish_tactics(st, hd, skd):
     return out, (sorted(st["G"] - {"정화"}), sorted(x for x in st["U"] - st["G"] if x != "디버프"))
 
 
-def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜"):
+def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", banned=()):
     """티어덱 순서대로 5부대 편성. 한 번 쓴 장수·전법은 다시 쓰지 않는다.
     덱을 통째로 못 만들면 2명 이상, 그다음 1명 이상 보유한 덱을 고르고 빈자리는 같은 역할의 미사용 보유 장수로 채운다."""
     decks = tier_data()["S1" if season == 1 else "S2"]
@@ -1969,7 +1969,7 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜"):
 
     def pick(minc):
         for i, d in enumerate(decks):
-            if i in usedD: continue
+            if i in usedD or d["name"] in banned: continue          # 싫어요가 많은 덱은 건너뛰고 다음 순위 덱으로
             got = []
             for slot in d["heroes"]:
                 alts = [a for a in slot.split("/") if a in own_h and a not in usedH and a not in got]
@@ -2051,6 +2051,63 @@ def pref_set(did, **kw):
 PREF_PATH = Path(os.environ.get("PREF_PATH", "pref.json"))
 
 
+RECO_VOTE_PATH = Path(os.environ.get("RECO_VOTE_PATH", "reco_vote.json"))
+DISLIKE_LIMIT = int(os.environ.get("DISLIKE_LIMIT", "3"))          # (싫어요 - 좋아요)가 이 값 이상이면 그 서버에서 그 덱을 추천하지 않음
+_vote_lock = threading.Lock()
+
+
+def vote_key(season, name): return f"S{season}|{name}"
+
+
+def reco_votes(): return store_get("reco_vote", RECO_VOTE_PATH, {}) or {}
+
+
+def reco_banned(did, season):
+    """추천에서 뺄 덱 이름: ① 내가 싫어요를 누른 덱 ② 서버 전체에서 (싫어요-좋아요)가 한도 이상인 덱"""
+    out, pre = set(), f"S{season}|"
+    for k, v in reco_votes().items():
+        if k.startswith(pre) and (str(did) in v.get("d", []) or len(v.get("d", [])) - len(v.get("u", [])) >= DISLIKE_LIMIT): out.add(k[len(pre):])
+    return out
+
+
+def reco_vote(did, season, name, kind):
+    """좋아요(u)/싫어요(d) 기록(같은 버튼을 다시 누르면 취소, 반대 버튼이면 바꿈). → (좋아요 수, 싫어요 수, 내 선택 'u'/'d'/None)"""
+    with _vote_lock:
+        d = dict(reco_votes()); k = vote_key(season, name); e = {"u": list(d.get(k, {}).get("u", [])), "d": list(d.get(k, {}).get("d", []))}
+        mine = str(did); was = "u" if mine in e["u"] else "d" if mine in e["d"] else None
+        e["u"] = [x for x in e["u"] if x != mine]; e["d"] = [x for x in e["d"] if x != mine]
+        now = None if was == kind else kind
+        if now: e[now].append(mine)
+        d[k] = e; store_set("reco_vote", RECO_VOTE_PATH, d)
+        return len(e["u"]), len(e["d"]), now
+
+
+class RecoVote(CtxView):
+    """추천 결과 아래의 좋아요/싫어요 버튼(부대마다). 싫어요를 누르면 그 덱을 빼고 바로 다시 추천한다."""
+    def __init__(self, did, season, decks):
+        super().__init__(timeout=900); self.did, self.season, self._decks = did, season, list(decks)
+        votes = reco_votes()
+        for row, (n, name) in enumerate(decks):
+            v = votes.get(vote_key(season, name), {}); mine = str(did)
+            for kind, emo in (("u", "👍"), ("d", "👎")):
+                on = mine in v.get(kind, [])
+                b = discord.ui.Button(label=f"{n}부대 {emo} {len(v.get(kind, []))}", style=(discord.ButtonStyle.success if kind == "u" else discord.ButtonStyle.danger) if on else discord.ButtonStyle.secondary, row=row)
+                b.callback = self._cb(n, name, kind); self.add_item(b)
+
+    def _cb(self, n, name, kind):
+        async def cb(it: discord.Interaction):
+            up, dn, now = await asyncio.to_thread(reco_vote, self.did, self.season, name, kind)
+            if now == "d":                                                   # 싫어요 → 이 덱을 빼고 다시 추천
+                await it.response.edit_message(content=f"👎 **{n}부대 · {name}** 덱을 빼고 다시 추천합니다…", attachments=[], view=None)
+                await reco_deliver(it, self.did, self.season, first_edit=True, note=f"👎 **{name}** 덱을 빼고 다시 편성했어요. (싫어요 {dn}개)")
+            else:
+                await it.response.edit_message(view=RecoVote(self.did, self.season, [(nn, d) for nn, d in self.decks_ref]))
+        return cb
+
+    @property
+    def decks_ref(self): return self._decks
+
+
 def reco_run(did, season):
     """내 도감(보유 장수·전법) 기준 추천 계산. → (오류 안내문 또는 None, 결과, 이름, 딜 방식, 장수 데이터, 전법 데이터)"""
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
@@ -2060,7 +2117,7 @@ def reco_run(did, season):
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
     deal = pref_get(did).get("deal", "도트딜")
-    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal)
+    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal, banned=reco_banned(did, season))
     who = (roster.by_uid.get(cid) or {}).get("name") or "내"
     return None, res, who, deal, hd, skd
 
@@ -2072,27 +2129,29 @@ def reco_build(did, season):
 
 
 def reco_images(did, season):
-    """추천덱 카드 이미지. → (이미지 PNG 바이트 목록, 오류 안내문)"""
+    """추천덱 카드 이미지. → (이미지 PNG 바이트 목록, 오류 안내문, [(부대 번호, 덱 이름)])"""
     err, res, who, deal, hd, skd = reco_run(did, season)
-    if err: return None, err
+    if err: return None, err, []
     import reco_img
-    return reco_img.render(res, season, who, deal, hd, skd, lambda t: tact_info(t, skd), lambda ty: ORDER.get(ty, 3)), None
+    imgs = reco_img.render(res, season, who, deal, hd, skd, lambda t: tact_info(t, skd), lambda ty: ORDER.get(ty, 3))
+    return imgs, None, [(i, d["name"]) for i, (d, _u, _s) in enumerate(res, 1) if d]
 
 
-async def reco_deliver(it, did, season, first_edit=False):
-    """장수 카드 이미지로 추천덱을 보낸다(나에게만 보임). 이미지를 못 그리면 글로 보낸다."""
-    try: imgs, err = await asyncio.to_thread(reco_images, did, season)
+async def reco_deliver(it, did, season, first_edit=False, note=""):
+    """장수 카드 이미지로 추천덱을 보낸다(나에게만 보임, 부대별 좋아요/싫어요 버튼 포함). 이미지를 못 그리면 글로 보낸다."""
+    try: imgs, err, decks = await asyncio.to_thread(reco_images, did, season)
     except Exception:
-        log.exception("추천덱 이미지 생성 실패"); imgs, err = None, None
+        log.exception("추천덱 이미지 생성 실패"); imgs, err, decks = None, None, []
     if err or not imgs:
         text, e2 = await asyncio.to_thread(reco_build, did, season); chunks = reco_chunks(err or e2 or text)
-        if first_edit: await it.edit_original_response(content=chunks[0], view=None); chunks = chunks[1:]
+        if first_edit: await it.edit_original_response(content=chunks[0], view=None, attachments=[]); chunks = chunks[1:]
         for c in chunks: await it.followup.send(c, ephemeral=True)
         return
     files = [discord.File(io.BytesIO(b), filename=f"추천덱_{i}.png") for i, b in enumerate(imgs, 1)]
-    head = f"🃏 **추천덱 — 시즌{season}**  ·  `/추천덱 시즌:2` `/추천덱 딜:한방딜` 로 바꿀 수 있어요."
-    if first_edit: await it.edit_original_response(content=head, attachments=files, view=None)
-    else: await it.followup.send(head, files=files, ephemeral=True)
+    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}**  ·  마음에 안 드는 덱은 👎 를 누르면 빼고 다시 추천해요. (👎가 {DISLIKE_LIMIT}개 이상 쌓이면 서버 전체에서 제외)"
+    view = RecoVote(did, season, decks[:5]) if decks else None
+    if first_edit: await it.edit_original_response(content=head, attachments=files, view=view)
+    else: await it.followup.send(head, files=files, view=view, ephemeral=True)
 
 
 class SeasonPick(CtxView):
