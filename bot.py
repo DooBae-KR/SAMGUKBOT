@@ -1678,7 +1678,7 @@ def siege_rows(st, now=None):
     """/공성 표용 [(등록자, 레벨표시, 완공예상, 상태)] — 건축 중 + 정철 대기, 완공 빠른 순"""
     now = now or time.time(); rows = []
     for b in st.get("building", []): rows.append((b.get("name", ""), b["level"], b["t_end"], "건축"))
-    for e, eta, _ in jc_plan(st): rows.append((e.get("name", ""), e["level"], build_end(max(eta, now, e.get("reg", 0))), "대기"))
+    for e, eta, _ in jc_plan(st): rows.append((e.get("name", ""), e["level"], build_end(max(eta, e.get("reg", 0))), "대기"))      # 실제 시작 시각(jc_settle의 fund)과 동일하게 계산: 정철이 이미 모였으면 모인 시각 기준
     return sorted(rows, key=lambda r: r[2])
 
 
