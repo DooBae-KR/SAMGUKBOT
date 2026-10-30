@@ -1292,7 +1292,11 @@ def adm_state(gid):
         m = gg.get_member(int(d)) if gg and str(d).isdigit() else None
         tr.append({"d": str(d), "name": str(m) if m else "", "cid": (db.get("tried") or {}).get(d, ""), "n": n, "lock": n >= MAX_TRIES})
     tr.sort(key=lambda x: (-x["lock"], -x["n"]))
-    return {"titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
+    nm = {e["cid"]: e.get("name") or "" for e in emp}; grp = {}
+    for r in _sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,alt_name,main_cid&limit=100000") or []:
+        grp.setdefault(r["main_cid"], []).append({"c": r["alt_cid"], "n": r.get("alt_name") or nm.get(r["alt_cid"], "")})
+    alts = sorted(({"c": k, "n": nm.get(k, ""), "alts": sorted(v, key=lambda a: a["n"])} for k, v in grp.items()), key=lambda x: x["n"])
+    return {"alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
@@ -1353,6 +1357,22 @@ async def web_admin_api(request):
             d = str(body.get("id", "")).strip()
             if not (d.isascii() and d.isdigit()): raise ValueError("사용자 ID가 올바르지 않습니다.")
             await adm_revoke(gid, int(d), uid); msg = "✅ 관리자 권한을 뺐습니다."
+        elif op == "alt_add":
+            key, raw = re.sub(r"\s+", " ", str(body.get("main", ""))).strip(), str(body.get("names", ""))[:2000]
+            if not key or not raw.strip(): raise ValueError("본캐와 부캐 닉네임을 입력해 주세요.")
+            def al():
+                set_gid(gid); by = roster_for(gid).by_uid
+                cs = [key] if key in by else [c for c, v in by.items() if v.get("name") == key]
+                if not cs: raise ValueError(f"명단에 없는 본캐입니다: {key}")
+                if len(cs) > 1: raise ValueError(f"같은 닉네임이 {len(cs)}명이라 CID로 입력해 주세요: {', '.join(cs)}")
+                if _sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&alt_cid=eq.{cs[0]}&select=alt_cid"): raise ValueError("이 본캐는 이미 다른 사람의 부캐로 연결되어 있습니다.")
+                return cs[0], by[cs[0]].get("name") or cs[0], *alt_link(gid, cs[0], raw)
+            mc, mn, ok, bad = await asyncio.to_thread(al)
+            msg = (f"✅ {mn}에 부캐 {len(ok)}명 연결: {', '.join(n for n, _ in ok)}" if ok else "연결된 부캐가 없습니다.") + ("\n⚠️ 제외: " + " / ".join(f"{n}({w})" for n, w in bad) if bad else "")
+        elif op == "alt_remove":
+            c = str(body.get("cid", "")).strip()
+            if not (c.isascii() and c.isdigit()): raise ValueError("CID가 올바르지 않습니다.")
+            await asyncio.to_thread(_sb_req, "DELETE", f"sam_emp_alt?guild_id=eq.{gid}&alt_cid=eq.{c}", prefer="return=minimal"); msg = "✅ 부캐 연결을 해제했습니다."
         elif op == "cmdperm_set":
             cmd, ts = str(body.get("cmd", "")), body.get("titles")
             if cmd not in staff_cmds(): raise ValueError("설정할 수 없는 명령어입니다.")

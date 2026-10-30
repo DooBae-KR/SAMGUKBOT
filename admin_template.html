@@ -19,11 +19,11 @@ button.b.d{background:none;color:var(--verm);border:1px solid var(--verm);paddin
 button.b.g{background:none;color:var(--mute);border:1px solid var(--line);padding:4px 10px;font-size:12px}
 ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items:center;padding:7px 4px;border-top:1px solid var(--line)}li span.n{flex:1;word-break:break-all}
 .tag{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}.tag.w{color:var(--gold);border-color:var(--gold)}.tag.o{color:var(--jade);border-color:var(--jade)}
-#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d3a34;border:1px solid var(--jade);padding:10px 18px;border-radius:10px;display:none;max-width:90vw;z-index:9}
+#toast{white-space:pre-line;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d3a34;border:1px solid var(--jade);padding:10px 18px;border-radius:10px;display:none;max-width:90vw;z-index:9}
 #toast.err{background:#3a1d1d;border-color:var(--verm)}.mute{color:var(--mute);font-size:12.5px}
 </style></head><body>
 <header><div class="wrap"><h1>🛠️ 관리 페이지</h1><div class="sub"><span id="dot" class="live"></span><span id="ally">불러오는 중…</span> · DB와 4초마다 자동 동기화</div></div></header>
-<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="adm">관리자 권한</button><button data-t="cmd">명령어 권한</button><button data-t="try">인증 횟수 제한</button></div></nav>
+<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="alt">부캐</button><button data-t="adm">관리자 권한</button><button data-t="cmd">명령어 권한</button><button data-t="try">인증 횟수 제한</button></div></nav>
 <main><div class="wrap">
 <div class="tab on" id="talk">
  <div class="card"><h2>톡방 참여자 <span class="mute" id="tcnt"></span></h2><p class="lead">여러 명은 줄바꿈이나 쉼표로 구분해 한 번에 추가할 수 있습니다. 명단에 없는 이름은 ⚠️로 표시됩니다.</p>
@@ -35,6 +35,12 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
   <div class="row"><input id="mc" inputmode="numeric" placeholder="CID (숫자)"><input id="mn" placeholder="닉네임"><input id="mj" placeholder="직책 (선택)"></div>
   <div class="row" style="margin-top:8px"><button class="b" id="mbtn">추가</button></div></div>
  <div class="card"><h2>직접 추가한 동맹원 <span class="mute" id="mcnt"></span></h2><ul id="mlist"></ul><p class="mute" id="mall"></p></div>
+</div>
+<div class="tab" id="alt">
+ <div class="card"><h2>부캐 연결</h2><p class="lead">본캐(닉네임 또는 CID)를 고르고 부캐 닉네임을 쉼표로 구분해 넣으면 명단과 대조해 자동으로 연결합니다. 오타·없는 닉네임은 제외하고 이유를 알려 줍니다.</p>
+  <div class="row"><input id="am" list="mlst" placeholder="본캐 닉네임 또는 CID"><datalist id="mlst"></datalist></div>
+  <textarea id="an" style="margin-top:8px" placeholder="부캐1, 부캐2, 부캐3"></textarea><div class="row" style="margin-top:8px"><button class="b" id="abtn2">연결</button></div></div>
+ <div class="card"><h2>연결된 부캐 <span class="mute" id="acnt"></span></h2><input id="aq" placeholder="본캐·부캐 검색"><ul id="alts"></ul></div>
 </div>
 <div class="tab" id="adm">
  <div class="card"><h2>공동관리자 추가</h2><p class="lead">관리자만 다른 사람에게 관리자 권한을 줄 수 있습니다. 간부 역할은 관리 기능을 쓸 수 없습니다. 디스코드 설정에서 개발자 모드를 켠 뒤 프로필 → "사용자 ID 복사"로 ID를 얻습니다.</p>
@@ -54,7 +60,7 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
 <script>
 const T="__T__",$=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let S=null,busy=false;
-function toast(m,e){const t=$("#toast");t.textContent=m;t.className=e?"err":"";t.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display="none",e?5000:2800)}
+function toast(m,e){const t=$("#toast");t.textContent=m;t.className=e?"err":"";t.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display="none",e?5000:2800+m.length*25)}
 async function api(body,quiet){busy=true;try{const r=await fetch("/api/admin?t="+encodeURIComponent(T),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
  const j=await r.json();$("#dot").className="live"+(r.ok?"":" off");
  if(!r.ok){if(!quiet)toast(j.error||"오류",1);return null}
@@ -68,6 +74,9 @@ function render(){if(!S)return;const a=S.ally||{};$("#ally").textContent=(a.serv
  $("#mlist").innerHTML=man.map(m=>`<li><span class="n">${esc(m.n)} <span class="mute">${esc(m.c)}${m.j?" · "+esc(m.j):""}</span></span><span class="tag w">엑셀 반영 대기</span></li>`).join("")||'<li class="mute">없습니다</li>';
  $("#mall").textContent="전체 명단 "+S.members.length+"명";
  $("#clist").innerHTML=[["동맹원","동맹원"],["간부","간부"],["관리자","관리자"]].map(([k,t])=>`<h2 style="margin-top:12px;font-size:15px">${t} 전용</h2><ul>`+(S.cmds[k]||[]).map(c=>`<li><span class="n"><b>${esc(c[0])}</b> <span class="mute">${esc(c[1])}</span></span></li>`).join("")+"</ul>").join("");
+ $("#mlst").innerHTML=S.members.map(m=>`<option value="${esc(m.n)}">${esc(m.c)}</option>`).join("");
+ const aq=$("#aq").value.trim();$("#acnt").textContent="(본캐 "+S.alts.length+"명)";
+ $("#alts").innerHTML=S.alts.filter(g=>!aq||g.n.includes(aq)||g.alts.some(a=>a.n.includes(aq))).map(g=>`<li style="display:block"><b>${esc(g.n||g.c)}</b> <span class="mute">${esc(g.c)}</span><div class="row" style="gap:6px;margin-top:4px">${g.alts.map(a=>`<span class="tag">${esc(a.n||a.c)} <a href="#" data-ar="${esc(a.c)}" style="color:var(--verm);text-decoration:none">✕</a></span>`).join("")}</div></li>`).join("")||'<li class="mute">연결된 부캐가 없습니다</li>';
  $("#plist").innerHTML=S.staffCmds.map(c=>{const sel=S.cmdperm[c[0]]||[];return `<div style="padding:10px 0;border-top:1px solid var(--line)"><b>${esc(c[0])}</b> <span class="mute">${esc(c[1])}</span><div class="row" style="margin-top:6px;gap:6px">${S.titles.map(t=>`<button class="b ${sel.includes(t)?"":"g"}" style="padding:3px 10px;font-size:12px;flex:0 0 auto" data-pc="${esc(c[0])}" data-pt="${esc(t)}">${esc(t)}</button>`).join("")}<span class="tag ${sel.length?"w":""}" style="align-self:center">${sel.length?"제한: "+sel.length+"개 직책":"간부 전체"}</span></div></div>`}).join("");
  $("#tmax").textContent="(한도 "+S.maxTries+"회)";
  $("#trlist").innerHTML=S.tries.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">디스코드 ${esc(x.d)}${x.cid?" · 시도한 CID "+esc(x.cid):""}</span></span><span class="tag ${x.lock?"w":""}">${x.n}/${S.maxTries}${x.lock?" 잠김":""}</span><button class="b g" data-tr="${esc(x.d)}">초기화</button></li>`).join("")||'<li class="mute">실패 기록이 없습니다</li>';
@@ -80,6 +89,9 @@ $("#mbtn").onclick=async()=>{if(await api({op:"member_add",cid:$("#mc").value,ni
 $("#abtn").onclick=async()=>{if(await api({op:"admin_add",id:$("#ai").value}))$("#ai").value=""};
 $("#alist").onclick=e=>{const id=e.target.dataset.rev;if(id&&confirm("이 사용자의 관리자 권한을 뺄까요?"))api({op:"admin_remove",id})};
 $("#plist").onclick=e=>{const d=e.target.dataset;if(!d.pc)return;const cur=(S.cmdperm[d.pc]||[]).slice(),i=cur.indexOf(d.pt);i<0?cur.push(d.pt):cur.splice(i,1);api({op:"cmdperm_set",cmd:d.pc,titles:cur})};
+$("#abtn2").onclick=async()=>{if(await api({op:"alt_add",main:$("#am").value,names:$("#an").value}))$("#an").value=""};
+$("#aq").oninput=render;
+$("#alts").onclick=e=>{const c=e.target.dataset.ar;if(c){e.preventDefault();if(confirm("이 부캐 연결을 해제할까요?"))api({op:"alt_remove",cid:c})}};
 $("#tbtn2").onclick=async()=>{if(await api({op:"tries_reset",id:$("#ti").value}))$("#ti").value=""};
 $("#trlist").onclick=e=>{const id=e.target.dataset.tr;if(id)api({op:"tries_reset",id})};
 api({op:"state"});setInterval(()=>{if(!busy&&!document.hidden)api({op:"state"},1)},4000);
