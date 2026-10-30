@@ -978,6 +978,7 @@ async def donate_loop():
 CMD_HELP = {
     "동맹원": [("/동맹등록", "서버 번호·동맹명을 등록(승인 전 서버는 제작자에게 신청)"),
              ("/인증", "CID 인증 창 열기(나에게만 보임)"),
+             ("/부캐", "내 부계정을 닉네임으로 연결(닉네임1,닉네임2 …)"),
              ("/도감", "내 보유 장수·전법을 체크하는 개인 링크"),
              ("/후원", "제작자 서버비 후원 안내(카카오 QR)"),
              ("/명령어", "내 역할로 쓸 수 있는 명령어 보기")],
@@ -1434,6 +1435,56 @@ async def cmd_db_migrate(it: discord.Interaction):
     except Exception as e:
         log.exception("DB 이관 실패"); return await it.followup.send(f"❌ 이관 실패: {str(e)[:300]}", ephemeral=True)
     await it.followup.send("✅ 시트 인사 탭을 DB로 이관했습니다.\n" + "\n".join("• " + x for x in out) + f"\n• 봇 명단 {n}명으로 갱신" + ("\n⚠️ " + "\n⚠️ ".join(warn) if warn else ""), ephemeral=True)
+
+
+def alt_link(gid, main_cid, raw, replace=False):
+    """부계정 닉네임 목록을 명단과 대조해 본캐에 연결한다. → (연결된 [(닉,CID)], 제외 [(닉, 사유)])"""
+    import difflib
+    names = []
+    for x in re.split(r"[,\n，、;/]+", raw or ""):
+        n = re.sub(r"\s+", " ", x).strip()
+        if n and n not in names: names.append(n)
+    by_name = {}
+    for cid, v in roster_for(gid).by_uid.items():
+        if v.get("name"): by_name.setdefault(v["name"], []).append(cid)
+    taken = {r["alt_cid"]: r["main_cid"] for r in (_sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,main_cid&limit=100000") or [])}
+    ok, bad = [], []
+    for n in names:
+        cids = by_name.get(n)
+        if not cids:
+            sug = difflib.get_close_matches(n, list(by_name), n=2, cutoff=0.6)
+            bad.append((n, "명단에 없는 닉네임" + (f" (혹시 {' / '.join(sug)} ?)" if sug else ""))); continue
+        if len(cids) > 1: bad.append((n, f"같은 닉네임이 {len(cids)}명이라 구분할 수 없음 (CID {', '.join(cids)})")); continue
+        c = cids[0]
+        if c == main_cid: bad.append((n, "본캐 자신")); continue
+        if taken.get(c) not in (None, main_cid): bad.append((n, "이미 다른 본캐에 연결된 계정")); continue
+        ok.append((n, c))
+    if replace: _sb_req("DELETE", f"sam_emp_alt?guild_id=eq.{gid}&main_cid=eq.{main_cid}", prefer="return=minimal")
+    if ok: _sb_rows("sam_emp_alt", [{"guild_id": gid, "alt_cid": c, "alt_name": n, "main_cid": main_cid} for n, c in ok], conflict="guild_id,alt_cid")
+    return ok, bad
+
+
+@bot.tree.command(name="부캐", description="내 부계정을 닉네임으로 연결합니다. 예) 닉네임1,닉네임2 (비우면 내 부계정 목록)")
+@app_commands.describe(닉네임="부계정 닉네임을 쉼표로 구분해 입력", 방식="추가(기본): 기존에 더함 / 교체: 입력한 목록으로 바꿈")
+@app_commands.choices(방식=[app_commands.Choice(name="추가", value="add"), app_commands.Choice(name="교체", value="replace")])
+async def cmd_alt(it: discord.Interaction, 닉네임: str = "", 방식: app_commands.Choice[str] = None):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
+    gid = cur_gid(); did = str(it.user.id)
+    main = next((c for c, d in db_load()["uid"].items() if str(d) == did), None)
+    if not main: return await it.response.send_message("먼저 `/인증`으로 본캐 CID 인증을 해 주세요.", ephemeral=True)
+    await it.response.defer(ephemeral=True)
+    try:
+        if not 닉네임.strip():
+            rows = await asyncio.to_thread(lambda: _sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&main_cid=eq.{main}&select=alt_name,alt_cid&order=created_at") or [])
+            return await it.followup.send("**내 부계정**\n" + ("\n".join(f"• {r['alt_name']} ({r['alt_cid']})" for r in rows) if rows else "연결된 부계정이 없습니다. `/부캐 닉네임1,닉네임2` 로 연결하세요."), ephemeral=True)
+        ok, bad = await asyncio.to_thread(alt_link, gid, main, 닉네임, bool(방식 and 방식.value == "replace"))
+    except Exception as e:
+        log.exception("부캐 연결 실패"); return await it.followup.send(f"❌ 실패: {str(e)[:200]}", ephemeral=True)
+    lines = [f"**부계정 연결 결과** — 연결 {len(ok)}명 · 제외 {len(bad)}명"]
+    if ok: lines += ["", "✅ 연결됨"] + [f"• {n} ({c})" for n, c in ok]
+    if bad: lines += ["", "❌ 제외됨 (닉네임을 확인해 다시 입력해 주세요)"] + [f"• {n} — {why}" for n, why in bad]
+    await it.followup.send("\n".join(lines)[:1900], ephemeral=True)
 
 
 @bot.tree.command(name="명단업데이트", description="[관리자] 게임 명단 엑셀(.xlsx)을 올려 명단을 새로 반영합니다")
