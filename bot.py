@@ -1563,6 +1563,76 @@ def tier_data():
 def _nk(x): return re.sub(r"[\s·\-]", "", x or "")
 
 
+STS = ["혼란", "허약", "침묵", "무장 해제", "공포", "위협", "군량 고갈", "화공", "홍수", "폭풍", "연소", "짐독", "요술", "조롱"]
+_ST_CACHE = {}
+
+
+def status_of(desc):
+    """장수·전법 설명에서 이상상태를 (부여하는 것 g, 조건으로 쓰는 것 u)로 나눈다. (tier_template.html의 stOf와 같은 규칙)"""
+    desc = re.sub(r"\s+", " ", (desc or "").replace("무장해제", "무장 해제"))
+    if desc in _ST_CACHE: return _ST_CACHE[desc]
+    g, u = set(), set()
+    for S in STS:
+        if S not in desc: continue
+        r = S.replace(" ", " ?")
+        if re.search(r + r"(?:을\(를\)|를|을|와\(과\)|과|와)?(?: 상태를?| 효과를?)?(?: ?\d+스택)?(?: 및 [가-힣 ]{1,8}?(?:을\(를\)|를|을| 상태를| 효과를)?)*\s*부여", desc) or re.search(r + " 상태가 된다", desc): g.add(S)
+        if re.search(r"(?:이미 )?" + r + r" ?(?:상태|효과)?(?:면|를 보유|가 아닌|인 |일 |를 이미|을 보유)", desc): u.add(S)
+    if re.search(r"디버프 상태 \d가지를 제거", desc): g.add("정화")
+    if re.search(r"디버프 상태를 보유|디버프 상태 1개당|디버프 효과 부여 후", desc): u.add("디버프")
+    _ST_CACHE[desc] = (g, u); return g, u
+
+
+def unit_state(deck, heroes, hd):
+    hs = [h["n"] for h in heroes if h["n"]]
+    G, U = set(), set()
+    for h in hs:
+        g, u = status_of((hd.get(h) or {}).get("desc")); G |= g; U |= u
+    names = set()
+    if deck:
+        for r in deck["rows"]:
+            if r[0] in ("전법", "대체 전법"):
+                for hero_slots in r[1]:
+                    for cell in hero_slots:
+                        for x in re.split(r"[/>+,]", cell): names.add(_nk(x))
+    return {"hs": hs, "G": G, "U": U, "deck": names, "picks": [], "styles": " ".join((hd.get(h) or {}).get("style", "") for h in hs)}
+
+
+def pick_tactics(st, count, own_s, used, hd, skd, skn):
+    """한 부대에 전법을 count개 더 고른다. 점수: ① 장수 기술이 필요로 하는 이상상태를 부여(+6) ② 부대가 부여하는 이상상태를 활용(+4)
+    ③ 티어덱 추천(+3) ④ 장수 역할(병기·책략·보조) 적합(+2). 부대가 만들지 못하는 이상상태를 전제로 하면 -3."""
+    G, U, styles = st["G"], st["U"], st["styles"]
+
+    def fit(sname):
+        tr = (skd.get(sname) or {}).get("trait", "")
+        return (tr == "병기" and "병기" in styles) or (tr == "책략" and "책략" in styles) or (tr in ("보조", "치유", "방어") and any(x in styles for x in ("보조", "치유", "방어")))
+    for _ in range(count):
+        best = None
+        for k in sorted(own_s - used):
+            n = skn.get(k, k); g, u = status_of((skd.get(n) or {}).get("desc")); why = []; sc = 0.0
+            need = {x for x in U if x != "디버프"} - G
+            for x in sorted((g - {"정화"}) & need): sc += 6; why.append(f"{x} 부여")
+            anyg = any(y != "정화" for y in G)
+            if "디버프" in U and not anyg and any(x != "정화" for x in g): sc += 4; why.append("디버프 부여")
+            for x in sorted(u & (G | ({"디버프"} if anyg else set()))): sc += 4; why.append(f"{x} 활용")
+            if u - G - g - {"디버프"}: sc -= 3
+            if k in st["deck"]: sc += 3; why.append("티어덱")
+            if fit(n): sc += 2; why.append("역할")
+            sc += {"전설": 0.6, "영웅": 0.3}.get((skd.get(n) or {}).get("grade"), 0)
+            if best is None or sc > best[0]: best = (sc, k, n, why, g, u)
+        if best is None: return
+        _, k, n, why, g, u = best; used.add(k); G |= g; U |= u; st["picks"].append((n, "·".join(why[:2]) or "보유 전법"))
+
+
+def finish_tactics(st, hd, skd):
+    """고른 전법을 장수당 2개까지 나눠 준다(전법이 적은 장수 우선, 같으면 역할이 맞는 장수). → ({장수: [(전법, 이유)]}, (부여되는 이상상태, 부족한 이상상태))"""
+    out = {h: [] for h in st["hs"]}
+    for n, why in st["picks"]:
+        tr = (skd.get(n) or {}).get("trait", "")
+        order = sorted((h for h in st["hs"] if len(out[h]) < 2), key=lambda h: (len(out[h]), tr not in (hd.get(h) or {}).get("style", "")))
+        if order: out[order[0]].append((n, why))
+    return out, (sorted(st["G"] - {"정화"}), sorted(x for x in st["U"] - st["G"] if x != "디버프"))
+
+
 def recommend_decks(own_h, own_s, season, hd, skd, units=5):
     """티어덱 순서대로 5부대 편성. 한 번 쓴 장수·전법은 다시 쓰지 않는다.
     덱을 통째로 못 만들면 2명 이상, 그다음 1명 이상 보유한 덱을 고르고 빈자리는 같은 역할의 미사용 보유 장수로 채운다."""
@@ -1605,46 +1675,36 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5):
             best = max(pool, key=lambda h: ((sim(want, h) if want else 0), -freq.get(h, 0), -ord(h[0])))
             hs.append({"n": best, "src": f"{want} 대신" if want else "자유 편성"}); usedH.add(best)
         plan.append((deck, hs))
+    sts = [unit_state(deck, hs, hd) for deck, hs in plan]
+    for rnd in (1, 2):                                       # 1라운드: 모든 장수가 전법 1개씩(티어덱 순서), 2라운드: 남은 전법으로 2번째 칸
+        for st in sts:
+            pick_tactics(st, len(st["hs"]) if rnd == 1 else len(st["hs"]), own_s, usedS, hd, skd, skn)
     res = []
-    for deck, hs in plan:
-        unit = []
-        for h in hs:
-            tac = []
-            if deck and h["n"] and not h["src"]:
-                k = next(j for j, sl in enumerate(deck["heroes"]) if h["n"] in sl.split("/"))
-                rows = {r[0]: r[1] for r in deck["rows"]}
-                slots = rows.get("전법", [[]] * 3)[k]
-                alts = [x for a in rows.get("대체 전법", [[]] * 3)[k] for x in re.split(r"[/,]", a)]
-                for sl in slots:
-                    c = [x for x in re.split(r"[/>]", sl) if _nk(x) in own_s and _nk(x) not in usedS]
-                    if c: tac.append((skn.get(_nk(c[0]), c[0]), "덱 추천")); usedS.add(_nk(c[0]))
-                for _ in range(2 - len(tac)):
-                    c = [x for x in alts if _nk(x) in own_s and _nk(x) not in usedS]
-                    if c: tac.append((skn.get(_nk(c[0]), c[0]), "덱 대체")); usedS.add(_nk(c[0]))
-            unit.append((h, tac))
-        res.append((deck, unit))
-
-    def fit(hn, sname):
-        st = (hd.get(hn) or {}).get("style", ""); tr = (skd.get(sname) or {}).get("trait", "")
-        return (tr == "병기" and "병기" in st) or (tr == "책략" and "책략" in st) or (tr in ("보조", "치유", "방어") and any(x in st for x in ("보조", "치유", "방어")))
-    for deck, unit in res:                                       # 남은 보유 전법을 모자란 칸에 역할(특성) 맞춰 배정
-        for h, tac in unit:
-            while h["n"] and len(tac) < 2:
-                pool = [skn.get(x, x) for x in sorted(own_s - usedS)]
-                if not pool: break
-                nm = ([x for x in pool if fit(h["n"], x)] or pool)[0]; tac.append((nm, "남은 보유 전법")); usedS.add(_nk(nm))
+    for (deck, hs), st in zip(plan, sts):
+        tac, ss = finish_tactics(st, hd, skd)
+        res.append((deck, [(h, tac.get(h["n"], [])) for h in hs], ss))
     return res
 
 
+def reco_chunks(text, lim=1900):
+    out, cur = [], ""
+    for blk in text.split("\n\n"):
+        if cur and len(cur) + len(blk) + 2 > lim: out.append(cur); cur = ""
+        cur += ("\n\n" if cur else "") + blk
+    return out + [cur] if cur else out
+
+
 def reco_text(season, res, who):
-    lines = [f"🃏 **{who} 추천덱 — 시즌{season}** (티어덱 순서, 한 번 쓴 장수·전법은 다시 쓰지 않음)"]
-    for i, (deck, unit) in enumerate(res, 1):
+    lines = [f"🃏 **{who} 추천덱 — 시즌{season}** (티어덱 순서 · 한 번 쓴 장수·전법은 다시 쓰지 않음 · 전법은 이상상태 궁합 기준)"]
+    for i, (deck, unit, st) in enumerate(res, 1):
         lines.append(f"\n**{i}부대** " + (f"{deck['tier']} {deck['name']} ({'·'.join(deck['heroes'])}) · {deck.get('form') or '진형 미정'}" if deck else "티어덱 없음 · 자유 편성"))
         for h, tac in unit:
             if not h["n"]: lines.append("• (보유 장수 부족)"); continue
             note = f" ← {h['src']}" if h["src"] else ""
-            lines.append(f"• {h['n']}{note} — " + (", ".join(t for t, _ in tac) if tac else "전법 없음(보유 전법 부족)"))
-    lines.append("\n티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다. 시즌을 바꾸려면 `/추천덱 시즌:1` 또는 `시즌:2`")
+            lines.append(f"• {h['n']}{note} — " + (", ".join(f"{t}({w})" for t, w in tac) if tac else "전법 없음(보유 전법 부족)"))
+        if st[0] or st[1]:
+            lines.append("  ↳ 이상상태: " + (f"부여 {', '.join(st[0])}" if st[0] else "부여 없음") + (f" · 부족 {', '.join(st[1])}" if st[1] else ""))
+    lines.append("\n티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다. 시즌 변경: `/추천덱 시즌:1` 또는 `시즌:2`")
     return "\n".join(lines)
 
 
@@ -1678,7 +1738,8 @@ class SeasonPick(CtxView):
         await it.response.defer(ephemeral=True)
         await asyncio.to_thread(pref_set, self.did, season=season)          # 선택값 기억
         text, err = await asyncio.to_thread(reco_build, self.did, season)
-        await it.edit_original_response(content=err or text, view=None)
+        ch = reco_chunks(err or text); await it.edit_original_response(content=ch[0], view=None)
+        for c in ch[1:]: await it.followup.send(c, ephemeral=True)
 
     @discord.ui.button(label="시즌1", style=discord.ButtonStyle.primary)
     async def s1(self, it, _): await self._pick(it, 1)
@@ -1702,7 +1763,7 @@ async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = N
         season = 시즌.value; await asyncio.to_thread(pref_set, did, season=season)
     await it.response.defer(ephemeral=True)
     text, err = await asyncio.to_thread(reco_build, did, season)
-    await it.followup.send(err or text, ephemeral=True)
+    for chunk in reco_chunks(err or text): await it.followup.send(chunk, ephemeral=True)
 
 
 @bot.tree.command(name="도감", description="내 보유 장수·전법을 체크하는 개인 링크를 받습니다(시트에 자동 저장)")
