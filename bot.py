@@ -1696,15 +1696,15 @@ async def siege_add(it: discord.Interaction, 레벨: app_commands.Choice[int], �
         if e is mine or (e["reg"], e["user"]) == (mine["reg"], mine["user"]):
             return await it.response.send_message(
                 f"🏗️ {siege_name(e)} 등록 — 정철이 충분해 **{cost:,}**개를 바로 차감하고 건축을 시작했습니다. (남은 정철 약 {int(left):,}개)\n"
-                f"축성 예상 완료 **{fmt_t(end)}** (<t:{int(end)}:R>)" + (" · 01~08시 건축 중지 반영" if end - time.time() > BUILD_SEC + 60 else "") + "\n전체 일정은 `/공성`으로 확인하세요.")
+                f"주둔지 건설 완료 예상 **{fmt_t(end)}** (<t:{int(end)}:R>)" + (" · 01~08시 건축 중지 반영" if end - time.time() > BUILD_SEC + 60 else "") + "\n전체 일정은 `/공성`으로 확인하세요.")
     n = len(st["sieges"]); e, eta, left = jc_plan(st)[-1]; fund = max(eta, time.time()); end = build_end(fund)
     night = " (야간 01~08시 건축 중지 반영)" if build_end(fund, BUILD_SEC) - fund > BUILD_SEC + 1 else ""
     await it.response.send_message(
         f"📌 **{n}번** {siege_name(e)} 등록 — 필요 정철 **{cost:,}**개\n"
         f"정철 도달 예상 <t:{int(fund)}:f> (<t:{int(fund)}:R>) · 도달하면 보유 정철에서 {cost:,}개를 자동 차감하고 건축을 시작합니다.\n"
         f"(봇 계산 보유 정철 약 {int(jc_stock_now(st)):,}개. 게임 내 실제 수량과 다르면 `/정철설정`으로 맞춰야 예상 시각이 정확합니다.)\n"
-        f"축성 예상 완료 **{fmt_t(end)}**{night}\n"
-        f"정철 도달 {ALERT_MIN}분 전, 도달·건축 시작, 축성 완료 때 알려 드립니다. 전체 일정은 `/공성`으로 확인하세요.")
+        f"주둔지 건설 완료 예상 **{fmt_t(end)}**{night}\n"
+        f"정철 도달 {ALERT_MIN}분 전, 도달·건축 시작, 주둔지 건설 완료 때 알려 드립니다. 전체 일정은 `/공성`으로 확인하세요.")
 
 
 @bot.tree.command(name="공성", description="[간부] 현재 정철 개수와 진행 중인 공성 예상 일정을 봅니다(대외비)")
@@ -1717,7 +1717,7 @@ async def siege_view(it: discord.Interaction):
     rsv = ("\n**📅 공성 예약**\n```\n" + "\n".join(f"{i}. {fmt_t(r['t'])} | {siege_name(r)} | {r.get('name', '-')}" for i, r in enumerate(rs, 1)) + "\n```") if rs else ""
     if not rows: return await it.response.send_message(head + rsv + "\n등록된 공성이 없습니다. `/공성등록`으로 주둔지를 등록하세요.", ephemeral=True)
     names = [r[0] or "-" for r in rows]; w = max(_w("등록자"), *(_w(n) for n in names))
-    lines = [f"{_pad('등록자', w)} | 성지레벨 | 축성예상시간"]
+    lines = [f"{_pad('등록자', w)} | 성지레벨 | 주둔지 건설 완료시간"]
     for n, (_, lv, end, kind) in zip(names, rows):
         lines.append(f"{_pad(n, w)} | {_pad(str(lv) + ('관문' if lv == 12 else ''), 8)} | {fmt_t(end)}{' *' if kind == '대기' else ''}")
     await it.response.send_message(head + "\n```\n" + "\n".join(lines) + "\n```\n`*` 정철이 아직 모이지 않은 대기 건(정철 도달 후 건축 시작). 01~08시에는 건축이 멈추고 08시에 재개됩니다." + rsv, ephemeral=True)
@@ -1872,11 +1872,11 @@ async def jc_tick():
         now = time.time(); changed = False
         for b in [b for b in bl if b["t_end"] <= now]:                    # 축성 완료 알림
             bl.remove(b); changed = True
-            await _say(b["channel"], f"🏯 <@{b['user']}> **{b['tags']}{jc_label(b['level'])}** 주둔지 축성이 완료되었습니다!")
+            await _say(b["channel"], f"🏯 <@{b['user']}> **{b['tags']}{jc_label(b['level'])}** 주둔지 건설이 완료되었습니다!")
         for e, end, left in jc_settle(st, now):                         # 도달 → 자동 차감, 건축 시작
             changed = True
             nxt = f"\n다음: **{siege_name(sg[0])}** {sg[0]['cost']:,}개 대기 중" if sg else ""
-            await _say(e["channel"], f"🔔 <@{e['user']}> **{siege_name(e)}** 정철이 모였습니다! 필요 {e['cost']:,}개를 차감하고 건축을 시작합니다. (남은 정철 약 {int(left):,}개)\n🏗️ 축성 예상 완료 **{fmt_t(end)}** (<t:{int(end)}:R>){nxt}")
+            await _say(e["channel"], f"🔔 <@{e['user']}> **{siege_name(e)}** 정철이 모였습니다! 필요 {e['cost']:,}개를 차감하고 건축을 시작합니다. (남은 정철 약 {int(left):,}개)\n🏗️ 주둔지 건설 완료 예상 **{fmt_t(end)}** (<t:{int(end)}:R>){nxt}")
         for e, eta, _ in jc_plan(st):                                   # 도달 직전 알림
             if not e.get("soon") and eta - now <= ALERT_MIN * 60:
                 e["soon"] = True; changed = True
