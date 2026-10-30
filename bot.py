@@ -617,6 +617,27 @@ async def sync_members(guild: discord.Guild):
     return res
 
 
+BOT_CAT = "봇"
+
+
+async def bot_cat(g):
+    """서버 채널 목록 맨 아래에 있는 '봇' 카테고리(없으면 만든다). 관리자가이드·명령어로그·후원 채널을 여기에 둔다. 만들 수 없으면 None."""
+    cat = discord.utils.get(g.categories, name=BOT_CAT)
+    try:
+        if cat is None: cat = await g.create_category(BOT_CAT, reason="봇 채널 모음(최하단)")
+        if cat.position != len(g.categories) - 1: await cat.edit(position=len(g.categories) - 1)
+    except Exception as e: log.warning("'봇' 카테고리 준비 실패 서버=%s: %r", g.id, e); return cat if cat else None
+    return cat
+
+
+async def to_bottom(g, ch):
+    """채널을 '봇' 카테고리(최하단)로 옮긴다. 이미 있으면 그대로, 실패해도 무시."""
+    try:
+        cat = await bot_cat(g)
+        if cat is not None and ch is not None and getattr(ch, "category", None) != cat: await ch.edit(category=cat, sync_permissions=False)
+    except Exception as e: log.warning("채널을 최하단으로 옮기지 못했습니다 서버=%s: %r", g.id, e)
+
+
 LOG_CH = "명령어로그"
 _log_fail = {}                                                  # 서버 ID → 채널 생성 실패 시각(1시간 동안 재시도 안 함)
 
@@ -629,14 +650,15 @@ async def log_channel(g, create=True):
         topic = "명령어 사용 기록 (서버 관리자만 볼 수 있습니다)"
         try:
             ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
-            ch = await g.create_text_channel(LOG_CH, overwrites=ow, topic=topic, reason="명령어 로그 채널 자동 생성")
+            ch = await g.create_text_channel(LOG_CH, overwrites=ow, topic=topic, category=await bot_cat(g), reason="명령어 로그 채널 자동 생성")
         except Exception as e1:
             try:                                                   # 권한 덮어쓰기가 거부되면 일반 채널로 만든 뒤 비공개 설정을 따로 시도
-                ch = await g.create_text_channel(LOG_CH, topic=topic, reason="명령어 로그 채널 자동 생성")
+                ch = await g.create_text_channel(LOG_CH, topic=topic, category=await bot_cat(g), reason="명령어 로그 채널 자동 생성")
                 try: await ch.set_permissions(g.default_role, view_channel=False)
                 except Exception as e3: log.warning("로그 채널 비공개 설정 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e3)
             except Exception as e2:
                 _log_fail[g.id] = time.time(); log.warning("명령어 로그 채널 생성 실패 서버=%s 1차=%r 2차=%r (봇에 '채널 관리' 권한이 있는지 확인)", g.id, e1, e2); return None
+    if ch is not None and getattr(ch, "category", None) is None: await to_bottom(g, ch)       # 예전에 위쪽에 만들어진 채널도 최하단으로
     return ch if ch and me is not None and ch.permissions_for(me).send_messages else None
 
 
@@ -701,14 +723,15 @@ async def guide_post(g):
     if ch is None and me is not None and time.time() - _log_fail.get(("g", g.id), 0) > 3600:
         topic = "관리자 가이드북 (서버 관리자만 볼 수 있습니다)"
         try:
-            ch = await g.create_text_channel(GUIDE_CH, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}, topic=topic, reason="관리자 가이드북 채널")
+            ch = await g.create_text_channel(GUIDE_CH, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}, topic=topic, category=await bot_cat(g), reason="관리자 가이드북 채널")
         except Exception as e1:
             try:
-                ch = await g.create_text_channel(GUIDE_CH, topic=topic, reason="관리자 가이드북 채널")
+                ch = await g.create_text_channel(GUIDE_CH, topic=topic, category=await bot_cat(g), reason="관리자 가이드북 채널")
                 try: await ch.set_permissions(g.default_role, view_channel=False)
                 except Exception as e3: log.warning("가이드 채널 비공개 설정 실패 %s: %r", g.id, e3)
             except Exception as e2:
                 _log_fail[("g", g.id)] = time.time(); log.warning("관리자 가이드 채널 생성 실패 서버=%s 1차=%r 2차=%r", g.id, e1, e2); return None
+    if ch is not None and getattr(ch, "category", None) is None: await to_bottom(g, ch)
     if ch is None or me is None or not ch.permissions_for(me).send_messages: return None
     def st():
         tok = _CTX.set(g.id)
@@ -1057,8 +1080,9 @@ async def donate_channel(g):
         try:
             ow = {g.default_role: discord.PermissionOverwrite(send_messages=False, add_reactions=True),
                   g.me: discord.PermissionOverwrite(send_messages=True, attach_files=True, view_channel=True)}
-            ch = await g.create_text_channel(DONATE_CH, overwrites=ow, topic="제작자 서버비 후원 안내 (매주 토요일 19시)", reason="후원 안내 채널")
+            ch = await g.create_text_channel(DONATE_CH, overwrites=ow, topic="제작자 서버비 후원 안내 (매주 토요일 19시)", category=await bot_cat(g), reason="후원 안내 채널")
         except Exception: log.warning("후원 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id)
+    elif getattr(ch, "category", None) is None: await to_bottom(g, ch)
     if ch and ok(ch): return ch
     if g.system_channel and ok(g.system_channel): return g.system_channel
     return next((c for c in g.text_channels if ok(c)), None)
