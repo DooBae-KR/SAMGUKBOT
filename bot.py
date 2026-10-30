@@ -980,6 +980,7 @@ CMD_HELP = {
              ("/인증", "CID 인증 창 열기(나에게만 보임)"),
              ("/부캐", "내 부계정을 닉네임으로 연결(닉네임1,닉네임2 …)"),
              ("/도감", "내 보유 장수·전법을 체크하는 개인 링크"),
+             ("/추천덱", "내 보유 장수·전법으로 티어덱 5부대 편성(시즌 선택은 기억)"),
              ("/후원", "제작자 서버비 후원 안내(카카오 QR)"),
              ("/명령어", "내 역할로 쓸 수 있는 명령어 보기")],
     "간부": [("/인사", "인사데이터(상황판) 링크"),
@@ -1544,6 +1545,164 @@ async def reload(it: discord.Interaction):
     roster.mtime = 0
     try: roster.load(); await it.response.send_message(f"명단 {len(roster.by_uid)}명 로드, 직업: {', '.join(roster.jobs) or '-'}", ephemeral=True)
     except Exception as e: await it.response.send_message(f"실패: {e}", ephemeral=True)
+
+
+# ---------- 추천덱 ----------
+_TIER = {}
+
+
+def tier_data():
+    """tier_template.html 안의 시즌1·2 티어덱(S1·S2)과 장수·전법 데이터(SD)를 읽는다(처음 한 번)."""
+    if not _TIER:
+        t = (Path(__file__).parent / "tier_template.html").read_text("utf-8"); dec = json.JSONDecoder()
+        for k in ("S1", "S2", "SD"):
+            i = t.index(f"const {k}=") + len(f"const {k}="); _TIER[k] = dec.raw_decode(t[i:])[0]
+    return _TIER
+
+
+def _nk(x): return re.sub(r"[\s·\-]", "", x or "")
+
+
+def recommend_decks(own_h, own_s, season, hd, skd, units=5):
+    """티어덱 순서대로 5부대 편성. 한 번 쓴 장수·전법은 다시 쓰지 않는다.
+    덱을 통째로 못 만들면 2명 이상, 그다음 1명 이상 보유한 덱을 고르고 빈자리는 같은 역할의 미사용 보유 장수로 채운다."""
+    decks = tier_data()["S1" if season == 1 else "S2"]
+    own_h = {h for h in own_h if (hd.get(h) or {}).get("season", 1) <= season}
+    skn = {_nk(k): k for k in skd}
+    own_s = {_nk(x) for x in own_s if (skd.get(x) or {}).get("season", 1) <= season}
+    freq = {}
+    for d in decks:
+        for h in d["heroes"]:
+            for a in h.split("/"): freq[a] = freq.get(a, 0) + 1
+    usedH, usedS, usedD, plan = set(), set(), set(), []
+
+    def pick(minc):
+        for i, d in enumerate(decks):
+            if i in usedD: continue
+            got = []
+            for slot in d["heroes"]:
+                alts = [a for a in slot.split("/") if a in own_h and a not in usedH and a not in got]
+                got.append(alts[0] if alts else None)
+            if sum(1 for g in got if g) >= minc: return i, got
+        return None
+
+    def sim(a, b):
+        A, B = hd.get(a), hd.get(b)
+        if not A or not B: return 0
+        return 2 * len(set(A["style"].split()) & set(B["style"].split())) + (A["pos"] == B["pos"]) + (A["troop"] == B["troop"]) + (A["sktype"] == B["sktype"])
+    for _ in range(units):
+        sel = next((r for m in (2, 1) for r in [pick(m)] if r), None)
+        deck, got = (decks[sel[0]], sel[1]) if sel else (None, [None, None, None])
+        if sel: usedD.add(sel[0])
+        hs = []
+        for g in got:
+            if g: hs.append({"n": g, "src": ""}); usedH.add(g)
+        for k, g in enumerate(got):
+            if g: continue
+            want = deck["heroes"][k].split("/")[0] if deck else None
+            pool = [h for h in own_h if h not in usedH]
+            if not pool: hs.append({"n": None, "src": "보유 장수 부족"}); continue
+            best = max(pool, key=lambda h: ((sim(want, h) if want else 0), -freq.get(h, 0), -ord(h[0])))
+            hs.append({"n": best, "src": f"{want} 대신" if want else "자유 편성"}); usedH.add(best)
+        plan.append((deck, hs))
+    res = []
+    for deck, hs in plan:
+        unit = []
+        for h in hs:
+            tac = []
+            if deck and h["n"] and not h["src"]:
+                k = next(j for j, sl in enumerate(deck["heroes"]) if h["n"] in sl.split("/"))
+                rows = {r[0]: r[1] for r in deck["rows"]}
+                slots = rows.get("전법", [[]] * 3)[k]
+                alts = [x for a in rows.get("대체 전법", [[]] * 3)[k] for x in re.split(r"[/,]", a)]
+                for sl in slots:
+                    c = [x for x in re.split(r"[/>]", sl) if _nk(x) in own_s and _nk(x) not in usedS]
+                    if c: tac.append((skn.get(_nk(c[0]), c[0]), "덱 추천")); usedS.add(_nk(c[0]))
+                for _ in range(2 - len(tac)):
+                    c = [x for x in alts if _nk(x) in own_s and _nk(x) not in usedS]
+                    if c: tac.append((skn.get(_nk(c[0]), c[0]), "덱 대체")); usedS.add(_nk(c[0]))
+            unit.append((h, tac))
+        res.append((deck, unit))
+
+    def fit(hn, sname):
+        st = (hd.get(hn) or {}).get("style", ""); tr = (skd.get(sname) or {}).get("trait", "")
+        return (tr == "병기" and "병기" in st) or (tr == "책략" and "책략" in st) or (tr in ("보조", "치유", "방어") and any(x in st for x in ("보조", "치유", "방어")))
+    for deck, unit in res:                                       # 남은 보유 전법을 모자란 칸에 역할(특성) 맞춰 배정
+        for h, tac in unit:
+            while h["n"] and len(tac) < 2:
+                pool = [skn.get(x, x) for x in sorted(own_s - usedS)]
+                if not pool: break
+                nm = ([x for x in pool if fit(h["n"], x)] or pool)[0]; tac.append((nm, "남은 보유 전법")); usedS.add(_nk(nm))
+    return res
+
+
+def reco_text(season, res, who):
+    lines = [f"🃏 **{who} 추천덱 — 시즌{season}** (티어덱 순서, 한 번 쓴 장수·전법은 다시 쓰지 않음)"]
+    for i, (deck, unit) in enumerate(res, 1):
+        lines.append(f"\n**{i}부대** " + (f"{deck['tier']} {deck['name']} ({'·'.join(deck['heroes'])}) · {deck.get('form') or '진형 미정'}" if deck else "티어덱 없음 · 자유 편성"))
+        for h, tac in unit:
+            if not h["n"]: lines.append("• (보유 장수 부족)"); continue
+            note = f" ← {h['src']}" if h["src"] else ""
+            lines.append(f"• {h['n']}{note} — " + (", ".join(t for t, _ in tac) if tac else "전법 없음(보유 전법 부족)"))
+    lines.append("\n티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다. 시즌을 바꾸려면 `/추천덱 시즌:1` 또는 `시즌:2`")
+    return "\n".join(lines)
+
+
+def pref_get(did): return (store_get("pref", PREF_PATH, {}) or {}).get(str(did), {})
+
+
+def pref_set(did, **kw):
+    d = dict(store_get("pref", PREF_PATH, {}) or {}); d[str(did)] = {**d.get(str(did), {}), **kw}; store_set("pref", PREF_PATH, d)
+
+
+PREF_PATH = Path(os.environ.get("PREF_PATH", "pref.json"))
+
+
+def reco_build(did, season):
+    """내 도감(보유 장수·전법) 기준 추천덱 문장. 오류면 (None, 안내문)."""
+    cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
+    if not cid: return None, "먼저 `/인증`으로 CID 인증을 해 주세요."
+    dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
+    if not dex.get("own"): return None, "보유 장수가 없습니다. `/도감`에서 보유 장수와 전법을 먼저 체크해 주세요."
+    sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
+    hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
+    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd)
+    who = (roster.by_uid.get(cid) or {}).get("name") or "내"
+    return reco_text(season, res, who), None
+
+
+class SeasonPick(CtxView):
+    def __init__(self, did): super().__init__(timeout=300); self.did = did
+
+    async def _pick(self, it, season):
+        await it.response.defer(ephemeral=True)
+        await asyncio.to_thread(pref_set, self.did, season=season)          # 선택값 기억
+        text, err = await asyncio.to_thread(reco_build, self.did, season)
+        await it.edit_original_response(content=err or text, view=None)
+
+    @discord.ui.button(label="시즌1", style=discord.ButtonStyle.primary)
+    async def s1(self, it, _): await self._pick(it, 1)
+
+    @discord.ui.button(label="시즌2", style=discord.ButtonStyle.primary)
+    async def s2(self, it, _): await self._pick(it, 2)
+
+
+@bot.tree.command(name="추천덱", description="내 보유 장수·전법으로 티어덱 순서대로 5부대를 편성해 줍니다")
+@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)")
+@app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2)])
+async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    did = it.user.id
+    if 시즌 is None:
+        saved = await asyncio.to_thread(lambda: pref_get(did).get("season"))
+        if saved not in (1, 2):                                          # 처음이면 시즌을 묻는다
+            return await it.response.send_message("어느 시즌 기준으로 편성할까요? (한 번 고르면 기억합니다)", view=SeasonPick(did), ephemeral=True)
+        season = saved
+    else:
+        season = 시즌.value; await asyncio.to_thread(pref_set, did, season=season)
+    await it.response.defer(ephemeral=True)
+    text, err = await asyncio.to_thread(reco_build, did, season)
+    await it.followup.send(err or text, ephemeral=True)
 
 
 @bot.tree.command(name="도감", description="내 보유 장수·전법을 체크하는 개인 링크를 받습니다(시트에 자동 저장)")
