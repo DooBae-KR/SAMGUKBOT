@@ -1932,6 +1932,29 @@ def unit_trait(st, hd):
     return "책략" if c["책략"] > c["병기"] else "병기" if c["병기"] > c["책략"] else ""
 
 
+PURSUE = ("황충", "손상향", "하후연", "허저")                     # 추격 전법으로 구성하는 장수 (예리한 판단=관통이 잘 어울림)
+PURSUE_PIN = "예리한판단"
+LU_COMBO = ("원문사극",)                                          # 여포 연타 구성
+LU_COUNTER = ("용감한삼군", "용맹한삼군", "일인천군")              # 여포 반격덱 구성
+
+
+def pin_tactics(st, own_s, used, hd, skd, skn):
+    """장수별 고정 전법(운영 노하우)을 먼저 배정한다. → st["pin"] = {전법: 장수}
+    · 황충·손상향·하후연·허저: 예리한 판단(관통) 1개를 우선 배정 · 여포: 연타 구성이면 원문사극, 반격덱이면 용감한 삼군·일인천군"""
+    st.setdefault("pin", {})
+    names = [h for h in st["hs"] if h]
+    def put(k, owner, why):
+        if k in own_s and k not in used and k in skn:
+            n = skn[k]; ti = tact_info(n, skd); used.add(k); st["G"] |= ti["g"]; st["U"] |= ti["u"]
+            if ti["heal"] or ti["kind"] == "회복": st["healed"] = True
+            st["picks"].append((n, why)); st["pin"][n] = owner
+    pur = [h for h in PURSUE if h in names]
+    if pur: put(PURSUE_PIN, pur[0], "관통·추격 궁합")
+    if "여포" in names:
+        counter = "반격" in (st.get("dname") or "")
+        for k in (LU_COUNTER if counter else LU_COMBO): put(k, "여포", "여포 반격" if counter else "여포 연타")
+
+
 def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜"):
     """한 부대에 전법을 count개 더 고른다.
     ① 딜 방식: 선호(기본 도트딜)와 같으면 +3, 반대 방식(한방딜)이면 -1.5  ② 책략 부대는 홍수 부여(+5)·홍수 활용(+3),
@@ -1958,6 +1981,7 @@ def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜"):
             if ti["trait"] == trait and trait: sc += 2
             if k in st["deck"]: sc += 3; why.append("티어덱")
             if ti["type"] in ("지휘", "패시브") and g: sc += 1
+            if ti["type"] == "추격" and any(h in PURSUE for h in st["hs"]): sc += 3; why.append("추격 구성")
             sc += {"전설": 0.6, "영웅": 0.3}.get((skd.get(n) or {}).get("grade"), 0)
             if best is None or sc > best[0]: best = (sc, k, n, why, g, u, ti)
         if best is None: return
@@ -1971,7 +1995,10 @@ def finish_tactics(st, hd, skd):
     out = {h: [] for h in st["hs"]}
     for n, why in st["picks"]:
         tr = (skd.get(n) or {}).get("trait", "")
-        order = sorted((h for h in st["hs"] if len(out[h]) < 2), key=lambda h: (len(out[h]), tr not in (hd.get(h) or {}).get("style", "")))
+        pin = (st.get("pin") or {}).get(n)
+        if pin in out and len(out[pin]) < 2: out[pin].append((n, why)); continue
+        pur = tact_info(n, skd)["type"] == "추격"
+        order = sorted((h for h in st["hs"] if len(out[h]) < 2), key=lambda h: (not (pur and h in PURSUE), len(out[h]), tr not in (hd.get(h) or {}).get("style", "")))
         if order: out[order[0]].append((n, why))
     for h in out: out[h].sort(key=lambda x: ORDER.get(tact_info(x[0], skd)["type"], 3))
     return out, (sorted(st["G"] - {"정화"}), sorted(x for x in st["U"] - st["G"] if x != "디버프"))
@@ -2024,8 +2051,10 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", ba
             hs.append({"n": best, "src": f"{want} 대신" if want else "자유 편성"}); usedH.add(best)
         plan.append((deck, hs))
     sts = [unit_state(deck, hs, hd) for deck, hs in plan]
+    for st, (_d, _h) in zip(sts, plan): st["dname"] = (_d or {}).get("name", "")
     for st in sts:                                           # 추천 순위대로 부대마다 장수당 전법 2개씩(보유 전법이 모자라면 뒤 부대부터 비움)
-        pick_tactics(st, 2 * len(st["hs"]), own_s, usedS, hd, skd, skn, deal)
+        pin_tactics(st, own_s, usedS, hd, skd, skn)
+        pick_tactics(st, 2 * len(st["hs"]) - len(st["picks"]), own_s, usedS, hd, skd, skn, deal)
     res = []
     for (deck, hs), st in zip(plan, sts):
         tac, ss = finish_tactics(st, hd, skd)
