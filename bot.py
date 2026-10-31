@@ -1753,7 +1753,7 @@ async def start_web():
     if not WEB_PORT: return
     app = web.Application(); app.router.add_get("/", web_index)
     app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
-    app.router.add_get("/admin", web_admin); app.router.add_post("/api/admin", web_admin_api)
+    app.router.add_get("/admin", web_admin); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()
@@ -2148,6 +2148,41 @@ def unit_trait(st, hd):
     return "책략" if c["책략"] > c["병기"] else "병기" if c["병기"] > c["책략"] else ""
 
 
+# ---------- 시너지(장수·전법 궁합) 점수 ----------
+_SY = {"at": 0.0, "rows": [], "map": {}}
+
+
+def synergy_rows():
+    """DB(sam_synergy)의 궁합 점수 목록(10분 캐시). kind: ht=장수↔전법, tt=전법↔전법, hh=장수↔장수."""
+    if SB_ON and time.time() - _SY["at"] > 600:
+        try:
+            rows = _sb_req("GET", "sam_synergy?select=kind,a,b,score,note,src&limit=5000") or []
+            m = {}
+            for r in rows:
+                s = float(r["score"]); m[(r["kind"], r["a"], r["b"])] = s
+                if r["kind"] in ("tt", "hh"): m[(r["kind"], r["b"], r["a"])] = s
+            _SY.update(at=time.time(), rows=rows, map=m)
+        except Exception as e:
+            log.warning("시너지 로드 실패: %s", e); _SY["at"] = time.time() - 540
+    return _SY["rows"]
+
+
+def synergy_map(): synergy_rows(); return _SY["map"]
+
+
+def synergy_add(kind, a, b, delta, note="", src="vote", cap=12.0):
+    """궁합 점수에 delta를 더한다(없으면 새로 만든다). 점수는 ±cap으로 제한. 투표로 쌓인 점수는 src='vote'."""
+    if not SB_ON or not delta: return
+    if kind in ("tt", "hh") and a > b: a, b = b, a
+    cur = _SY["map"].get((kind, a, b))
+    if cur is None:
+        r = _sb_req("GET", f"sam_synergy?kind=eq.{kind}&a=eq.{urllib.parse.quote(a, safe='')}&b=eq.{urllib.parse.quote(b, safe='')}&select=score") or []
+        cur = float(r[0]["score"]) if r else 0.0
+    new = max(-cap, min(cap, cur + delta))
+    _sb_rows("sam_synergy", [{"kind": kind, "a": a, "b": b, "score": round(new, 2), "note": note, "src": src, "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}], conflict="kind,a,b")
+    _SY["at"] = 0.0
+
+
 PURSUE = ("황충", "손상향", "하후연", "허저")                     # 추격 전법으로 구성하는 장수 (관통 증가 효과 전법이 잘 어울림)
 LU_COMBO = ("원문사극",)                                          # 여포 연타 구성(운영 노하우)
 LU_COUNTER = ("용맹한삼군", "일인천군")                            # 여포 반격덱 구성
@@ -2200,7 +2235,14 @@ def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜", pen=Non
             if ti["trait"] == trait and trait: sc += 2
             if k in st["deck"]: sc += 3; why.append("티어덱")
             if ti["type"] in ("지휘", "패시브") and g: sc += 1
-            if pen: sc += pen.get(k, 0)                                  # 전법 조합 평가(내 싫어요 -4, 전체 ±0.5/표)
+            if pen: sc += pen.get(k, 0)
+            sy = synergy_map()
+            for h in st["hs"]:
+                v = sy.get(("ht", h, n))
+                if v: sc += v; why.append("시너지")
+            for p, _w in st["picks"]:
+                v = sy.get(("tt", n, p))
+                if v: sc += v; why.append("전법 시너지")                                  # 전법 조합 평가(내 싫어요 -4, 전체 ±0.5/표)
             if ti["type"] == "추격" and any(h in PURSUE for h in st["hs"]): sc += 3; why.append("추격 구성")
             sc += {"전설": 0.6, "영웅": 0.3}.get((skd.get(n) or {}).get("grade"), 0)
             if best is None or sc > best[0]: best = (sc, k, n, why, g, u, ti)
@@ -2218,13 +2260,14 @@ def finish_tactics(st, hd, skd):
         pin = (st.get("pin") or {}).get(n)
         if pin in out and len(out[pin]) < 2: out[pin].append((n, why)); continue
         pur = tact_info(n, skd)["type"] == "추격"
-        order = sorted((h for h in st["hs"] if len(out[h]) < 2), key=lambda h: (not (pur and h in PURSUE), len(out[h]), tr not in (hd.get(h) or {}).get("style", "")))
+        sy = synergy_map()
+        order = sorted((h for h in st["hs"] if len(out[h]) < 2), key=lambda h: (-sy.get(("ht", h, n), 0), not (pur and h in PURSUE), len(out[h]), tr not in (hd.get(h) or {}).get("style", "")))
         if order: out[order[0]].append((n, why))
     for h in out: out[h].sort(key=lambda x: ORDER.get(tact_info(x[0], skd)["type"], 3))
     return out, (sorted(st["G"] - {"정화"}), sorted(x for x in st["U"] - st["G"] if x != "디버프"))
 
 
-def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", banned=(), votes=None, tpen=None):
+def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", banned=(), votes=None, tpen=None, pins=()):
     """티어덱 순서대로 5부대 편성. 한 번 쓴 장수·전법은 다시 쓰지 않는다.
     덱을 통째로 못 만들면 2명 이상, 그다음 1명 이상 보유한 덱을 고르고 빈자리는 같은 역할의 미사용 보유 장수로 채운다."""
     decks = tier_data()["S1" if season == 1 else "S2"]
@@ -2238,7 +2281,8 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", ba
     usedH, usedS, usedD, plan = set(), set(), set(), []
 
     votes = votes or {}                                                   # 덱 이름 → (좋아요 - 싫어요), 모든 서버 합산
-    order = sorted(range(len(decks)), key=lambda i: (-((len(decks) - i) + VOTE_W * votes.get(decks[i]["name"], 0)), i))      # 추천 점수 = 티어 순위 점수 + 투표 점수
+    pins = set(pins or ())                                                # 랭킹에서 '내 추천에 적용'한 덱은 항상 먼저
+    order = sorted(range(len(decks)), key=lambda i: (decks[i]["name"] not in pins, -((len(decks) - i) + VOTE_W * votes.get(decks[i]["name"], 0)), i))      # 추천 점수 = 티어 순위 점수 + 투표 점수
 
     def pick(minc):
         for i in order:
@@ -2267,7 +2311,8 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", ba
             want = deck["heroes"][k].split("/")[0] if deck else None
             pool = [h for h in own_h if h not in usedH]
             if not pool: hs.append({"n": None, "src": "보유 장수 부족"}); continue
-            best = max(pool, key=lambda h: ((sim(want, h) if want else 0), -freq.get(h, 0), -ord(h[0])))
+            cur_u = [g2 for g2 in got if g2] + [x["n"] for x in hs if x["n"]]; sy = synergy_map()
+            best = max(pool, key=lambda h: ((sim(want, h) if want else 0) + sum(sy.get(("hh", h, x), 0) for x in cur_u), -freq.get(h, 0), -ord(h[0])))
             hs.append({"n": best, "src": f"{want} 대신" if want else "자유 편성"}); usedH.add(best)
         plan.append((deck, hs))
     sts = [unit_state(deck, hs, hd) for deck, hs in plan]
@@ -2490,6 +2535,9 @@ def reco_flow(unit, eff, hd, info):
     return {"start": start, "turn": turn}
 
 
+def reco_pins(did, season): return (pref_get(did).get("pins") or {}).get(str(season), [])
+
+
 def reco_run(did, season):
     """내 도감(보유 장수·전법) 기준 추천 계산. → (오류 안내문 또는 None, 결과, 이름, 딜 방식, 장수 데이터, 전법 데이터)"""
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
@@ -2499,7 +2547,7 @@ def reco_run(did, season):
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
     deal = "도트딜"                                                  # 딜 방식은 고정(누적 딜 우선) — 사용자가 고르지 않음
-    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal, banned=reco_banned(did, season), votes=reco_scores(season), tpen=reco_tpen(did, season))
+    res = recommend_decks(dex.get("own", []), dex.get("ownsk", []), season, hd, skd, deal=deal, banned=reco_banned(did, season), votes=reco_scores(season), tpen=reco_tpen(did, season), pins=reco_pins(did, season))
     who = (roster.by_uid.get(cid) or {}).get("name") or "내"
     dex_tr = dex.get("tr") or {}
     return None, res, who, deal, hd, skd, dex_tr
@@ -2524,20 +2572,112 @@ def reco_images(did, season):
 
 
 async def reco_deliver(it, did, season, first_edit=False, note=""):
-    """장수 카드 이미지로 추천덱을 보낸다(나에게만 보임, 부대별 좋아요/싫어요 버튼 포함). 이미지를 못 그리면 글로 보낸다."""
-    try: imgs, err, decks = await asyncio.to_thread(reco_images, did, season)
-    except Exception:
-        log.exception("추천덱 이미지 생성 실패"); imgs, err, decks = None, None, []
-    if err or not imgs:
-        text, e2 = await asyncio.to_thread(reco_build, did, season); chunks = reco_chunks(err or e2 or text)
-        if first_edit: await it.edit_original_response(content=chunks[0], view=None, attachments=[]); chunks = chunks[1:]
-        for c in chunks: await it.followup.send(c, ephemeral=True)
-        return
-    files = [discord.File(io.BytesIO(b), filename=f"추천덱_{i}.png") for i, b in enumerate(imgs, 1)]
-    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}**  ·  **장수 조합**과 **전법 조합**을 따로 평가할 수 있어요. 장수 👎는 그 덱을 빼고, 전법 👎는 전법만 다시 골라요. (모든 서버의 👍/👎가 합산돼 반영돼요)"
-    view = RecoVote(did, season, decks[:5]) if decks else None
-    if first_edit: await it.edit_original_response(content=head, attachments=files, view=view)
-    else: await it.followup.send(head, files=files, view=view, ephemeral=True)
+    """추천덱을 HTML 페이지 링크로 보낸다(나에게만 보임). 부대별 덱 이름·장수를 요약해서 함께 보여준다."""
+    cid = await asyncio.to_thread(_my_cid, did)
+    err, res = (None, None)
+    if cid: err, res = (lambda r: (r[0], r[1]))(await asyncio.to_thread(reco_run, did, season))
+    else: err = "먼저 `/인증`으로 CID 인증을 해 주세요."
+    if err:
+        text = (note + "\n" if note else "") + err
+        if first_edit: return await it.edit_original_response(content=text, view=None, attachments=[])
+        return await it.followup.send(text, ephemeral=True)
+    url = f"{PUBLIC_URL}/reco?t={tier_token(cid, cur_gid())}&s={season}"
+    lines = [f"**{n}부대** {(d or {}).get('name', '자유 편성')} — " + ", ".join((h["n"] or "-") for h, _t in unit) for n, (d, unit, _s) in enumerate(res, 1)]
+    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}** 준비됐어요. 아래 버튼에서 장수 카드·전법·초월 반영 턴 순서, 👍/👎 평가, 추천덱 랭킹을 볼 수 있어요. (링크는 공유하지 마세요)\n" + "\n".join(lines)
+    view = discord.ui.View(); view.add_item(discord.ui.Button(label="🃏 추천덱 보기", style=discord.ButtonStyle.link, url=url))
+    if first_edit: await it.edit_original_response(content=head[:1990], attachments=[], view=view)
+    else: await it.followup.send(head[:1990], view=view, ephemeral=True)
+
+
+def reco_page_data(did, season, token):
+    """추천덱 HTML 페이지에 쓸 데이터(장수 카드·전법·초월·턴 순서·평가 수·랭킹)."""
+    err, res, who, deal, hd, skd, tr = reco_run(did, season)
+    if err: return None, err
+    import reco_img
+    imgs = reco_img._imgs(); info = lambda t: tact_info(t, skd)
+    eff = hero_eff([h["n"] for _d, unit, _s in res for h, _t in unit if h["n"]], tr); hs0 = hero_stats(); votes = reco_votes(); mine = str(did)
+    def vt(key):
+        v = votes.get(key, {}); return {"u": len(v.get("u", [])), "d": len(v.get("d", [])), "m": "u" if mine in v.get("u", []) else "d" if mine in v.get("d", []) else ""}
+    units = []
+    for i, (deck, unit, ss) in enumerate(res, 1):
+        fl = reco_flow(unit, eff, hd, info); rank = {t[0]: k for k, t in enumerate(fl["turn"], 1)}
+        tset = [t for _h, tac in unit for t, _w in tac]; heroes = []
+        for h, tac in unit:
+            n = h["n"]
+            if not n: heroes.append({"n": None, "src": h.get("src", "")}); continue
+            v = hd.get(n) or {}; e = eff.get(n); b0 = hs0.get(n)
+            heroes.append({"n": n, "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "sk": v.get("sk", ""), "sktype": v.get("sktype", ""),
+                           "img": imgs["HERO"].get(n, ""), "src": h.get("src", ""), "rank": rank.get(n), "tr": (e or {}).get("tr", 0), "add": (e or {}).get("add", [0, 0, 0, 0]),
+                           "base": [b0[k] for k in ("atk", "intl", "lead", "init")] if b0 else None, "fin": [e[k] for k in ("atk", "intl", "lead", "init")] if e else None,
+                           "tac": [{"n": t, "img": imgs["SKI"].get(t, ""), "kind": info(t)["kind"], "type": info(t)["type"], "trait": info(t)["trait"], "why": w} for t, w in tac]})
+        u = {"i": i, "heroes": heroes, "flow": {"start": fl["start"], "turn": [[a, b2, c, d2] for a, b2, c, d2 in fl["turn"]]}, "status": {"g": ss[0], "miss": ss[1]}}
+        if deck:
+            u |= {"tier": deck.get("tier", ""), "name": deck["name"], "form": deck.get("form", ""), "note": deck.get("note", ""), "hk": vote_key(season, deck["name"]), "tk": tvote_key(season, deck["name"], tset), "tset": tset,
+                  "hv": vt(vote_key(season, deck["name"])), "tv": vt(tvote_key(season, deck["name"], tset))}
+        units.append(u)
+    pins = set(reco_pins(did, season)); decks = tier_data()["S1" if season == 1 else "S2"]; score = reco_scores(season)
+    rk = [{"name": d["name"], "tier": d.get("tier", ""), "heroes": d["heroes"], "u": len(votes.get(vote_key(season, d["name"]), {}).get("u", [])), "d": len(votes.get(vote_key(season, d["name"]), {}).get("d", [])),
+           "net": score.get(d["name"], 0), "pin": d["name"] in pins, "idx": k} for k, d in enumerate(decks)]
+    rk.sort(key=lambda x: (-x["net"], -x["u"], x["idx"]))
+    pre = f"T{season}|"; tacs = []
+    for k, v in votes.items():
+        if k.startswith(pre):
+            name, _, ts = k[len(pre):].partition("|"); net = len(v.get("u", [])) - len(v.get("d", []))
+            if v.get("u") or v.get("d"): tacs.append({"deck": name, "tset": [skn_name for skn_name in ts.split(",") if skn_name], "u": len(v.get("u", [])), "d": len(v.get("d", [])), "net": net})
+    tacs.sort(key=lambda x: (-x["net"], -x["u"]))
+    sy = sorted(({"kind": r["kind"], "a": r["a"], "b": r["b"], "score": float(r["score"]), "note": r.get("note", ""), "src": r.get("src", "")} for r in synergy_rows()), key=lambda r: -r["score"])[:30]
+    stone = ""
+    try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
+    except Exception: pass
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "stone": stone}, None
+
+
+async def web_reco(request):
+    pr = tier_parse(request.query.get("t"))
+    if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /추천덱 으로 새 링크를 받으세요.")
+    set_gid(pr[0]); cid = pr[1]; did = (db_load()["uid"] or {}).get(cid)
+    if not did: return web.Response(status=403, text="인증 정보를 찾지 못했습니다. 디스코드에서 /인증 후 다시 시도하세요.")
+    sv = request.query.get("s"); season = int(sv) if sv in ("1", "2") else (pref_get(did).get("season") if pref_get(did).get("season") in (1, 2) else 1)
+    data, err = await asyncio.to_thread(reco_page_data, did, season, request.query["t"])
+    import reco_web
+    return web.Response(text=reco_web.render(data, err), content_type="text/html", headers={"Cache-Control": "no-store"})
+
+
+async def web_reco_api(request):
+    try: b = await request.json()
+    except Exception: return web.json_response({"ok": False, "error": "형식 오류"}, status=400)
+    pr = tier_parse(b.get("t"))
+    if not pr: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
+    set_gid(pr[0]); did = (db_load()["uid"] or {}).get(pr[1])
+    if not did: return web.json_response({"ok": False, "error": "인증 필요"}, status=403)
+    op = b.get("op"); season = 2 if b.get("season") == 2 else 1
+    if op == "vote":
+        key, kind = str(b.get("key", ""))[:300], b.get("kind")
+        if kind not in ("u", "d") or not (key.startswith(f"S{season}|") or key.startswith(f"T{season}|")): return web.json_response({"ok": False, "error": "잘못된 요청"}, status=400)
+        def vv():
+            old = reco_votes().get(key, {}); on = len(old.get("u", [])) - len(old.get("d", []))
+            up, dn, _now = reco_vote_key(did, key, kind); delta = (up - dn) - on                      # 이번 클릭으로 바뀐 순 좋아요 수
+            hd, skd = reco_defs(); okh = lambda x: x in hd; okt = lambda x: x in skd
+            if b.get("scope") == "t":                                                                   # 전법 조합 평가 → 장수↔전법·전법↔전법 시너지 학습
+                for h, t in (b.get("pairs") or [])[:12]:
+                    if okh(h) and okt(t): synergy_add("ht", h, t, 0.3 * delta)
+                ts = [t for t in (b.get("tset") or [])[:12] if okt(t)]
+                for i2 in range(len(ts)):
+                    for j2 in range(i2 + 1, len(ts)): synergy_add("tt", ts[i2], ts[j2], 0.2 * delta)
+            elif b.get("scope") == "h":                                                                 # 장수 조합 평가 → 장수↔장수 시너지 학습
+                hs = [h for h in (b.get("heroes") or [])[:5] if okh(h)]
+                for i2 in range(len(hs)):
+                    for j2 in range(i2 + 1, len(hs)): synergy_add("hh", hs[i2], hs[j2], 0.2 * delta)
+        await asyncio.to_thread(vv)
+    elif op == "pin":
+        name = str(b.get("deck", "")); names = {d["name"] for d in tier_data()["S1" if season == 1 else "S2"]}
+        if name not in names: return web.json_response({"ok": False, "error": "없는 덱"}, status=400)
+        def pn():
+            cur = list(reco_pins(did, season)); cur = [x for x in cur if x != name] + ([name] if b.get("on") else [])
+            allp = dict(pref_get(did).get("pins") or {}); allp[str(season)] = cur[:10]; pref_set(did, pins=allp)
+        await asyncio.to_thread(pn)
+    else: return web.json_response({"ok": False, "error": "알 수 없는 요청"}, status=400)
+    return web.json_response({"ok": True})
 
 
 class SeasonPick(CtxView):
