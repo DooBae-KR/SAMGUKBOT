@@ -3038,8 +3038,8 @@ def mk_scores(d):
     def add(cid, by, likes=0, posts=0, adopt=0):
         t = tot.setdefault(cid, {"by": by, "likes": 0, "posts": 0, "adopt": 0}); t["by"] = by or t["by"]; t["likes"] += likes; t["posts"] += posts; t["adopt"] += adopt
     for pid, p in (d.get("posts") or {}).items(): add(p["cid"], p.get("by", ""), len(lk.get(pid, [])), 1)
-    ad = {r.get("adopted") for r in (d.get("reqs") or {}).values() if r.get("adopted")}
-    for aid, a in (d.get("ans") or {}).items(): add(a["cid"], a.get("by", ""), len(lk.get(aid, [])), 0, 1 if aid in ad else 0)
+    ad = {r.get("adopted"): r["cid"] for r in (d.get("reqs") or {}).values() if r.get("adopted")}      # 채택된 답변 → 의뢰자
+    for aid, a in (d.get("ans") or {}).items(): add(a["cid"], a.get("by", ""), len(lk.get(aid, [])), 0, 1 if (aid in ad and ad[aid] != a["cid"]) else 0)   # 내 의뢰에 내가 답한 채택은 점수 제외
     for t in tot.values(): t["score"] = t["likes"] + ADOPT_BONUS * t["adopt"]
     return tot
 
@@ -3108,7 +3108,6 @@ def ans_post(did, b, hd, skd):
     with _mk_lock:
         d = _mk_get(); r = (d.get("reqs") or {}).get(rid)
         if not r: return "없는 의뢰입니다"
-        if r["cid"] == cid: return "내 의뢰에는 답변할 수 없습니다"
         if r.get("adopted"): return "이미 채택된 의뢰입니다"
         units, err = mk_clean(b.get("units"), hd, skd, r.get("season", 1), (r.get("own") or {}).get("tr") or {})
         if err: return err
