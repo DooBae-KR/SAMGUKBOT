@@ -7,7 +7,7 @@ import base64, tempfile, os, json, re, csv, io, shutil, logging, urllib.request,
 from aiohttp import web
 from pathlib import Path
 from typing import Optional
-import formations
+import formations, equipment
 import discord
 from discord import app_commands
 from discord.ext import tasks
@@ -2722,7 +2722,8 @@ def _reco_page_core(did, season, token):
             heroes.append({"n": n, "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "sk": v.get("sk", ""), "sktype": v.get("sktype", ""),
                            "img": imgs["HERO"].get(n, ""), "src": h.get("src", ""), "rank": rank.get(n), "tr": (e or {}).get("tr", 0), "add": (e or {}).get("add", [0, 0, 0, 0]),
                            "base": [b0[k] for k in ("atk", "intl", "lead", "init")] if b0 else None, "fin": [e[k] for k in ("atk", "intl", "lead", "init")] if e else None,
-                           "tac": [{"n": t, "img": imgs["SKI"].get(t, ""), "kind": info(t)["kind"], "type": info(t)["type"], "trait": info(t)["trait"], "why": w} for t, w in tac]})
+                           "tac": [{"n": t, "img": imgs["SKI"].get(t, ""), "kind": info(t)["kind"], "type": info(t)["type"], "trait": info(t)["trait"], "why": w} for t, w in tac],
+                           "eq": equipment.recommend(v.get("style", ""), [info(t)["type"] for t, _w in tac])})
         u = {"i": i, "heroes": heroes, "flow": {"start": fl["start"], "turn": [[a, b2, c, d2] for a, b2, c, d2 in fl["turn"]]}, "status": {"g": ss[0], "miss": ss[1]}}
         if deck:
             u |= {"tier": deck.get("tier", ""), "name": deck["name"], "form": deck.get("form", ""), "note": deck.get("note", ""), "hk": vote_key(season, deck["name"]), "tk": tvote_key(season, deck["name"], tset), "tset": tset,
@@ -2774,7 +2775,7 @@ def _reco_page_core(did, season, token):
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}}, "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}}, "stone": stone}, None
 
 
 def reco_page_data(did, season, token):
