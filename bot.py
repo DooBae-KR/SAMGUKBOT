@@ -1287,7 +1287,11 @@ async def inquiry_channel(g):
                 try: await ch.set_permissions(g.default_role, send_messages=False, add_reactions=False)
                 except Exception as e: log.warning("문의함 쓰기 제한 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e)
             except Exception as e: log.warning("문의함 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요) 서버=%s: %r", g.id, e); return None
-    if not ch.permissions_for(me).send_messages: return None
+    if not ch.permissions_for(me).send_messages:                     # @everyone 글쓰기 금지가 봇에게도 적용된 경우 → 봇 자신에게만 허용 덮어쓰기
+        try: await ch.set_permissions(me, view_channel=True, send_messages=True, embed_links=True, reason="문의함 안내 글 게시")
+        except Exception as e: log.warning("문의함에 봇 글쓰기 권한을 줄 수 없습니다(봇에 '채널 관리' 권한 필요) 서버=%s: %r", g.id, e)
+    if not ch.permissions_for(me).send_messages:
+        log.warning("문의함에 안내 글을 올릴 수 없습니다 서버=%s 채널=%s", g.id, ch.id); return None
     tok = _CTX.set(g.id)
     try: st = dict(store_get("inq", INQ_PATH, {"n": 0}) or {"n": 0})
     finally: _CTX.reset(tok)
