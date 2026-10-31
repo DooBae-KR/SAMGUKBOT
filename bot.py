@@ -2817,18 +2817,33 @@ def reco_images(did, season):
     return imgs, None, [(i, d["name"], tuple(t for _h, tac in u for t, _w in tac)) for i, (d, u, _s) in enumerate(res, 1) if d]
 
 
+REPLY_TTL = int(os.environ.get("REPLY_TTL", "600"))        # 추천 안내 문구를 지우기까지 걸리는 시간(초) — 기본 10분
+_bg = set()
+
+
+def auto_delete(it, msg=None, secs=None):
+    """봇이 보낸 안내(나에게만 보임)를 일정 시간 뒤 지운다. 토큰 유효 시간(15분) 안에서만 가능."""
+    async def run():
+        try:
+            await asyncio.sleep(secs if secs is not None else REPLY_TTL)
+            if msg is not None: await msg.delete()
+            else: await it.delete_original_response()
+        except Exception: pass                                      # 이미 지워졌거나 닫은 경우
+    t = asyncio.create_task(run()); _bg.add(t); t.add_done_callback(_bg.discard)
+
+
 async def reco_deliver(it, did, season, first_edit=False, note=""):
     """추천덱 페이지 링크만 보낸다(나에게만 보임). 덱 내용은 글자로 보내지 않는다."""
     cid = await asyncio.to_thread(_my_cid, did)
     if not cid:
         text = (note + "\n" if note else "") + "먼저 `/인증`으로 CID 인증을 해 주세요."
-        if first_edit: return await it.edit_original_response(content=text, view=None, attachments=[])
-        return await it.followup.send(text, ephemeral=True)
+        if first_edit: m = await it.edit_original_response(content=text, view=None, attachments=[]); auto_delete(it); return m
+        m = await it.followup.send(text, ephemeral=True); auto_delete(it, m); return m
     url = f"{PUBLIC_URL}/reco?t={tier_token(cid, cur_gid())}&s={season}"
-    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}** 링크입니다. 다른 사람에게 공유하지 마세요."
+    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}** 링크입니다. 다른 사람에게 공유하지 마세요. (이 안내는 {REPLY_TTL // 60}분 뒤 자동으로 지워집니다)"
     view = discord.ui.View(); view.add_item(discord.ui.Button(label="🃏 추천덱 보기", style=discord.ButtonStyle.link, url=url))
-    if first_edit: await it.edit_original_response(content=head[:1990], attachments=[], view=view)
-    else: await it.followup.send(head[:1990], view=view, ephemeral=True)
+    if first_edit: await it.edit_original_response(content=head[:1990], attachments=[], view=view); auto_delete(it)
+    else: auto_delete(it, await it.followup.send(head[:1990], view=view, ephemeral=True))
 
 
 def _reco_page_core(did, season, token):
