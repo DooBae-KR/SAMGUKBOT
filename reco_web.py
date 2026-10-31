@@ -36,7 +36,7 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
 .trow{margin-top:6px}.trow .rl{display:none}.tc{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:5px 6px;min-width:0}.tc .tac{margin-top:0}
 .tinfo{margin-top:6px}.tinfo summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--gold);padding:4px 0}.tinfo .tc{white-space:normal;line-height:1.4}
 .bs{border:1px solid var(--line);background:var(--card2);border-radius:8px;padding:5px 7px;display:flex;align-items:center;gap:5px;min-height:44px;cursor:pointer;position:relative;font-size:13px;min-width:0}.bs.empty{color:var(--mute);justify-content:center}.bs.dis{opacity:.4;cursor:default}.bs.sel{border-color:var(--jade);box-shadow:0 0 0 2px var(--jade)}.bs.t span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.bs .x{margin-left:auto;font-style:normal;color:var(--mute);font-size:11px;padding:2px 4px}.bs b{font-size:13px}
-.kw{display:block;font-size:10px;color:var(--gold)}.picker{position:sticky;top:0;z-index:5;background:var(--bg);border:2px solid var(--jade);border-radius:12px;padding:8px;margin-bottom:12px;max-height:46vh;overflow:auto}
+.kw{display:block;font-size:10px;color:var(--gold)}.pdet{position:sticky;top:0;background:var(--card);border:1px solid var(--jade);border-radius:10px;padding:8px;margin:6px 0}.pdet .dsc{font-size:12.5px;line-height:1.5;margin:4px 0}.oc.pd{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold)}.picker{position:sticky;top:0;z-index:5;background:var(--bg);border:2px solid var(--jade);border-radius:12px;padding:8px;margin-bottom:12px;max-height:46vh;overflow:auto}
 .mk .nm{font-size:15px}.strat{background:#f0c75e;color:#2b2000;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700}.mu{display:grid;grid-template-columns:22px repeat(3,minmax(0,1fr));gap:6px;align-items:start;margin-top:5px}.badge.s{padding:0 6px;text-align:center;height:20px}.mh{display:flex;gap:5px;font-size:12px;min-width:0}.mh .th{flex:none}.mh.no .th{opacity:.45}.mt{font-size:11px;color:var(--jade);line-height:1.3}.mt.no{color:var(--mute);text-decoration:line-through}.x1{color:#c0504d;font-size:10px}.vb:disabled{opacity:.5;cursor:default}
 @media(max-width:760px){.mu{grid-template-columns:18px repeat(3,minmax(0,1fr));gap:3px}.mh{flex-direction:column;gap:2px}.bs{padding:3px;font-size:11px;flex-direction:column;align-items:flex-start;gap:2px}.bs .x{position:absolute;top:0;right:0}.picker{max-height:50vh}}
 .fr{width:100%;height:78vh;border:1px solid var(--line);border-radius:12px;background:#fff}.vs{width:2px;height:24px;background:var(--line);margin:0 2px}.tab.late{background:#f7f2e4}.tab.mt,.tab.lt{font-weight:700;background:var(--card2)}.tab.lt{background:#efe6c8}.mo{font-weight:700}
@@ -149,9 +149,9 @@ const usedH=()=>new Set(BLD.flatMap(u=>u.h).filter(Boolean)),usedS=()=>new Set(B
 const imj=(b,c)=>b?`<img class="${c}" src="data:image/jpeg;base64,${b}">`:'';
 function saveDraft(){clearTimeout(SVT);SVT=setTimeout(()=>{fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(u=>({h:u.h,t:u.t.map(a=>a.filter(Boolean))})):null})}).catch(()=>{})},700)}
 async function mpost(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return false}if(j.mk)D.mk=j.mk;return true}catch(e){alert('네트워크 오류');return false}}
-function pick(u,k,kind,j){PK={u,k,kind,j};PQ='';draw()}
+function pick(u,k,kind,j){PD=null;PK={u,k,kind,j};PQ='';draw()}
 function setPQ(v){PQ=v;const e=document.getElementById('pl');if(e)e.innerHTML=pickBody()}
-function assign(name){const p=PK;if(!p)return;const u=BLD[p.u];if(p.kind==='h')u.h[p.k]=name;else u.t[p.k][p.j]=name;PK=null;saveDraft();const y=scrollY;draw();scrollTo(0,y)}
+function assign(name){PD=null;const p=PK;if(!p)return;const u=BLD[p.u];if(p.kind==='h')u.h[p.k]=name;else u.t[p.k][p.j]=name;PK=null;saveDraft();const y=scrollY;draw();scrollTo(0,y)}
 function clr(u,k,kind,j){if(kind==='h'){BLD[u].h[k]='';BLD[u].t[k]=['','']}else BLD[u].t[k][j]='';PK=null;saveDraft();draw()}
 function clearAll(){if(!confirm('5부대를 모두 비울까요?'))return;BLD=[0,1,2,3,4].map(T0);PK=null;saveDraft();draw()}
 function fillTier(u,name){const d=D.rank.decks.find(x=>x.name===name);if(!d)return;const o=BLD[u];BLD[u]=T0();const uh=usedH(),us=usedS(),oh=ownH(),os=ownS();
@@ -163,6 +163,11 @@ function slotH(u,k){const n=BLD[u].h[k],on=PK&&PK.u===u&&PK.k===k&&PK.kind==='h'
 function slotT(u,k,j){const n=BLD[u].t[k][j],on=PK&&PK.u===u&&PK.k===k&&PK.kind==='t'&&PK.j===j,hh=BLD[u].h[k];
   if(!hh)return`<div class="bs empty dis">전법${j+1}</div>`;
   return n?`<div class="bs t ${on?'sel':''}" onclick="pick(${u},${k},'t',${j})">${imj((SM[n]||{}).img,'ts')}<span>${esc(n)}</span><i class="x" onclick="event.stopPropagation();clr(${u},${k},'t',${j})">✕</i></div>`:`<div class="bs empty ${on?'sel':''}" onclick="pick(${u},${k},'t',${j})">＋ 전법${j+1}</div>`}
+
+const CAN_HOVER=window.matchMedia&&matchMedia('(hover:hover) and (pointer:fine)').matches;let PD=null;
+const tipOf=x=>`${x.n} · ${x.grade}·${x.type}·${x.trait}${(x.kw||[]).length?'\n키워드: '+x.kw.join(', '):''}\n${x.desc||''}`;
+function tacClick(n){if(CAN_HOVER){assign(n);return}PD=PD===n?null:n;const e=document.getElementById('pl'),d=document.getElementById('pdet');if(e)e.innerHTML=pickBody();if(d)d.innerHTML=pdetBody()}
+function pdetBody(){if(!PD||!PK||PK.kind!=='t')return'';const x=SM[PD];if(!x)return'';return `<div class="pdet"><div class="nm">${imj(x.img,'ts')} <b>${esc(x.n)}</b> <span class="m">${esc(x.grade)}·${esc(x.type)}·${esc(x.trait)}</span></div>${(x.kw||[]).length?`<div class="kw" style="margin:2px 0">키워드: ${x.kw.map(esc).join(' · ')}</div>`:''}<div class="dsc">${esc(x.desc||'설명 없음')}</div><div class="bar"><button class="sbtn on" onclick="const n=PD;PD=null;assign(n)">✔ 적용</button><button class="sbtn" onclick="PD=null;document.getElementById('pdet').innerHTML='';document.getElementById('pl').innerHTML=pickBody()">취소</button></div></div>`}
 function pickBody(){const q=PQ.replace(/\s/g,''),GR={'전설':0,'영웅':1};let body='';
   const grp=(l,key,order,lab)=>{const o=[...order];l.forEach(x=>{const k=key(x);if(!o.includes(k))o.push(k)});return o.map(k=>{const g=l.filter(x=>key(x)===k);return g.length?`<div class="gh">${esc(lab(k))} (${g.length})</div>`+g.map(x=>x._c).join(''):''}).join('')};
   if(PK.kind==='h'){const uh=usedH(),nu=new Set(D.nu||[]);
@@ -171,10 +176,10 @@ function pickBody(){const q=PQ.replace(/\s/g,''),GR={'전설':0,'영웅':1};let 
     body=grp(l,h=>h.nation||'기타',['촉','위','오','군'],k=>({'군':'군웅'}[k]||k))||'<span class="m">쓸 수 있는 보유 장수가 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
   else{const us=usedS();
     const l=D.all.s.filter(x=>ownS().has(x.n)&&!us.has(x.n)&&(x.season||1)<=D.season&&(!q||(x.n+x.trait+x.type+x.grade+(x.kw||[]).join('')+(x.desc||'')).replace(/\s/g,'').includes(q))).sort((a,b)=>((GR[a.grade]??9)-(GR[b.grade]??9))||a.n.localeCompare(b.n,'ko'))
-      .map(x=>({...x,_c:`<button class="oc sc on" onclick="assign('${esc(x.n).replace(/'/g,"\\'")}')">${imj(x.img,'ts')}<span class="nm">${esc(x.n)}</span><span class="m">${esc(x.grade)}·${esc(x.type)}</span>${(x.kw||[]).length?`<span class="kw">${(x.kw||[]).map(esc).join(' · ')}</span>`:''}</button>`}));
+      .map(x=>({...x,_c:`<button class="oc sc on ${PD===x.n?'pd':''}" title="${esc(tipOf(x))}" onclick="tacClick('${esc(x.n).replace(/'/g,"\\'")}')">${imj(x.img,'ts')}<span class="nm">${esc(x.n)}</span><span class="m">${esc(x.grade)}·${esc(x.type)}</span>${(x.kw||[]).length?`<span class="kw">${(x.kw||[]).map(esc).join(' · ')}</span>`:''}</button>`}));
     body=grp(l,x=>x.trait||'기타',['책략','병기','방어','치유','보조','문무'],k=>k)||'<span class="m">쓸 수 있는 보유 전법이 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
   return body}
-function picker(){if(!PK)return'';return `<div class="picker"><div class="bar"><b>${PK.u+1}부대 ${PK.kind==='h'?'장수':'전법'} 고르기</b><input id="pq" class="sq" placeholder="${PK.kind==='h'?'이름·나라·병종 검색':'이름·계열·키워드 검색 (예: 위협, 치유, 홍수)'}" value="${esc(PQ)}" oninput="setPQ(this.value)"><button class="sbtn" onclick="PK=null;draw()">닫기</button></div><div class="ocs" id="pl">${pickBody()}</div></div>`}
+function picker(){if(!PK)return'';return `<div class="picker"><div class="bar"><b>${PK.u+1}부대 ${PK.kind==='h'?'장수':'전법'} 고르기</b><input id="pq" class="sq" placeholder="${PK.kind==='h'?'이름·나라·병종 검색':'이름·계열·키워드 검색 (예: 위협, 치유, 홍수)'}" value="${esc(PQ)}" oninput="setPQ(this.value)"><button class="sbtn" onclick="PK=null;draw()">닫기</button></div><div id="pdet">${pdetBody()}</div><div class="ocs" id="pl">${pickBody()}</div></div>`}
 
 // ---------- 내 상황 맞춤: 부족한 것 메우기 + 티어순 자동 편성 ----------
 const tierNum=t=>{const m=String(t||'').match(/T?(\d+(?:\.\d+)?)([+-]?)/);return m?parseFloat(m[1])+(m[2]==='+'?-.1:m[2]==='-'?.1:0):99};
