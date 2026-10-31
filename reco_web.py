@@ -101,11 +101,15 @@ function rank(){const R=D.rank;
     ${h.tac.length<2?'<div class="empty">추천 전법 정보 없음</div>':''}</div></div>`;
   const detail=d=>{const cb=R.tacs.filter(t=>t.deck===d.name);const rated=cb.length?`<div class="flow"><div><b>평가된 전법 조합</b><span>${cb.map(t=>`${t.tset.map(x=>`<span class="chip">${esc(x)}</span>`).join('')} <span class="m">👍 ${t.u} 👎 ${t.d}</span>`).join('<br>')}</span></div></div>`:'';
     return `<div class="m" style="margin-bottom:6px">${fm(d.form)}${d.note?' · '+esc(d.note):''} · <span style="color:#2e9f5f;font-weight:700">✓</span> = 내가 보유한 전법 · 장수마다 추천 전법 2개</div><div class="hs">${d.cards.map(rhero).join('')}</div>${rated}`};
-  const dk=`<table><tr><th>#</th><th>티어</th><th>덱 (눌러서 전법 보기)</th><th>장수</th><th>👍</th><th>👎</th><th>점수</th><th>내 추천</th></tr>${R.decks.map((d,k)=>`<tr class="rw" onclick="tg(${k})"><td>${k+1}</td><td>${esc(d.tier)}</td><td><b>${esc(d.name)}</b> <span class="m" id="ar${k}">▸</span></td><td class="m">${esc(d.heroes.join(' · '))}</td><td>${d.u}</td><td>${d.d}</td><td><b>${d.net>0?'+':''}${d.net}</b></td><td><button class="pin ${d.pin?'on':''}" onclick="event.stopPropagation();pin('${esc(d.name).replace(/'/g,"\\'")}',${!d.pin})">${d.pin?'📌 적용 중':'적용'}</button></td></tr><tr class="dt" id="dt${k}" style="display:none"><td></td><td colspan="7">${detail(d)}</td></tr>`).join('')}</table>`;
+  const sorted=R.decks.map((d,k)=>({d,k})).sort((a,b)=>tierNum(a.d.tier)-tierNum(b.d.tier)||a.d.idx-b.d.idx);let lastT=null;
+  const stt=d=>{const st=deckStat(d);const miss=[...st.mh.map(m=>`<div>🔸 장수 <b>${esc(m.want)}</b> 없음 → 대체 후보 ${m.sub.length?m.sub.map(esc).join(', '):'없음'}</div>`),...st.mt.map(m=>`<div>🔹 ${esc(m.hero)}의 전법 <b>${esc(m.want)}</b> 없음 → 대체 후보 ${m.sub.length?m.sub.map(esc).join(', '):'없음'}</div>`)].join('');return{st,miss}};
+  const dk=`<table><tr><th>티어</th><th>덱 (눌러서 전법·부족한 것 보기)</th><th>내 상황</th><th>👍</th><th>👎</th><th>내 추천</th></tr>${sorted.map(({d,k})=>{const{st,miss}=stt(d);const g=d.tier!==lastT;lastT=d.tier;
+    const badge=st.full?'<span class="ownt"><b>✓ 바로 편성 가능</b></span>':`<span class="m">장수 ${st.hh}/${st.th} · 전법 ${st.ht}/${st.tt}</span>`;
+    return `<tr class="rw" onclick="tg(${k})"><td><b>${g?esc(d.tier):''}</b></td><td><b>${esc(d.name)}</b> <span class="m" id="ar${k}">▸</span><div class="m">${esc(d.heroes.join(' · '))}</div></td><td>${badge}</td><td>${d.u}</td><td>${d.d}</td><td><button class="pin ${d.pin?'on':''}" onclick="event.stopPropagation();pin('${esc(d.name).replace(/'/g,"\\'")}',${!d.pin})">${d.pin?'📌 적용 중':'적용'}</button></td></tr><tr class="dt" id="dt${k}" style="display:none"><td></td><td colspan="5">${miss?`<div class="flow"><div><b>부족한 것 메우기</b><span>${miss}</span></div></div>`:''}${detail(d)}</td></tr>`}).join('')}</table>`;
   const tc=R.tacs.length?`<table><tr><th>덱</th><th>전법 조합</th><th>👍</th><th>👎</th></tr>${R.tacs.map(t=>`<tr><td>${esc(t.deck)}</td><td>${t.tset.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</td><td>${t.u}</td><td>${t.d}</td></tr>`).join('')}</table>`:'<div class="m">아직 평가된 전법 조합이 없습니다.</div>';
   const KN={ht:'장수↔전법',tt:'전법↔전법',hh:'장수↔장수'};
   const sy=R.syn.length?`<table><tr><th>종류</th><th>궁합</th><th>점수</th><th>메모</th></tr>${R.syn.map(s=>`<tr><td>${KN[s.kind]||s.kind}</td><td><b>${esc(s.a)}</b> ↔ <b>${esc(s.b)}</b></td><td>${s.score>0?'+':''}${s.score}</td><td class="m">${esc(s.note)}${s.src==='vote'?' (평가로 학습)':''}</td></tr>`).join('')}</table>`:'<div class="m">저장된 시너지가 없습니다.</div>';
-  return `<h2>덱 랭킹 — 장수 조합 평가 점수(모든 서버 합산)</h2><div class="m" style="margin-bottom:6px">점수가 높을수록 추천 순위가 올라갑니다. <b>적용</b>을 누르면 그 덱을 내 추천에서 항상 먼저 편성합니다(보유 장수가 있을 때).</div>${dk}
+  return `<h2>티어덱 — 티어 순서 · 내 보유 기준 부족한 것</h2><div class="m" style="margin-bottom:6px">티어별로 묶었고, <b>내 상황</b>은 내가 가진 장수·전법으로 이 덱을 얼마나 채울 수 있는지입니다. 덱을 누르면 부족한 장수·전법과 <b>대체 후보</b>가 나옵니다. 5부대를 한 번에 짜려면 <b>편성기</b>의 <b>✨ 내 상황 맞춤 자동 편성</b>을 쓰세요.</div>${dk}
   <h2>전법 조합 랭킹</h2>${tc}<h2>시너지 점수 TOP — 장수·전법 궁합(추천 점수에 더해집니다)</h2>${sy}`}
 function ownList(){TRS=TRS||Object.assign({},D.own.tr||{});OWNS=OWNS||{h:new Set(D.own.h),s:new Set(D.own.s)};const q=OQ.replace(/\s/g,'');
   const keep=(n,o,ss,kwx)=>(ss||1)<=D.season&&(!q||n.replace(/\s/g,'').includes(q)||(kwx||'').replace(/\s/g,'').includes(q))&&(OF==='all'||(OF==='own')===o);
@@ -171,12 +175,34 @@ function pickBody(){const q=PQ.replace(/\s/g,''),GR={'전설':0,'영웅':1};let 
     body=grp(l,x=>x.trait||'기타',['책략','병기','방어','치유','보조','문무'],k=>k)||'<span class="m">쓸 수 있는 보유 전법이 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
   return body}
 function picker(){if(!PK)return'';return `<div class="picker"><div class="bar"><b>${PK.u+1}부대 ${PK.kind==='h'?'장수':'전법'} 고르기</b><input id="pq" class="sq" placeholder="${PK.kind==='h'?'이름·나라·병종 검색':'이름·계열·키워드 검색 (예: 위협, 치유, 홍수)'}" value="${esc(PQ)}" oninput="setPQ(this.value)"><button class="sbtn" onclick="PK=null;draw()">닫기</button></div><div class="ocs" id="pl">${pickBody()}</div></div>`}
+
+// ---------- 내 상황 맞춤: 부족한 것 메우기 + 티어순 자동 편성 ----------
+const tierNum=t=>{const m=String(t||'').match(/T?(\d+(?:\.\d+)?)([+-]?)/);return m?parseFloat(m[1])+(m[2]==='+'?-.1:m[2]==='-'?.1:0):99};
+const NUSE=()=>new Set(D.nu||[]);
+const cellNames=c=>String(c||'').split(/[>\/]/).map(x=>SNK[x.trim().replace(/[\s·\-]/g,'')]).filter(Boolean);
+const simH=(a,b)=>{if(!a||!b)return 0;const sa=new Set((a.style||'').split(/\s+/)),sb=(b.style||'').split(/\s+/);return 2*sb.filter(x=>x&&sa.has(x)).length+(a.pos===b.pos)+(a.troop===b.troop)+(a.nation===b.nation)*.5};
+function subH(want,uh){const w=HM[want];return D.all.h.filter(h=>ownH().has(h.n)&&!uh.has(h.n)&&!NUSE().has(h.n)&&(h.season||1)<=D.season).map(h=>[simH(w,h),h]).sort((a,b)=>b[0]-a[0]||a[1].n.localeCompare(b[1].n,'ko'))}
+function subT(want,us){const w=SM[want]||{};return D.all.s.filter(x=>ownS().has(x.n)&&!us.has(x.n)&&(x.season||1)<=D.season).map(x=>[(x.trait===w.trait)*2+(x.type===w.type),x]).filter(a=>a[0]>0).sort((a,b)=>b[0]-a[0]||a[1].n.localeCompare(b[1].n,'ko'))}
+function deckStat(d,uh,us){uh=uh||new Set();us=us||new Set();const oh=ownH(),os=ownS();let hh=0,ht=0,th=0,tt=0;const mh=[],mt=[];
+  d.slots.forEach((slot,k)=>{const alts=slot.split('/');const own=alts.find(x=>oh.has(x)&&!uh.has(x));th++;
+    if(own){hh++;((d.tc||[])[k]||[]).slice(0,2).forEach(c=>{const names=cellNames(c);if(!names.length)return;tt++;if(names.some(x=>os.has(x)&&!us.has(x)))ht++;else mt.push({hero:own,want:names[0],sub:subT(names[0],us).slice(0,3).map(a=>a[1].n)})})}
+    else mh.push({want:alts[0],sub:subH(alts[0],uh).slice(0,3).map(a=>a[1].n)})});
+  return{hh,th,ht,tt,mh,mt,full:hh===th&&ht===tt}}
+function autoCompose(){const ds=D.rank.decks.slice().sort((a,b)=>tierNum(a.tier)-tierNum(b.tier)||a.idx-b.idx),uh=new Set(),us=new Set(),oh=ownH(),os=ownS(),res=[],used=new Set();
+  for(const minc of [3,2,1])for(const d of ds){if(res.length>=5)break;if(used.has(d.name))continue;
+    const have=d.slots.filter(sl=>sl.split('/').some(x=>oh.has(x)&&!uh.has(x)&&!NUSE().has(x)&&HM[x]&&(HM[x].season||1)<=D.season)).length;
+    if(have<minc)continue;used.add(d.name);const u=T0();
+    d.slots.forEach((slot,k)=>{const h=slot.split('/').find(x=>oh.has(x)&&!uh.has(x)&&!NUSE().has(x)&&HM[x]&&(HM[x].season||1)<=D.season);if(h){u.h[k]=h;uh.add(h)}});
+    d.slots.forEach((slot,k)=>{if(u.h[k])return;const c=subH(slot.split('/')[0],uh)[0];if(c){u.h[k]=c[1].n;uh.add(c[1].n)}});
+    d.slots.forEach((slot,k)=>{if(!u.h[k])return;const own=slot.split('/').includes(u.h[k]);((d.tc||[])[k]||[]).slice(0,2).forEach((cell,j)=>{const names=cellNames(cell);let t=own?names.find(x=>os.has(x)&&!us.has(x)&&(SM[x].season||1)<=D.season):null;if(!t&&names.length){const c=subT(names[0],us)[0];if(c)t=c[1].n}if(t){u.t[k][j]=t;us.add(t)}})});
+    u.src=d.name;res.push(u)}
+  while(res.length<5)res.push(T0());BLD=res.slice(0,5);saveDraft();draw()}
 function build(){const dk=D.rank.decks.slice().sort((a,b)=>a.idx-b.idx);
-  const units=BLD.map((u,i)=>`<div class="unit"><div class="uh"><span class="badge">${i+1}부대</span><select class="sq" onchange="if(this.value){fillTier(${i},this.value);}this.value=''"><option value="">티어덱 불러오기…</option>${dk.map(d=>`<option value="${esc(d.name)}">${esc(d.tier)} ${esc(d.name)}</option>`).join('')}</select></div>
+  const units=BLD.map((u,i)=>`<div class="unit"><div class="uh"><span class="badge">${i+1}부대</span>${BLD[i].src?`<span class="m">${esc((D.rank.decks.find(x=>x.name===BLD[i].src)||{}).tier||'')} <b>${esc(BLD[i].src)}</b> 기준</span>`:''}<select class="sq" onchange="if(this.value){fillTier(${i},this.value);}this.value=''"><option value="">티어덱 불러오기…</option>${dk.map(d=>`<option value="${esc(d.name)}">${esc(d.tier)} ${esc(d.name)}</option>`).join('')}</select></div>
     <div class="hs">${[0,1,2].map(k=>slotH(i,k)).join('')}</div>${[0,1].map(j=>`<div class="hs trow">${[0,1,2].map(k=>slotT(i,k,j)).join('')}</div>`).join('')}</div>`).join('');
   const n=BLD.flatMap(u=>u.h).filter(Boolean).length;
   return `<div class="m" style="margin-bottom:8px">내가 <b>보유한</b> 장수·전법으로 5부대를 직접 짭니다. <b>한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없습니다</b>(목록에서 사라짐). 편성은 자동 저장됩니다. 보유 체크는 <b>내 장수·전법</b> 탭에서 합니다.</div>
-  ${picker()}${units}<div class="unit"><div class="uh"><b>마켓에 올리기</b><span class="m">장수 ${n}명 · 올린 글은 모든 서버가 보고 추천할 수 있습니다 (최대 ${D.mk.max}개)</span></div>
+  ${picker()}<div class="bar"><button class="sbtn on" onclick="if(confirm('내 보유 장수·전법에 맞춰 티어 순서대로 5부대를 자동 편성합니다. 지금 편성은 덮어씁니다.'))autoCompose()">✨ 내 상황 맞춤 자동 편성 (티어순)</button><span class="m">부족한 자리는 비슷한 보유 장수·같은 계열 전법으로 메웁니다</span></div>${units}<div class="unit"><div class="uh"><b>마켓에 올리기</b><span class="m">장수 ${n}명 · 올린 글은 모든 서버가 보고 추천할 수 있습니다 (최대 ${D.mk.max}개)</span></div>
   <div class="bar"><input class="sq" style="flex:1;min-width:140px" maxlength="24" placeholder="제목 (예: 도트딜 5부대)" value="${esc(MT)}" oninput="MT=this.value"><input class="sq" style="flex:2;min-width:180px" maxlength="120" placeholder="한 줄 설명 (선택)" value="${esc(MN)}" oninput="MN=this.value"></div>
   <div class="bar"><button class="sbtn on" onclick="postMk()">🛒 마켓에 올리기</button><button class="sbtn" onclick="clearAll()">모두 비우기</button></div></div>`}
 async function postMk(){if(!BLD.some(u=>u.h.some(Boolean))){alert('장수를 한 명 이상 넣어 주세요');return}if(!MT.trim()){alert('제목을 입력해 주세요');return}
