@@ -839,6 +839,9 @@ class Bot(discord.Client):
 VERIFY_CH = "인증"
 
 
+VERIFY_OW = discord.PermissionOverwrite(view_channel=True, send_messages=True, use_application_commands=True, read_message_history=True)
+
+
 async def verify_channel(g):
     """서버의 인증 안내 채널 = #인증 (홈 서버 포함 모든 서버 동일. 없으면 만든다). 만들 수 없으면 None."""
     me = g.me
@@ -846,10 +849,18 @@ async def verify_channel(g):
     c = discord.utils.get(g.text_channels, name=VERIFY_CH)
     if c is None:
         try:
-            ow = {g.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False, use_application_commands=True),
+            ow = {g.default_role: VERIFY_OW,
                   g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
             c = await g.create_text_channel(VERIFY_CH, overwrites=ow, topic="처음 오셨다면 /인증 을 입력해 CID 인증을 해 주세요", reason="인증 안내 채널")
         except Exception: log.warning("인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id)
+    if c is not None:                                   # 이미 있는 채널도 누구나 보고·메시지 쓰고·명령어를 쓸 수 있게 맞춘다
+        try:
+            cur = c.overwrites_for(g.default_role)
+            if any(getattr(cur, k) is not True for k in ("view_channel", "send_messages", "use_application_commands", "read_message_history")):
+                await c.set_permissions(g.default_role, overwrite=VERIFY_OW, reason="인증 채널: 메시지·명령어 허용")
+            if g.me is not None and not c.permissions_for(g.me).send_messages:
+                await c.set_permissions(g.me, overwrite=discord.PermissionOverwrite(view_channel=True, send_messages=True, embed_links=True, attach_files=True), reason="인증 채널: 봇 권한")
+        except Exception: log.warning("인증 채널 권한을 맞추지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id)
     return c if c and ok(c) else None
 
 
@@ -1396,6 +1407,8 @@ async def idle_loop():
     for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):                 # 문의함 채널이 없으면 매시간 다시 만들어 본다(권한을 나중에 준 경우 대비)
         g = bot.get_guild(gid)
         if g is None: continue
+        try: await verify_channel(g)                                    # 인증 채널 권한(메시지·명령어)을 매시간 점검
+        except Exception: log.exception("인증 채널 점검 실패 %s", gid)
         try: await inquiry_channel(g)
         except Exception: log.exception("문의함 점검 실패 %s", gid)
     if IDLE_KICK_DAYS <= 0: return
