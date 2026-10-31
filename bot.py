@@ -2844,11 +2844,14 @@ _bg = set()
 def auto_delete(it, msg=None, secs=None):
     """봇이 보낸 안내(나에게만 보임)를 일정 시간 뒤 지운다. 토큰 유효 시간(15분) 안에서만 가능."""
     async def run():
-        try:
-            await asyncio.sleep(secs if secs is not None else REPLY_TTL)
-            if msg is not None: await msg.delete()
-            else: await it.delete_original_response()
-        except Exception: pass                                      # 이미 지워졌거나 닫은 경우
+        await asyncio.sleep(secs if secs is not None else REPLY_TTL)
+        for how in ("msg", "orig"):
+            try:
+                if how == "msg" and msg is not None: await msg.delete()
+                else: await it.delete_original_response()
+                return
+            except discord.NotFound: return                         # 이미 지워졌거나 닫은 경우
+            except Exception as e: log.warning("안내 자동 삭제 실패(%s): %r", how, e)
     t = asyncio.create_task(run()); _bg.add(t); t.add_done_callback(_bg.discard)
 
 
@@ -3365,7 +3368,8 @@ async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = N
     if 시즌 is None:
         saved = await asyncio.to_thread(lambda: pref_get(did).get("season"))
         if saved not in (1, 2):                                          # 처음이면 시즌을 묻는다
-            return await it.response.send_message((note + "\n\n" if note else "") + "어느 시즌 기준으로 편성할까요? (한 번 고르면 기억합니다)", view=SeasonPick(did), ephemeral=True)
+            await it.response.send_message((note + "\n\n" if note else "") + "어느 시즌 기준으로 편성할까요? (한 번 고르면 기억합니다)", view=SeasonPick(did), ephemeral=True)
+            return auto_delete(it)
         season = saved
     else:
         season = 시즌.value; await asyncio.to_thread(pref_set, did, season=season)
