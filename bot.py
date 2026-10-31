@@ -1268,11 +1268,31 @@ class InqView(CtxView):
         await it.response.send_modal(InqModal())
 
 
+_inq_locks = {}
+
+
 async def inquiry_channel(g):
-    """#문의함 채널(구성원은 글을 못 쓰고 버튼으로 문의)을 만들고 안내 글+버튼을 한 번 올린다. 만들 수 없으면 None."""
+    """동시에 두 번 실행돼 채널·버튼이 중복되지 않도록 서버별로 한 번에 하나만 돌린다."""
+    lk = _inq_locks.setdefault(g.id, asyncio.Lock())
+    async with lk: return await _inquiry_channel(g)
+
+
+async def _inquiry_channel(g):
+    """#문의함 채널(구성원은 글을 못 쓰고 버튼으로 문의)을 만들고 안내 글+버튼을 한 번 올린다. 만들 수 없으면 None.
+    같은 이름 채널이 여러 개면 하나만 남기고 지우고, 안내 글(버튼)도 하나만 남긴다."""
     me = g.me
     if me is None: return None
-    ch = discord.utils.get(g.text_channels, name=INQ_CH)
+    dup = sorted((c for c in g.text_channels if c.name == INQ_CH), key=lambda c: c.id)
+    ch = None
+    if dup:
+        tok = _CTX.set(g.id)
+        try: sid = (store_get("inq", INQ_PATH, {}) or {}).get("ch")
+        finally: _CTX.reset(tok)
+        ch = next((c for c in dup if c.id == sid), dup[0])
+        for c in dup:
+            if c.id != ch.id:
+                try: await c.delete(reason="문의함 중복 채널 정리")
+                except Exception as e: log.warning("문의함 중복 채널을 지우지 못했습니다 서버=%s 채널=%s: %r", g.id, c.id, e)
     if ch is None:
         topic = "불편한 점·건의사항은 아래 [문의하기] 버튼으로 남겨 주세요"; cat = await bot_cat(g)
         ow_full = {g.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False, add_reactions=False, send_messages_in_threads=True),
@@ -1295,9 +1315,21 @@ async def inquiry_channel(g):
     tok = _CTX.set(g.id)
     try: st = dict(store_get("inq", INQ_PATH, {"n": 0}) or {"n": 0})
     finally: _CTX.reset(tok)
-    if st.get("msg") and st.get("ch") == ch.id:
-        try: await ch.fetch_message(st["msg"]); return ch
-        except Exception: pass
+    mine = []
+    try: mine = [m async for m in ch.history(limit=50) if m.author.id == me.id and m.components and (m.content or "").startswith("📮")]
+    except Exception as e: log.warning("문의함 기록을 읽지 못했습니다 서버=%s: %r", g.id, e)
+    if mine:                                                         # 안내 글이 이미 있으면 가장 오래된 하나만 남기고 나머지(중복)는 지운다
+        mine.sort(key=lambda m: m.id); keep = next((m for m in mine if m.id == st.get("msg")), mine[0])
+        for m in mine:
+            if m.id != keep.id:
+                try: await m.delete()
+                except Exception as e: log.warning("문의함 중복 안내 글을 지우지 못했습니다 서버=%s: %r", g.id, e)
+        if st.get("msg") != keep.id or st.get("ch") != ch.id:
+            st.update(msg=keep.id, ch=ch.id)
+            tok = _CTX.set(g.id)
+            try: store_set("inq", INQ_PATH, st)
+            finally: _CTX.reset(tok)
+        return ch
     m = await ch.send("📮 **문의함** — 사용 중 불편한 점, 오류, 건의사항을 남겨 주세요.\n"
                       "· 자주 묻는 질문은 **AI 도우미**가 바로 답하고, 그 외에는 **관리자**가 확인합니다.\n"
                       "· 이 채널과 스레드는 서버 구성원에게 보입니다. 개인정보·비밀번호는 적지 마세요.", view=InqView())
