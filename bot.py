@@ -280,6 +280,11 @@ def roster_load_db(gid):
         members.append({"n": e.get("name") or "", "j": job, "g": (e.get("extra") or {}).get("조별", ""), "r": x.get("title") or "",
                         "p": x.get("prosperity") or 0, "m": x.get("war_merit") or 0, "c": x.get("contribution") or 0, "s": x.get("siege_count") or 0,
                         "reg": x.get("camp") or "", "x": x.get("camp_x") or 0, "y": x.get("camp_y") or 0, "t": 0})
+    tok = _CTX.set(gid)
+    try: rs = dict(db_load().get("res") or {})                      # 관리 페이지에서 등록한 예비 인원도 명단에 포함(직위 '예비')
+    finally: _CTX.reset(tok)
+    for c, v in rs.items():
+        if c not in by: by[c] = {"job": v.get("job", ""), "title": next(iter(RESERVE_TITLES), "예비"), "name": v.get("name", "")}
     r = roster_for(gid); r.by_uid, r.jobs, r.members, r.src = by, jobs, members, "DB 명단"
     return len(by)
 
@@ -600,9 +605,9 @@ async def sync_members(guild: discord.Guild):
     res_role = discord.utils.get(guild.roles, name=RESERVE_ROLE)
     res = {"nick": 0, "role": 0, "removed": 0, "fail": 0, "total": 0}
     db = db_load(); nicks = db.setdefault("nick", {}); nchg = False; missing = []
-    dips = {**db.get("res", {}), **db.get("dip", {})}
+    dips = db.get("dip", {})
     for uid, did in list(db["uid"].items()):
-        if uid in dips: continue                                          # 외교관·예비는 명단(인사 탭) 대조 대상이 아님
+        if uid in dips: continue                                          # 외교관은 명단(인사 탭) 대조 대상이 아님
         m = guild.get_member(int(did))
         if m is None: continue
         res["total"] += 1
@@ -891,7 +896,7 @@ async def cmd_reserve(it: discord.Interaction, 동작: app_commands.Choice[str],
     name = 닉네임.strip()
     if not (유저 and name): return await it.followup.send("❌ 등록하려면 유저, CID, 닉네임을 모두 입력해 주세요.", ephemeral=True)
     err = None
-    if roster.by_uid.get(uid): err = "이미 인사 명단에 있는 CID입니다. 정규 인증(인증하기)을 이용해 주세요."
+    if roster.by_uid.get(uid) and uid not in res: err = "이미 인사 명단에 있는 CID입니다. 정규 인증(인증하기)을 이용해 주세요."
     elif uid in db["uid"] and db["uid"][uid] != str(유저.id): err = "이미 다른 계정으로 등록된 CID입니다."
     elif str(유저.id) in db["uid"].values() and db["uid"].get(uid) != str(유저.id): err = "이 유저는 이미 다른 CID로 인증되어 있습니다."
     if err: return await it.followup.send(f"❌ {err}", ephemeral=True)
@@ -1703,10 +1708,10 @@ def adm_state(gid):
         grp.setdefault(r["main_cid"], []).append({"c": r["alt_cid"], "n": r.get("alt_name") or nm.get(r["alt_cid"], "")})
     alts = sorted(({"c": k, "n": nm.get(k, ""), "alts": sorted(v, key=lambda a: a["n"])} for k, v in grp.items()), key=lambda x: x["n"])
     rsv, did_of = {}, {u: d for u, d in (db.get("uid") or {}).items()}
-    for c, v in (roster_for(gid).by_uid or {}).items():                       # 인사 명단 직위가 '예비'인 사람
-        if (v.get("title") or "").replace(" ", "") in RESERVE_TITLES: rsv[c] = {"c": c, "n": v.get("name") or "", "j": v.get("job") or "", "src": "명단", "memo": "", "t": "", "d": did_of.get(c, "")}
-    for c, v in (db.get("res") or {}).items():                                # /예비 명령으로 임시 등록한 사람
-        rsv.setdefault(c, {"c": c, "n": v.get("name", ""), "j": "", "src": "명령", "memo": v.get("memo", ""), "t": v.get("t", ""), "d": did_of.get(c, v.get("did", ""))})
+    for c, v in (roster_for(gid).by_uid or {}).items():                       # 게임 명단 직위가 '예비'인 사람
+        if (v.get("title") or "").replace(" ", "") in RESERVE_TITLES and c not in (db.get("res") or {}): rsv[c] = {"c": c, "n": v.get("name") or "", "j": v.get("job") or "", "src": "명단", "memo": "", "t": "", "d": did_of.get(c, "")}
+    for c, v in (db.get("res") or {}).items():                                # 관리 페이지·/예비 명령으로 등록한 사람
+        rsv[c] = {"c": c, "n": v.get("name", ""), "j": v.get("job", ""), "src": "등록", "memo": v.get("memo", ""), "t": v.get("t", ""), "d": did_of.get(c, v.get("did", ""))}
     for r in rsv.values():
         m = gg.get_member(int(r["d"])) if gg and str(r["d"]).isdigit() else None
         r["dn"] = str(m) if m else ""; r["ok"] = bool(r["d"])
@@ -1772,6 +1777,34 @@ async def web_admin_api(request):
             d = str(body.get("id", "")).strip()
             if not (d.isascii() and d.isdigit()): raise ValueError("사용자 ID가 올바르지 않습니다.")
             await adm_revoke(gid, int(d), uid); msg = "✅ 관리자 권한을 뺐습니다."
+        elif op == "res_save":
+            cid, nick, job, memo = str(body.get("cid", "")).strip(), re.sub(r"\s+", " ", str(body.get("nick", ""))).strip(), str(body.get("job", "")).strip()[:20], str(body.get("memo", "")).strip()[:100]
+            if not (cid.isascii() and cid.isdigit() and 4 <= len(cid) <= 14): raise ValueError("CID는 숫자만 입력해 주세요.")
+            if not nick or len(nick) > 20: raise ValueError("닉네임을 1~20자로 입력해 주세요.")
+            def rv():
+                set_gid(gid); db = db_load(); res = db.setdefault("res", {})
+                if cid not in res and (roster_for(gid).by_uid.get(cid) or {}).get("title", "").replace(" ", "") not in RESERVE_TITLES and roster_for(gid).by_uid.get(cid): raise ValueError("이미 정규 명단에 있는 CID입니다.")
+                if cid not in res and cid in db["uid"]: raise ValueError("이미 인증된 CID입니다.")
+                old = res.get(cid) or {}
+                res[cid] = {**old, "name": nick, "job": job, "memo": memo, "t": old.get("t") or (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d"), "by": str(uid)}
+                db_save(db); roster_load_db(gid); return "수정" if old else "등록"
+            msg = f"✅ 예비 {await asyncio.to_thread(rv)} 완료: {nick} ({cid}). 이제 인증하기에서 이 CID로 인증할 수 있습니다."
+        elif op == "res_del":
+            cid = str(body.get("cid", "")).strip()
+            if not (cid.isascii() and cid.isdigit()): raise ValueError("CID가 올바르지 않습니다.")
+            def rd():
+                set_gid(gid); db = db_load(); d = (db.get("res") or {}).pop(cid, None)
+                if d is None: raise ValueError("등록된 예비가 아닙니다.")
+                did = db["uid"].pop(cid, None); db.get("nick", {}).pop(cid, None); db_save(db); roster_load_db(gid); return d, did
+            d, did = await asyncio.to_thread(rd)
+            g = bot.get_guild(gid); m = g.get_member(int(did)) if g and did else None
+            if m:
+                role = discord.utils.get(g.roles, name=RESERVE_ROLE)
+                try:
+                    if role and role in m.roles: await m.remove_roles(role, reason="예비 삭제(관리 페이지)")
+                    await m.edit(nick=None, reason="예비 삭제(관리 페이지)")
+                except discord.Forbidden: pass
+            msg = f"✅ 예비 삭제: {d.get('name', cid)}" + (" (역할·별명도 정리)" if m else "")
         elif op == "alt_add":
             key, raw = re.sub(r"\s+", " ", str(body.get("main", ""))).strip(), str(body.get("names", ""))[:2000]
             if not key or not raw.strip(): raise ValueError("본캐와 부캐 닉네임을 입력해 주세요.")
