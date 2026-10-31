@@ -767,7 +767,7 @@ GUIDE_PATH = Path(os.environ.get("GUIDE_PATH", "guide.json"))
 GUIDE_DIR = Path(__file__).parent / "guides"
 
 
-async def _guide_channel(g, name, public, prefix, topic, text, force=False):
+async def _guide_channel(g, name, public, prefix, topic, text, force=False, key=None):
     """가이드 채널을 만들고(없으면) 가이드 이미지를 올린다. 이미지 내용이 바뀌면 이전 글을 지우고 새로 올린다. 만들 수 없으면 None."""
     me = g.me
     files = sorted(GUIDE_DIR.glob(prefix + "*.png"))[:10]
@@ -788,7 +788,7 @@ async def _guide_channel(g, name, public, prefix, topic, text, force=False):
     if getattr(ch, "category", None) is not None and ch.category.name == BOT_CAT:       # 예전에 '봇' 카테고리로 옮겨졌다면 최상단으로 되돌린다
         try: await ch.edit(category=None, position=0, sync_permissions=False)
         except Exception as e: log.warning("가이드 채널을 최상단으로 옮기지 못했습니다 서버=%s: %r", g.id, e)
-    key = "admin" if not public else "user"; ver = hashlib.sha1(b"".join(f.read_bytes() for f in files)).hexdigest()[:10]
+    key = key or ("admin" if not public else "user"); ver = hashlib.sha1(b"".join(f.read_bytes() for f in files)).hexdigest()[:10]
 
     def st():
         tok = _CTX.set(g.id)
@@ -818,6 +818,17 @@ async def guide_post(g, force=False):
     ach = await _guide_channel(g, GUIDE_CH, False, "admin_guide", "관리자 가이드 (서버 관리자만 볼 수 있습니다)", "📘 **관리자 가이드** — 관리 페이지(`/관리`), 권한, 채널, 문제 해결을 정리했습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force)
     uch = await _guide_channel(g, USER_GUIDE_CH, True, "user_guide", "동맹원용 이용 가이드", "📗 **이용자 가이드** — 인증하기, 자주 쓰는 명령어, 추천덱 보는 법을 1장으로 정리했습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force)
     return ach, uch
+
+
+START_CH = "봇시작하기"
+
+
+async def start_post(g, force=False):
+    """봇을 초대하면 #봇시작하기(서버 관리자만 보임)에 등록 방법·인사파일 받는 법/넣는 법 가이드를 올린다."""
+    text = ("👋 **초대해 주셔서 감사합니다!** 아래 순서대로 한 번만 세팅하면 나머지는 봇이 알아서 굴러갑니다.\n"
+            "① `/동맹등록` — 서버 번호·동맹명 등록 (서버 관리자)\n② 게임에서 인사파일(MemberWeek.xlsx) 받기\n③ `/명단업데이트` — 인사파일 첨부 (서버 관리자)\n"
+            "📌 **PS. 인사파일은 PC에서만 다운로드가 가능합니다.**")
+    return await _guide_channel(g, START_CH, False, "start_guide", "봇 등록 방법과 인사파일 넣는 방법 (서버 관리자만 볼 수 있습니다)", text, force, key="start")
 
 
 class GuildTree(app_commands.CommandTree):
@@ -856,6 +867,10 @@ class Bot(discord.Client):
             self.tree.remove_command("동맹등록", guild=g)          # 우리 서버는 이미 등록됨 → 메뉴에서 숨김
             await self.tree.sync(guild=g)
 
+    async def on_guild_join(self, g: discord.Guild):
+        try: await start_post(g)
+        except Exception: log.exception("시작 가이드 게시 실패 %s", g.id)
+
     async def on_ready(self):
         log.info("로그인: %s", self.user)
         if SYNC_MINUTES and not sync_loop.is_running(): sync_loop.start()
@@ -870,6 +885,10 @@ class Bot(discord.Client):
             await verify_channel(hg); await log_channel(hg); await inquiry_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
+        for g in list(self.guilds):                                  # 아직 등록 전인 서버에는 시작 가이드(등록·인사파일 방법)를 올려 둔다
+            if g.id != GUILD_ID and not licensed(g.id):
+                try: await start_post(g)
+                except Exception: log.exception("시작 가이드 게시 실패 %s", g.id)
 
     async def on_member_join(self, m: discord.Member):
         if not licensed(m.guild.id) or m.bot: return
@@ -3781,7 +3800,7 @@ async def cmd_manual_update(it: discord.Interaction, 강제: bool = False):
     ok, bad = [], []
     for g in list(bot.guilds):
         if g.id != GUILD_ID and g.id not in LICENSED: continue
-        try: a, u = await guide_post(g, force=강제)
+        try: a, u = await guide_post(g, force=강제); await start_post(g, force=강제)
         except Exception: log.exception("메뉴얼 업데이트 실패 %s", g.id); a = u = None
         (ok if (a or u) else bad).append(g.name)
     await it.followup.send(f"📚 메뉴얼 업데이트 완료 — 성공 {len(ok)}개 서버" + (f"\n⚠️ 실패(봇에 채널 관리 권한 필요): {', '.join(bad)}" if bad else "") + "\n(내용이 바뀐 서버만 새로 올립니다)" if not 강제 else f"📚 메뉴얼 강제 업데이트 — 성공 {len(ok)}개 서버" + (f"\n⚠️ 실패: {', '.join(bad)}" if bad else ""), ephemeral=True)
