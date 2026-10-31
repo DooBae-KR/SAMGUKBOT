@@ -1090,6 +1090,7 @@ class AllyApplyModal(CtxModal, title="동맹 등록"):
 # ---------- 후원 안내 ----------
 DONATE_PATH = Path(os.environ.get("DONATE_PATH", "donate.json"))
 DONATE_TEXT = "봇 제작자의 커피타임을 만들어주시면 더욱 좋은 기능으로 찾아뵙겠습니다!"
+DONATE_LINK = os.environ.get("DONATE_LINK", "supertoss://send?amount=4500&bank=%EC%B9%B4%EC%B9%B4%EC%98%A4%EB%B1%85%ED%81%AC&accountNo=3333387676921&origin=qr").strip()   # 후원 QR에 담긴 송금 링크(토스 앱)
 DONATE_MAX = 2 * 1024 * 1024                              # QR 이미지 최대 크기
 
 
@@ -1111,7 +1112,7 @@ def _don_page():
     try: d = donate_get()
     except Exception: d = {}
     img = d.get("img") or ""
-    return {"text": d.get("text") or DONATE_TEXT, "img": img if len(img) < 600000 else "", "ext": (d.get("ext") or ".png").lstrip(".").lower().replace("jpg", "jpeg")}
+    return {"link": d.get("link") or DONATE_LINK, "text": d.get("text") or DONATE_TEXT, "img": img if len(img) < 600000 else "", "ext": (d.get("ext") or ".png").lstrip(".").lower().replace("jpg", "jpeg")}
 
 
 def donate_put(d):
