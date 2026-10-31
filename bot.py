@@ -784,7 +784,7 @@ class GuildTree(app_commands.CommandTree):
         if licensed(it.guild_id) or (it.command and it.command.name in ("동맹등록", "명령어")):
             if it.command is not None: asyncio.create_task(cmd_log(it))
             return True
-        await it.response.send_message("🔒 이 서버는 제작자의 승인이 필요합니다. `/동맹등록`으로 신청해 주세요.", ephemeral=True); return False
+        await it.response.send_message("🔒 아직 등록되지 않은 서버입니다. 서버 관리자가 `/동맹등록`으로 먼저 등록해 주세요.", ephemeral=True); return False
 
 
 class Bot(discord.Client):
@@ -1018,7 +1018,7 @@ async def pm_setup_guild(gid):
     made, fail = [], []
     for nm in (MEMBER_ROLE, OFFICER_ROLE, DIPLOMAT_ROLE, RESERVE_ROLE):
         if discord.utils.get(g.roles, name=nm): continue
-        try: await g.create_role(name=nm, reason="제작자 승인 — 기본 역할 생성"); made.append(nm)
+        try: await g.create_role(name=nm, reason="동맹 등록 — 기본 역할 생성"); made.append(nm)
         except Exception: fail.append(nm)
     vc = await verify_channel(g); await log_channel(g); await inquiry_channel(g)
     out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)")
@@ -1052,34 +1052,28 @@ async def pm_decide(it: discord.Interaction, cid):
     except Exception: log.warning("신청자 DM 실패: %s", uid)
 
 
-class AllyApplyModal(CtxModal, title="동맹 등록 신청"):
+class AllyApplyModal(CtxModal, title="동맹 등록"):
     server = discord.ui.TextInput(label="서버 번호 (숫자만 입력)", placeholder="예: 41", min_length=1, max_length=5)
     name = discord.ui.TextInput(label="동맹명", placeholder="예: 공성부대", min_length=1, max_length=12)
-    reason = discord.ui.TextInput(label="사유 (선택)", placeholder="신청 사유, 직책 등", required=False, max_length=200, style=discord.TextStyle.paragraph)
+    reason = discord.ui.TextInput(label="사유 (선택)", placeholder="메모(선택)", required=False, max_length=200, style=discord.TextStyle.paragraph)
 
     async def on_submit(self, it: discord.Interaction):
         sv, nm = self.server.value.strip(), self.name.value.strip()
         if not (sv.isascii() and sv.isdigit()): return await it.response.send_message("❌ 서버 번호는 숫자만 입력할 수 있습니다. (예: 41)", ephemeral=True)
         if not SB_ON: return await it.response.send_message("❌ DB(Supabase)가 연결되지 않아 신청을 받을 수 없습니다.", ephemeral=True)
         await it.response.defer(ephemeral=True); gid, uid = it.guild.id, it.user.id
-        cur = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?guild_id=eq.{gid}&discord_id=eq.{uid}&select=status")
-        st = cur[0]["status"] if cur else None
-        if st == "pending": return await it.followup.send("이미 신청되어 제작자의 승인을 기다리는 중입니다.", ephemeral=True)
-        owner = await perm_owner(); now = datetime.datetime.now(datetime.timezone.utc).isoformat(); sv = str(int(sv))
+        pm = it.user.guild_permissions
+        if not (pm.administrator or pm.manage_guild or it.user.id == it.guild.owner_id):
+            return await it.followup.send("❌ 서버 관리 권한이 있는 분만 등록할 수 있습니다.", ephemeral=True)
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat(); sv = str(int(sv))
         row = {"guild_id": gid, "discord_id": uid, "guild_name": it.guild.name, "user_name": str(it.user), "reason": self.reason.value[:200],
-               "ally_name": nm, "game_server": sv, "status": "approved" if uid == owner.id else "pending",
-               "requested_at": now, "decided_at": None, "decided_by": None}
+               "ally_name": nm, "game_server": sv, "status": "approved", "requested_at": now, "decided_at": now, "decided_by": uid}
         await asyncio.to_thread(_sb_req, "POST", "sam_perm?on_conflict=guild_id,discord_id", [row], "resolution=merge-duplicates,return=minimal")
-        if uid == owner.id:
-            PERM.add((gid, uid)); LICENSED.add(gid); await asyncio.to_thread(ally_set, gid, nm, sv); extra = await pm_setup_guild(gid)
-            return await it.followup.send(f"제작자 본인이라 바로 등록되었습니다. ({sv}서버 · {nm})\n{extra}", ephemeral=True)
-        try:
-            await owner.send(f"🔐 **동맹 등록 신청**\n서버: **{it.guild.name}** (`{gid}`)\n동맹: **{sv}서버 · {nm}**\n신청자: {it.user.mention} ({it.user}) · `{uid}`\n사유: {self.reason.value or '(없음)'}",
-                             view=perm_view(gid, uid), allowed_mentions=discord.AllowedMentions.none())
-            await it.followup.send("📨 제작자에게 신청을 보냈습니다. 승인되면 DM으로 알려 드립니다.", ephemeral=True)
-        except Exception:
-            log.exception("제작자 알림 실패")
-            await it.followup.send("신청은 접수됐지만 제작자에게 알림을 보내지 못했습니다. 제작자에게 직접 알려 주세요.", ephemeral=True)
+        PERM.add((gid, uid)); LICENSED.add(gid); await asyncio.to_thread(ally_set, gid, nm, sv); extra = await pm_setup_guild(gid)
+        try: await lv_send(it.guild, f"🏷️ **동맹 등록** — {it.user.mention} ({it.user}) · {sv}서버 · {nm}")
+        except Exception: log.exception("동맹 등록 로그 실패")
+        log.info("동맹 등록: guild=%s user=%s(%s) %s서버 %s", gid, it.user, uid, sv, nm)
+        await it.followup.send(f"✅ 등록되었습니다. ({sv}서버 · {nm}) 바로 이용할 수 있습니다.\n{extra}", ephemeral=True)
 
 
 # ---------- 후원 안내 ----------
@@ -1442,7 +1436,7 @@ async def donate_loop():
 
 
 CMD_HELP = {
-    "동맹원": [("/동맹등록", "서버 번호·동맹명을 등록(승인 전 서버는 제작자에게 신청)"),
+    "동맹원": [("/동맹등록", "서버 번호·동맹명을 등록(서버 관리자, 바로 이용 가능)"),
              ("/인증", "CID 인증 창 열기(나에게만 보임)"),
              ("/부캐", "내 부계정을 닉네임으로 연결(닉네임1,닉네임2 …)"),
              ("/추천", "내 장수·전법으로 PvP·개척 5부대 편성 + 도감·상성 차트 등(개인 링크)"),
@@ -1949,12 +1943,12 @@ async def start_web():
     log.info("상황판: http://localhost:%d/%s", WEB_PORT, f"?key={WEB_KEY}" if WEB_KEY else "")
 
 
-@bot.tree.command(name="동맹등록", description="서버 번호(숫자)와 동맹명을 등록합니다. 승인 전 서버는 제작자에게 신청됩니다")
+@bot.tree.command(name="동맹등록", description="[서버 관리자] 서버 번호(숫자)와 동맹명을 등록하면 바로 이용할 수 있습니다")
 async def cmd_ally(it: discord.Interaction):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
     if licensed(it.guild_id):                              # 이미 등록된 서버는 한 번만 등록 가능 → 수정은 /동맹수정
         return await it.response.send_message("이미 등록된 동맹입니다. 정보 변경은 간부가 `/동맹수정`으로 해 주세요.", ephemeral=True)
-    await it.response.send_modal(AllyApplyModal())         # 승인 전 서버: 제작자에게 신청
+    await it.response.send_modal(AllyApplyModal())         # 서버 관리자가 등록하면 즉시 사용
 
 
 @bot.tree.command(name="동맹수정", description="[간부] 등록된 서버 번호·동맹명을 수정합니다")
