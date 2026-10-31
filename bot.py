@@ -2400,21 +2400,101 @@ class SeasonPick(CtxView):
     async def s2(self, it, _): await self._pick(it, 2)
 
 
-@bot.tree.command(name="추천덱", description="내 보유 장수·전법으로 티어덱 순서대로 5부대를 편성해 줍니다")
-@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)")
+def reco_defs():
+    """장수·전법 데이터(HD, SKD) — 추천 계산과 같은 기준."""
+    sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
+    return {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
+
+
+def _my_cid(did): return next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
+
+
+def _split_names(raw): return [re.sub(r"\s+", " ", x).strip() for x in re.split(r"[,\n，、;/]+", raw or "") if x.strip()]
+
+
+def dex_edit(did, add_h="", add_s="", del_h="", del_s=""):
+    """내 도감(보유 장수·전법)에 장수·전법을 더하거나 뺀다. 이름은 공백만 무시하고 정확히 일치해야 한다. → (결과 문장 목록, 오류 문장 or None)"""
+    import difflib
+    cid = _my_cid(did)
+    if not cid: return [], "먼저 `/인증`으로 CID 인증을 해 주세요."
+    hd, skd = reco_defs(); hmap = {_nk(k): k for k in hd}; smap = {_nk(k): k for k in skd}
+    dex = dict(store_get(f"dex_{cid}", dex_path(cid), {}) or {})
+    own, ownsk = set(dex.get("own") or []), set(dex.get("ownsk") or []); tr = dict(dex.get("tr") or {})
+    out = []
+    def apply(raw, mp, cur, kind, add):
+        done, miss, same = [], [], []
+        for n in _split_names(raw):
+            k = mp.get(_nk(n))
+            if not k:
+                sug = difflib.get_close_matches(n, list(mp.values()), n=2, cutoff=0.5)
+                miss.append(n + (f"(혹시 {' / '.join(sug)}?)" if sug else "")); continue
+            if add:
+                (same if k in cur else done).append(k); cur.add(k)
+            else:
+                (done if k in cur else same).append(k); cur.discard(k)
+                if kind == "장수" and not add: tr.pop(k, None)
+        if done: out.append(f"{'➕' if add else '➖'} {kind} {'추가' if add else '제거'}: " + ", ".join(done))
+        if same: out.append(f"• 이미 {'있음' if add else '없음'}: " + ", ".join(same))
+        if miss: out.append(f"❓ 없는 {kind} 이름(정확히 입력): " + ", ".join(miss))
+    apply(add_h, hmap, own, "장수", True); apply(add_s, smap, ownsk, "전법", True)
+    apply(del_h, hmap, own, "장수", False); apply(del_s, smap, ownsk, "전법", False)
+    dex.update({"cid": cid, "own": sorted(own), "ownsk": sorted(ownsk), "tr": tr, "at": datetime.datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")})
+    dex.setdefault("name", (roster.by_uid.get(cid) or {}).get("name", ""))
+    DEX_DIR.mkdir(exist_ok=True); store_set(f"dex_{cid}", dex_path(cid), dex)
+    return out, None
+
+
+async def _reco_ac(it: discord.Interaction, cur: str, kind: str, mine_only: bool):
+    """쉼표로 여러 개를 이어 입력할 때 마지막 이름만 자동완성한다."""
+    head, _, last = (cur or "").rpartition(","); head = head.strip(); term = _nk(last)
+    hd, skd = reco_defs(); pool = list(hd if kind == "장수" else skd)
+    if mine_only:
+        cid = await asyncio.to_thread(_my_cid, it.user.id)
+        dex = (await asyncio.to_thread(lambda: store_get(f"dex_{cid}", dex_path(cid), {}) or {})) if cid else {}
+        pool = [x for x in pool if x in set(dex.get("own" if kind == "장수" else "ownsk") or [])]
+    have = {_nk(x) for x in _split_names(head)}
+    res = [x for x in pool if term in _nk(x) and _nk(x) not in have][:25]
+    pre = (head + ", ") if head else ""
+    return [app_commands.Choice(name=(pre + x)[-100:], value=(pre + x)[:100]) for x in res]
+
+
+@bot.tree.command(name="추천덱", description="내 보유 장수·전법으로 티어덱 순서대로 5부대를 편성해 줍니다(장수·전법 추가/제거도 가능)")
+@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)",
+                       장수추가="내 도감에 장수 추가 — 쉼표로 여러 명 (예: 곽가, 여포)", 전법추가="내 도감에 전법 추가 — 쉼표로 여러 개",
+                       장수제거="내 도감에서 장수 제거", 전법제거="내 도감에서 전법 제거")
 @app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2)])
-async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None):
+async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None, 장수추가: str = "", 전법추가: str = "", 장수제거: str = "", 전법제거: str = ""):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
-    did = it.user.id
+    did = it.user.id; note = ""
+    if 장수추가 or 전법추가 or 장수제거 or 전법제거:
+        lines, err = await asyncio.to_thread(dex_edit, did, 장수추가, 전법추가, 장수제거, 전법제거)
+        if err: return await it.response.send_message(err, ephemeral=True)
+        note = ("📝 **내 도감 수정**\n" + "\n".join(lines))[:1200]
     if 시즌 is None:
         saved = await asyncio.to_thread(lambda: pref_get(did).get("season"))
         if saved not in (1, 2):                                          # 처음이면 시즌을 묻는다
-            return await it.response.send_message("어느 시즌 기준으로 편성할까요? (한 번 고르면 기억합니다)", view=SeasonPick(did), ephemeral=True)
+            return await it.response.send_message((note + "\n\n" if note else "") + "어느 시즌 기준으로 편성할까요? (한 번 고르면 기억합니다)", view=SeasonPick(did), ephemeral=True)
         season = saved
     else:
         season = 시즌.value; await asyncio.to_thread(pref_set, did, season=season)
     await it.response.defer(ephemeral=True)
-    await reco_deliver(it, did, season)
+    await reco_deliver(it, did, season, note=note)
+
+
+@cmd_reco.autocomplete("장수추가")
+async def _ac_ah(it, cur): return await _reco_ac(it, cur, "장수", False)
+
+
+@cmd_reco.autocomplete("전법추가")
+async def _ac_as(it, cur): return await _reco_ac(it, cur, "전법", False)
+
+
+@cmd_reco.autocomplete("장수제거")
+async def _ac_dh(it, cur): return await _reco_ac(it, cur, "장수", True)
+
+
+@cmd_reco.autocomplete("전법제거")
+async def _ac_ds(it, cur): return await _reco_ac(it, cur, "전법", True)
 
 
 @bot.tree.command(name="도감", description="내 보유 장수·전법을 체크하는 개인 링크를 받습니다(시트에 자동 저장)")
