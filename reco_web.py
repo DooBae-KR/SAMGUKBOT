@@ -92,7 +92,10 @@ function own(){TRS=TRS||Object.assign({},D.own.tr||{});OWNS=OWNS||{h:new Set(D.o
   const ss=D.all.s.filter(s=>keep(s.n,OWNS.s.has(s.n),s.season)).sort((a,b)=>((GR[a.grade]??9)-(GR[b.grade]??9))||ko(a,b));
   const im=(b,c)=>b?`<img class="${c}" src="data:image/jpeg;base64,${b}">`:'';
   const stones=h=>{const n=TRS[h.n]||0;return `<span class="sts" title="초월 단계">${[1,2,3,4,5].map(k=>`<i class="sg ${k<=n?'on':''}" onclick="event.stopPropagation();setTr('${esc(h.n)}',${k})"></i>`).join('')}</span>`};
-  const hc=hs.map(h=>`<div class="oc hc ${OWNS.h.has(h.n)?'on':''}" onclick="toggleOwn('h','${esc(h.n)}')">${im(h.img,'th')}<span><span class="nm">${esc(h.n)}</span><span class="m">${esc(h.nation)} ${esc(h.troop)}${(TRS[h.n]||0)?' · 초월 '+TRS[h.n]:''}</span>${OWNS.h.has(h.n)?stones(h):''}</span></div>`).join('');
+  const card=h=>`<div class="oc hc ${OWNS.h.has(h.n)?'on':''}" onclick="toggleOwn('h','${esc(h.n)}')">${im(h.img,'th')}<span><span class="nm">${esc(h.n)}</span><span class="m">${esc(h.pos||'')} ${esc(h.troop)}${(TRS[h.n]||0)?' · 초월 '+TRS[h.n]:''}</span>${OWNS.h.has(h.n)?stones(h):''}</span></div>`;
+  const NO={'촉':0,'위':1,'오':2,'군':3},NN={'촉':'촉','위':'위','오':'오','군':'군웅'};let hc='';
+  for(const nt of ['촉','위','오','군']){const g=hs.filter(h=>h.nation===nt);if(g.length)hc+=`<div class="gh">${NN[nt]} (${g.length}명 · 보유 ${g.filter(h=>OWNS.h.has(h.n)).length})</div>`+g.map(card).join('')}
+  const oth=hs.filter(h=>!(h.nation in NO));if(oth.length)hc+=`<div class="gh">기타</div>`+oth.map(card).join('');
   let sc='',lg=null;for(const s of ss){if(s.grade!==lg){lg=s.grade;sc+=`<div class="gh">${esc(lg||'기타')}</div>`}
    sc+=`<button class="oc sc ${OWNS.s.has(s.n)?'on':''}" onclick="toggleOwn('s','${esc(s.n).replace(/'/g,"\\'")}')">${im(s.img,'ts')}<span class="nm">${esc(s.n)}</span><span class="m">${esc(s.type)}·${esc(s.trait)}</span></button>`}
   return `<div class="m" style="margin-bottom:8px">눌러서 보유 여부를 바꿉니다(자동 저장). 보유 장수의 <b>붉은 돌</b>을 눌러 초월 단계(0~5)를 정합니다. 스탯 조율은 <b>/도감</b> 페이지에서 합니다. 바꾼 뒤 <b>내 추천덱</b> 탭으로 돌아가면 다시 편성합니다.</div>
