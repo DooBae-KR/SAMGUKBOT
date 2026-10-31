@@ -6,6 +6,7 @@ import urllib.parse, urllib.error, urllib.request, hmac, hashlib, unicodedata
 import base64, tempfile, os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue, contextvars
 from aiohttp import web
 from pathlib import Path
+from typing import Optional
 import discord
 from discord import app_commands
 from discord.ext import tasks
@@ -29,6 +30,7 @@ SHEET_NAME = os.environ.get("SHEET_NAME", "")            # 비우면 첫 시트
 VERIFY_CHANNEL_ID = int(os.environ.get("VERIFY_CHANNEL_ID", "0"))  # 인증 안내 채널
 MEMBER_ROLE = os.environ.get("MEMBER_ROLE", "동맹원")
 OFFICER_ROLE = os.environ.get("OFFICER_ROLE", "간부")
+RESERVE_ROLE = os.environ.get("RESERVE_ROLE", "예비")           # 정규 소속은 아니지만 서비스를 이용하는 예비 동맹원 역할
 DIPLOMAT_ROLE = os.environ.get("DIPLOMAT_ROLE", "외교관")     # 외교 목적으로 들어온 타 동맹원 역할
 OFFICER_TITLES = {s.replace(" ", "") for s in os.environ.get("OFFICER_TITLES", "태위,군주,사공,사도,대장군,대홍려,진군장군,무군장군,익군장군,안국장군,분무장군,복파장군,파로장군,호위장군").split(",") if s.strip()}
 MAX_TRIES = int(os.environ.get("MAX_TRIES", "5"))
@@ -593,9 +595,9 @@ async def sync_members(guild: discord.Guild):
     off_role = discord.utils.get(guild.roles, name=OFFICER_ROLE)
     res = {"nick": 0, "role": 0, "removed": 0, "fail": 0, "total": 0}
     db = db_load(); nicks = db.setdefault("nick", {}); nchg = False; missing = []
-    dips = db.get("dip", {})
+    dips = {**db.get("res", {}), **db.get("dip", {})}
     for uid, did in list(db["uid"].items()):
-        if uid in dips: continue                                          # 외교관은 명단(인사 탭) 대조 대상이 아님
+        if uid in dips: continue                                          # 외교관·예비는 명단(인사 탭) 대조 대상이 아님
         m = guild.get_member(int(did))
         if m is None: continue
         res["total"] += 1
@@ -849,6 +851,50 @@ async def sync_loop():
 admin = app_commands.default_permissions(manage_roles=True)
 
 
+@bot.tree.command(name="예비", description="[간부] 예비 동맹원(정규 소속 전) 등록·해제·목록 — 서비스는 이용하고 메모로 관리")
+@app_commands.describe(동작="등록 / 해제 / 목록", 유저="등록할 디스코드 유저(등록 시)", cid="CID(등록·해제 시)", 닉네임="게임 닉네임(등록 시)", 메모="메모(예: 3주차 합류 예정, 어느 동맹에서 옴)")
+@app_commands.choices(동작=[app_commands.Choice(name="등록", value="add"), app_commands.Choice(name="해제", value="del"), app_commands.Choice(name="목록", value="list")])
+async def cmd_reserve(it: discord.Interaction, 동작: app_commands.Choice[str], 유저: Optional[discord.Member] = None, cid: str = "", 닉네임: str = "", 메모: str = ""):
+    if not staff_ok(it, "/예비"): return await it.response.send_message("간부 이상만 사용할 수 있습니다.", ephemeral=True)
+    db = db_load(); res = db.setdefault("res", {}); act = 동작.value
+    if act == "list":
+        if not res: return await it.response.send_message("등록된 예비 인원이 없습니다.", ephemeral=True)
+        rows = [f"- **{d['name']}** · CID `{c}` · <@{d.get('did')}> · {d.get('t','')}" + (f" · {d['memo']}" if d.get("memo") else "") for c, d in res.items()]
+        return await it.response.send_message(f"**예비 인원 {len(res)}명**\n" + "\n".join(rows)[:1800], ephemeral=True)
+    uid = Roster.user_uid(cid) if hasattr(Roster, "user_uid") else Roster.norm_uid(cid)
+    if not uid: return await it.response.send_message("❌ CID(숫자)를 입력해 주세요.", ephemeral=True)
+    role = discord.utils.get(it.guild.roles, name=RESERVE_ROLE) if it.guild else None
+    if role is None: return await it.response.send_message(f"❌ 서버에 '{RESERVE_ROLE}' 역할이 없습니다. 만들어 주세요(역할 이름 `{RESERVE_ROLE}`).", ephemeral=True)
+    await it.response.defer(ephemeral=True)
+    if act == "del":
+        d = res.pop(uid, None)
+        if d is None: return await it.followup.send("예비로 등록된 CID가 아닙니다.", ephemeral=True)
+        did = db["uid"].pop(uid, None); db.get("nick", {}).pop(uid, None); db_save(db)
+        m = it.guild.get_member(int(did)) if did else None; note = ""
+        if m:
+            try:
+                if role in m.roles: await m.remove_roles(role, reason=f"예비 해제({it.user.display_name})")
+                await m.edit(nick=None, reason="예비 해제")
+            except discord.Forbidden: note = " (역할/별명 변경 권한 부족 — 직접 정리해 주세요)"
+        return await it.followup.send(f"**{d['name']}** 예비 등록을 해제했습니다.{note}", ephemeral=True)
+    name = 닉네임.strip()
+    if not (유저 and name): return await it.followup.send("❌ 등록하려면 유저, CID, 닉네임을 모두 입력해 주세요.", ephemeral=True)
+    err = None
+    if roster.by_uid.get(uid): err = "이미 인사 명단에 있는 CID입니다. 정규 인증(인증하기)을 이용해 주세요."
+    elif uid in db["uid"] and db["uid"][uid] != str(유저.id): err = "이미 다른 계정으로 등록된 CID입니다."
+    elif str(유저.id) in db["uid"].values() and db["uid"].get(uid) != str(유저.id): err = "이 유저는 이미 다른 CID로 인증되어 있습니다."
+    if err: return await it.followup.send(f"❌ {err}", ephemeral=True)
+    notes = []
+    try: await 유저.edit(nick=f"[예비] {name}"[:32], reason="예비 등록")
+    except discord.Forbidden: notes.append("별명 변경 권한이 없습니다.")
+    try: await 유저.add_roles(role, reason=f"예비 등록({it.user.display_name})")
+    except discord.Forbidden: return await it.followup.send("❌ 역할을 부여할 권한이 없습니다(봇 역할을 '예비'보다 위로).", ephemeral=True)
+    stamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
+    db["uid"][uid] = str(유저.id); db.setdefault("nick", {})[uid] = name
+    res[uid] = {"name": name, "did": str(유저.id), "memo": 메모.strip()[:100], "t": stamp, "by": str(it.user.id)}; db_save(db)
+    await it.followup.send(f"✅ {유저.mention} 예비 등록 완료 — **{name}** · CID `{uid}`" + (f" · 메모: {메모.strip()}" if 메모.strip() else "") + "\n도감·추천덱 등 서비스를 이용할 수 있습니다. 정규 편입은 `/예비 해제` 후 인증하기로 진행하세요." + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
+
+
 @bot.tree.command(name="외교관패널", description="외교관 등록 버튼 패널을 이 채널에 게시합니다")
 @admin
 async def dip_panel(it: discord.Interaction):
@@ -933,7 +979,7 @@ async def pm_setup_guild(gid):
     g = bot.get_guild(gid)
     if g is None: return "봇이 서버에 없어 역할을 만들지 못했습니다."
     made, fail = [], []
-    for nm in (MEMBER_ROLE, OFFICER_ROLE, DIPLOMAT_ROLE):
+    for nm in (MEMBER_ROLE, OFFICER_ROLE, DIPLOMAT_ROLE, RESERVE_ROLE):
         if discord.utils.get(g.roles, name=nm): continue
         try: await g.create_role(name=nm, reason="제작자 승인 — 기본 역할 생성"); made.append(nm)
         except Exception: fail.append(nm)
