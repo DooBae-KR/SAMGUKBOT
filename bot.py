@@ -3,7 +3,7 @@
 - UID를 엑셀 명단과 대조해 검증 → 별명을 [직업]닉네임 으로 변경 → 역할(동맹원/간부) 부여
 """
 import urllib.parse, urllib.error, urllib.request, hmac, hashlib, unicodedata
-import base64, tempfile, os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue, contextvars
+import uuid, base64, tempfile, os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue, contextvars
 from aiohttp import web
 from pathlib import Path
 from typing import Optional
@@ -1391,6 +1391,8 @@ async def idle_sweep(g):
 
 @tasks.loop(minutes=60)
 async def idle_loop():
+    try: await strat_sync()
+    except Exception: log.exception("지략가 점검 실패")
     for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):                 # 문의함 채널이 없으면 매시간 다시 만들어 본다(권한을 나중에 준 경우 대비)
         g = bot.get_guild(gid)
         if g is None: continue
@@ -2864,7 +2866,7 @@ def _reco_page_core(did, season, token):
             cards.append({"n": n, "alts": alts[1:], "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "sk": v.get("sk", ""), "sktype": v.get("sktype", ""), "img": imgs["HERO"].get(n, ""), "tac": tac})
         return cards
     rk = [{"name": d["name"], "tier": d.get("tier", ""), "heroes": d["heroes"], "u": len(votes.get(vote_key(season, d["name"]), {}).get("u", [])), "d": len(votes.get(vote_key(season, d["name"]), {}).get("d", [])),
-           "net": score.get(d["name"], 0), "pin": d["name"] in pins, "idx": k, "note": d.get("note", ""), "form": d.get("form", ""),
+           "net": score.get(d["name"], 0), "pin": d["name"] in pins, "idx": k, "note": d.get("note", ""), "form": d.get("form", ""), "slots": d["heroes"], "tc": next((r[1] for r in d.get("rows", []) if r[0] == "전법"), []),
            "cards": deck_cards(d)} for k, d in enumerate(decks)]
     rk.sort(key=lambda x: (-x["net"], -x["u"], x["idx"]))
     pre = f"T{season}|"; tacs = []
@@ -2890,7 +2892,7 @@ def _reco_page_core(did, season, token):
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}}, "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}}, "stone": stone}, None
 
 
 def reco_page_data(did, season, token):
@@ -2913,6 +2915,136 @@ async def web_reco(request):
     data, err = await asyncio.to_thread(reco_page_data, did, season, request.query["t"])
     import reco_web
     return web.Response(text=reco_web.render(data, err), content_type="text/html", headers={"Cache-Control": "no-store"})
+
+
+# ---------- 공유마켓(편성대 공유) · 지략가 ----------
+MARKET_PATH = Path(os.environ.get("MARKET_PATH", "market.json"))
+STRAT_ROLE = "지략가"
+MK_MAX_POSTS = 5
+_mk_lock = threading.Lock()
+
+
+def _mk_get():
+    tok = _CTX.set(GUILD_ID)                                  # 모든 서버가 한 곳(홈 서버 저장소)을 함께 쓴다
+    try: return store_get("market", MARKET_PATH, {}) or {}
+    finally: _CTX.reset(tok)
+
+
+def _mk_set(d):
+    tok = _CTX.set(GUILD_ID)
+    try: store_set("market", MARKET_PATH, d)
+    finally: _CTX.reset(tok)
+
+
+def mk_clean(raw, hd, skd, season):
+    """편성(5부대×장수3×전법2) 검증. 장수·전법은 한 번 쓰면 다른 부대에서 쓸 수 없다. → (정리된 부대 목록, 오류문)"""
+    if not isinstance(raw, list) or not raw: return None, "편성이 비어 있습니다"
+    seenh, seens, out = set(), set(), []
+    for u in raw[:5]:
+        hs = [str(x)[:30] if x else "" for x in ((u or {}).get("h") or [])[:3]]; hs += [""] * (3 - len(hs))
+        ts = (u or {}).get("t") or []; row = []
+        for k, h in enumerate(hs):
+            if h:
+                v = hd.get(h)
+                if not v or h in NOT_USED or v.get("season", 1) > season: return None, f"쓸 수 없는 장수: {h}"
+                if h in seenh: return None, f"장수 중복: {h} (한 번 쓴 장수는 다른 부대에서 쓸 수 없습니다)"
+                seenh.add(h)
+            tl = []
+            for t in (ts[k] if k < len(ts) and isinstance(ts[k], list) else [])[:2]:
+                t = str(t)[:30]
+                if not t: continue
+                if not h: return None, "장수가 없는 칸에는 전법을 넣을 수 없습니다"
+                if t not in skd or skd[t].get("season", 1) > season: return None, f"쓸 수 없는 전법: {t}"
+                if _nk(t) in seens: return None, f"전법 중복: {t} (한 번 쓴 전법은 다른 부대에서 쓸 수 없습니다)"
+                seens.add(_nk(t)); tl.append(t)
+            row.append(tl)
+        out.append({"h": hs, "t": row})
+    if not seenh: return None, "장수를 한 명 이상 넣어 주세요"
+    return out, None
+
+
+def mk_data(cid):
+    """마켓 글 목록 + 지략가 랭킹(받은 좋아요 합계). 글마다 내가 눌렀는지·내 글인지 표시."""
+    d = _mk_get(); posts, likes = d.get("posts") or {}, d.get("likes") or {}
+    tot = {}
+    for pid, p in posts.items(): tot.setdefault(p["cid"], {"by": p.get("by", ""), "likes": 0, "posts": 0}); tot[p["cid"]]["likes"] += len(likes.get(pid, [])); tot[p["cid"]]["posts"] += 1; tot[p["cid"]]["by"] = p.get("by", tot[p["cid"]]["by"])
+    rk = sorted(tot.items(), key=lambda kv: (-kv[1]["likes"], -kv[1]["posts"], kv[0]))
+    top3 = {c for c, v in rk[:3] if v["likes"] > 0}
+    out = [{"id": pid, "by": p.get("by", ""), "title": p.get("title", ""), "note": p.get("note", ""), "season": p.get("season", 1), "ts": p.get("ts", 0), "units": p.get("units", []),
+            "likes": len(likes.get(pid, [])), "liked": cid in likes.get(pid, []), "mine": p["cid"] == cid, "strat": p["cid"] in top3} for pid, p in posts.items()]
+    out.sort(key=lambda x: (-x["likes"], -x["ts"]))
+    return {"posts": out[:300], "rank": [{"by": v["by"], "likes": v["likes"], "posts": v["posts"], "strat": c in top3, "me": c == cid} for c, v in rk[:20]], "max": MK_MAX_POSTS}
+
+
+def mk_post(did, b, hd, skd):
+    cid = _my_cid(did)
+    if not cid: return "인증된 CID가 없습니다"
+    season = 2 if b.get("season") == 2 else 1
+    units, err = mk_clean(b.get("units"), hd, skd, season)
+    if err: return err
+    title = re.sub(r"\s+", " ", str(b.get("title", ""))).strip()[:24]
+    if not title: return "제목을 입력해 주세요"
+    with _mk_lock:
+        d = _mk_get(); posts = dict(d.get("posts") or {})
+        if sum(1 for p in posts.values() if p["cid"] == cid) >= MK_MAX_POSTS: return f"편성은 최대 {MK_MAX_POSTS}개까지 올릴 수 있습니다. 하나를 삭제해 주세요"
+        by = (roster.by_uid.get(cid) or {}).get("name") or "익명"
+        pid = uuid.uuid4().hex[:8]
+        posts[pid] = {"cid": cid, "by": by, "gid": cur_gid(), "season": season, "title": title, "note": str(b.get("note", ""))[:120], "units": units, "ts": int(time.time())}
+        d["posts"] = posts; _mk_set(d)
+    return None
+
+
+def mk_del(did, pid):
+    cid = _my_cid(did)
+    with _mk_lock:
+        d = _mk_get(); posts = dict(d.get("posts") or {}); p = posts.get(pid)
+        if not p or p["cid"] != cid: return "내 글만 삭제할 수 있습니다"
+        posts.pop(pid); lk = dict(d.get("likes") or {}); lk.pop(pid, None); d["posts"], d["likes"] = posts, lk; _mk_set(d)
+    return None
+
+
+def mk_like(did, pid):
+    cid = _my_cid(did)
+    if not cid: return "인증된 CID가 없습니다"
+    with _mk_lock:
+        d = _mk_get(); p = (d.get("posts") or {}).get(pid)
+        if not p: return "없는 글입니다"
+        if p["cid"] == cid: return "내 글에는 추천할 수 없습니다"
+        lk = dict(d.get("likes") or {}); cur = list(lk.get(pid, []))
+        cur = [x for x in cur if x != cid] if cid in cur else cur + [cid]; lk[pid] = cur; d["likes"] = lk; _mk_set(d)
+    return None
+
+
+_strat_busy = asyncio.Lock()
+
+
+async def strat_sync():
+    """지략가(TOP3) 역할을 모든 서버에서 맞춘다: TOP3에게 부여, 그 외에게서 회수."""
+    if _strat_busy.locked(): return
+    async with _strat_busy:
+        d = await asyncio.to_thread(_mk_get); posts, likes = d.get("posts") or {}, d.get("likes") or {}
+        tot = {}
+        for pid, p in posts.items(): tot[p["cid"]] = tot.get(p["cid"], 0) + len(likes.get(pid, []))
+        top = [c for c, n in sorted(tot.items(), key=lambda kv: (-kv[1], kv[0]))[:3] if n > 0]
+        for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):
+            g = bot.get_guild(gid)
+            if g is None: continue
+            tok = _CTX.set(gid)
+            try:
+                uid = (await asyncio.to_thread(db_load)).get("uid") or {}
+                want = {int(uid[c]) for c in top if c in uid and str(uid[c]).isdigit()}
+                role = discord.utils.get(g.roles, name=STRAT_ROLE)
+                if role is None:
+                    if not want: continue
+                    role = await g.create_role(name=STRAT_ROLE, colour=discord.Colour.gold(), reason="지략가 TOP3")
+                for m in list(role.members):
+                    if m.id not in want: await m.remove_roles(role, reason="지략가 TOP3 변동")
+                for mid in want:
+                    m = g.get_member(mid)
+                    if m and role not in m.roles: await m.add_roles(role, reason="지략가 TOP3")
+            except Exception: log.exception("지략가 역할 동기화 실패 %s", gid)
+            finally: _CTX.reset(tok)
+
 
 
 async def web_reco_api(request):
@@ -2967,6 +3099,18 @@ async def web_reco_api(request):
         if err: return web.json_response({"ok": False, "error": err}, status=400)
         if any("없는" in l and "이름" in l for l in lines): return web.json_response({"ok": False, "error": "없는 이름입니다"}, status=400)
         return web.json_response({"ok": True})
+    elif op in ("mk_post", "mk_del", "mk_like", "mk_list", "draft"):
+        hd, skd = reco_defs()
+        if op == "mk_post": err = await asyncio.to_thread(mk_post, did, b, hd, skd)
+        elif op == "mk_del": err = await asyncio.to_thread(mk_del, did, str(b.get("id", "")))
+        elif op == "mk_like": err = await asyncio.to_thread(mk_like, did, str(b.get("id", "")))
+        elif op == "draft":
+            units, err = mk_clean(b.get("units"), hd, skd, season) if b.get("units") else ([], None)
+            if not err: await asyncio.to_thread(pref_set, did, draft={str(season): units})
+        else: err = None
+        if err: return web.json_response({"ok": False, "error": err}, status=400)
+        if op in ("mk_post", "mk_like", "mk_del"): asyncio.create_task(strat_sync())
+        return web.json_response({"ok": True, "mk": await asyncio.to_thread(mk_data, _my_cid(did))})
     elif op == "pin":
         name = str(b.get("deck", "")); names = {d["name"] for d in tier_data()["S1" if season == 1 else "S2"]}
         if name not in names: return web.json_response({"ok": False, "error": "없는 덱"}, status=400)
