@@ -42,7 +42,7 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
 .bs img{pointer-events:none;-webkit-user-drag:none}.dgh{position:fixed;z-index:120;pointer-events:none;background:var(--jade);color:#06231c;font-weight:700;border-radius:8px;padding:5px 10px;font-size:13px;box-shadow:0 6px 18px rgba(0,0,0,.35);opacity:.95}.bs.dsrc{opacity:.35}.bs.dz{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold);background:rgba(240,199,94,.15)}body.dragging{user-select:none;-webkit-user-select:none;cursor:grabbing}.bs[data-tu],.bs[data-du]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}.dh{font-size:11px}
 .shm{position:fixed;inset:0;z-index:130;background:rgba(0,0,0,.7);overflow:auto;padding:14px}.shb{max-width:760px;margin:0 auto;background:var(--card);border-radius:12px;padding:12px}.shb img{width:100%;border-radius:8px;margin-top:8px;display:block}
 .kw{display:block;font-size:10px;color:var(--gold)}.picker{display:flex;flex-direction:column;overflow:hidden!important;max-height:62vh}.picker>.bar{flex:none;margin:0 0 6px}#pdet{flex:none}#pl{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:2px}.pdet.empty{text-align:center;padding:10px}.pdet{background:var(--card);border:1px solid var(--jade);border-radius:10px;padding:8px;margin:6px 0}.pdet .dsc{font-size:12.5px;line-height:1.5;margin:4px 0}.oc.pd{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold)}.picker{position:sticky;top:0;z-index:5;background:var(--bg);border:2px solid var(--jade);border-radius:12px;padding:8px;margin-bottom:12px;}
-.hchips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.hchip{position:relative;display:inline-block}.hchip .th{width:34px;height:42px;border-radius:6px;object-fit:cover;display:block}.hchip .ct{position:absolute;right:0;bottom:0;background:#0d7a66;color:#fff;font-style:normal;font-size:10px;font-weight:700;padding:0 4px;border-radius:6px 0 6px 0}.ans{border-top:1px dashed var(--line);margin-top:10px;padding-top:8px}.ans.ad{background:rgba(13,122,102,.07);border-radius:8px;padding:8px}.ansb{border:2px solid #0d7a66}
+.hchips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.hchip{position:relative;display:inline-block}.hchip .th{width:34px;height:42px;border-radius:6px;object-fit:cover;display:block}.hchip .ct{position:absolute;right:0;bottom:0;background:#0d7a66;color:#fff;font-style:normal;font-size:10px;font-weight:700;padding:0 4px;border-radius:6px 0 6px 0}.ans{border-top:1px dashed var(--line);margin-top:10px;padding-top:8px}.ans.ad{background:rgba(13,122,102,.07);border-radius:8px;padding:8px}.ansb{border:2px solid #0d7a66}.fmr{display:flex;align-items:center;gap:8px;margin:6px 0}.stsel{width:100%;min-width:0}
 .mk .nm{font-size:15px}.strat{background:#f0c75e;color:#2b2000;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700}.mu{display:grid;grid-template-columns:22px repeat(3,minmax(0,1fr));gap:6px;align-items:start;margin-top:5px}.badge.s{padding:0 6px;text-align:center;height:20px}.mh{display:flex;gap:5px;font-size:12px;min-width:0}.mh .th{flex:none}.mh.no .th{opacity:.45}.mt{font-size:11px;color:var(--jade);line-height:1.3}.mt.no{color:var(--mute);text-decoration:line-through}.x1{color:#c0504d;font-size:10px}.vb:disabled{opacity:.5;cursor:default}
 @media(max-width:760px){.mu{grid-template-columns:18px repeat(3,minmax(0,1fr));gap:3px}.mh{flex-direction:column;gap:2px}.bs{padding:3px;font-size:11px;flex-direction:column;align-items:flex-start;gap:2px}.bs .x{position:absolute;top:0;right:0}.picker{max-height:66vh}}
 .fr{width:100%;height:78vh;border:1px solid var(--line);border-radius:12px;background:#fff}.vs{width:2px;height:24px;background:var(--line);margin:0 2px}.tab.late{background:#f7f2e4}.tab.mt,.tab.lt{font-weight:700;background:var(--card2)}.tab.lt{background:#efe6c8}.mo{font-weight:700}
@@ -147,22 +147,25 @@ function toggleLate(){LATE=!LATE;try{sessionStorage.setItem('rlate',LATE?'1':'0'
 
 // ---------- 편성기 · 공유마켓 · 지략가 ----------
 const HM=Object.fromEntries(D.all.h.map(h=>[h.n,h])),SM=Object.fromEntries(D.all.s.map(x=>[x.n,x])),SNK=Object.fromEntries(D.all.s.map(x=>[x.n.replace(/[\s·\-]/g,''),x.n]));
-const T0=()=>({h:['','',''],t:[['',''],['',''],['','']]});
-let BLD=(D.draft||[]).map(u=>({h:[...u.h],t:[0,1,2].map(k=>{const a=[...((u.t||[])[k]||[])];while(a.length<2)a.push('');return a})}));while(BLD.length<5)BLD.push(T0());
+const STS=['무력','지력','통솔','민첩'];
+const T0=()=>({h:['','',''],t:[['',''],['',''],['','']],f:'',s:['','','']});
+const mkU=u=>({h:[...u.h],t:[0,1,2].map(k=>{const a=[...((u.t||[])[k]||[])];while(a.length<2)a.push('');return a}),f:u.f||'',s:[0,1,2].map(k=>(u.s||[])[k]||'')});
+const ser=u=>({h:u.h,t:u.t.map(a=>a.filter(Boolean)),f:u.f||'',s:u.s.map((x,k)=>u.h[k]?x:'')});
+let BLD=(D.draft||[]).map(mkU);while(BLD.length<5)BLD.push(T0());
 let PK=null,PQ='',MS='like',MF=false,MT='',MN='',SVT=null;
 let ANS=null,MY=null,MKT='req',EXP=new Set(),RT='',RN='',AN='';
 const ownH=()=>ANS?ANS.h:(OWNS?OWNS.h:new Set(D.own.h)),ownS=()=>ANS?ANS.s:(OWNS?OWNS.s:new Set(D.own.s));
 const usedH=()=>new Set(BLD.flatMap(u=>u.h).filter(Boolean)),usedS=()=>new Set(BLD.flatMap(u=>u.t.flat()).filter(Boolean));
 const imj=(b,c)=>b?`<img class="${c}" src="data:image/jpeg;base64,${b}">`:'';
-function saveDraft(){if(ANS)return;clearTimeout(SVT);SVT=setTimeout(()=>{fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(u=>({h:u.h,t:u.t.map(a=>a.filter(Boolean))})):null})}).catch(()=>{})},700)}
+function saveDraft(){if(ANS)return;clearTimeout(SVT);SVT=setTimeout(()=>{fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(ser):null})}).catch(()=>{})},700)}
 async function mpost(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return false}if(j.mk)D.mk=j.mk;return true}catch(e){alert('네트워크 오류');return false}}
 function pick(u,k,kind,j){PD=null;PK={u,k,kind,j};PQ='';draw()}
 function setPQ(v){PQ=v;const e=document.getElementById('pl');if(e)e.innerHTML=pickBody()}
 function assign(name){PD=null;const p=PK;if(!p)return;const u=BLD[p.u];if(p.kind==='h')u.h[p.k]=name;else u.t[p.k][p.j]=name;PK=null;saveDraft();const y=scrollY;draw();scrollTo(0,y)}
-function clr(u,k,kind,j){if(kind==='h'){BLD[u].h[k]='';BLD[u].t[k]=['','']}else BLD[u].t[k][j]='';PK=null;saveDraft();draw()}
+function clr(u,k,kind,j){if(kind==='h'){BLD[u].h[k]='';BLD[u].t[k]=['',''];BLD[u].s[k]=''}else BLD[u].t[k][j]='';PK=null;saveDraft();draw()}
 function clearAll(){if(!confirm('5부대를 모두 비울까요?'))return;BLD=[0,1,2,3,4].map(T0);PK=null;saveDraft();draw()}
-function fillTier(u,name){const d=D.rank.decks.find(x=>x.name===name);if(!d)return;const o=BLD[u];BLD[u]=T0();const uh=usedH(),us=usedS(),oh=ownH(),os=ownS();
-  d.slots.forEach((slot,k)=>{const h=slot.split('/').find(x=>oh.has(x)&&!uh.has(x)&&HM[x]&&(HM[x].season||1)<=D.season);if(!h)return;BLD[u].h[k]=h;uh.add(h);
+function fillTier(u,name){const d=D.rank.decks.find(x=>x.name===name);if(!d)return;const o=BLD[u];BLD[u]=T0();BLD[u].f=(d.form||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진'}[x.trim()]||x.trim())).find(x=>D.forms[x])||'';const uh=usedH(),us=usedS(),oh=ownH(),os=ownS();
+  d.slots.forEach((slot,k)=>{const h=slot.split('/').find(x=>oh.has(x)&&!uh.has(x)&&HM[x]&&(HM[x].season||1)<=D.season);if(!h)return;BLD[u].h[k]=h;uh.add(h);BLD[u].s[k]=STS.find(x=>(((((d.heroes||[])[k]||{}).ti||{})['스탯']||[]).join(' ')).includes(x))||'';
     ((d.tc||[])[k]||[]).slice(0,2).forEach((cell,j)=>{const t=cell.split(/[>\/]/).map(x=>SNK[x.trim().replace(/[\s·\-]/g,'')]).find(x=>x&&os.has(x)&&!us.has(x)&&(SM[x].season||1)<=D.season);if(t){BLD[u].t[k][j]=t;us.add(t)}})});
   saveDraft();draw()}
 function slotH(u,k){const n=BLD[u].h[k],on=PK&&PK.u===u&&PK.k===k&&PK.kind==='h';
@@ -225,6 +228,8 @@ function autoCompose(){const ds=D.rank.decks.slice().sort((a,b)=>tierNum(a.tier)
     u.src=d.name;res.push(u)}
   while(res.length<5)res.push(T0());BLD=res.slice(0,5);saveDraft();draw()}
 
+function setF(i,v){BLD[i].f=v;saveDraft();draw()}
+function setS(i,k,v){BLD[i].s[k]=v;saveDraft()}
 function resetUnit(i){if(!BLD[i].h.some(Boolean)||confirm(`${i+1}부대를 초기화할까요?`)){BLD[i]=T0();PK=null;saveDraft();draw()}}
 // ---- 끌어서 옮기기(마우스 즉시 / 터치 길게 누르기) ----
 let DR=null,SUP=0;
@@ -241,7 +246,7 @@ document.addEventListener('touchmove',e=>{if(DR&&DR.on)e.preventDefault()},{pass
 function drEnd(e,cancel){if(!DR)return;clearTimeout(DR.timer);const d=DR;DR=null;if(!d.on)return;d.g.remove();document.body.classList.remove('dragging');document.querySelectorAll('.dz,.dsrc').forEach(x=>x.classList.remove('dz','dsrc'));SUP=Date.now();if(cancel)return;
   const t=drTarget(e.clientX,e.clientY,d.src.kind);if(!t)return;const a=d.src,b=t.t;if(a.u===b.u&&a.k===b.k&&(a.kind==='h'||a.j===b.j))return;
   if(a.kind==='t'){const x=BLD[a.u].t[a.k][a.j];BLD[a.u].t[a.k][a.j]=BLD[b.u].t[b.k][b.j];BLD[b.u].t[b.k][b.j]=x}
-  else{const h=BLD[a.u].h[a.k],tt=BLD[a.u].t[a.k];BLD[a.u].h[a.k]=BLD[b.u].h[b.k];BLD[a.u].t[a.k]=BLD[b.u].t[b.k];BLD[b.u].h[b.k]=h;BLD[b.u].t[b.k]=tt}
+  else{const h=BLD[a.u].h[a.k],tt=BLD[a.u].t[a.k],ss=BLD[a.u].s[a.k];BLD[a.u].h[a.k]=BLD[b.u].h[b.k];BLD[a.u].t[a.k]=BLD[b.u].t[b.k];BLD[a.u].s[a.k]=BLD[b.u].s[b.k];BLD[b.u].h[b.k]=h;BLD[b.u].t[b.k]=tt;BLD[b.u].s[b.k]=ss}
   saveDraft();draw()}
 document.addEventListener('pointerup',e=>drEnd(e,false));document.addEventListener('pointercancel',e=>drEnd(e,true));
 document.addEventListener('click',e=>{if(Date.now()-SUP<350){e.stopPropagation();e.preventDefault()}},true);
@@ -254,10 +259,10 @@ async function shareImg(){if(!BLD.some(u=>u.h.some(Boolean))){alert('편성이 �
   x.fillStyle='#fff';x.font=`800 38px ${F}`;x.fillText((MT.trim()||'내 5부대 편성'),30,50);x.font=`500 20px ${F}`;x.fillStyle='rgba(255,255,255,.85)';x.fillText(`${D.who} · 시즌${D.season} · 삼국지 천하결전 동맹 봇`,30,80);
   for(let i=0;i<5;i++){const y=108+i*RH;x.fillStyle='#16262a';rr(x,14,y,W-28,RH-10,16);x.fill();x.strokeStyle='#2b4448';x.lineWidth=2;x.stroke();
     x.fillStyle='#f0c75e';rr(x,28,y+12,74,30,15);x.fill();x.fillStyle='#2b2000';x.font=`800 18px ${F}`;x.textAlign='center';x.fillText(`${i+1}부대`,65,y+33);x.textAlign='left';
-    if(BLD[i].src){x.fillStyle='#8fa8a3';x.font=`500 16px ${F}`;x.fillText(BLD[i].src+' 기준',112,y+33)}
+    {const lb=[BLD[i].src?BLD[i].src+' 기준':'',BLD[i].f?'진형 '+BLD[i].f:''].filter(Boolean).join(' · ');if(lb){x.fillStyle='#8fa8a3';x.font=`500 16px ${F}`;x.fillText(lb,112,y+33)}}
     for(let k=0;k<3;k++){const n=BLD[i].h[k],ox=28+k*350;if(!n){x.fillStyle='#223338';rr(x,ox,y+50,330,100,10);x.fill();continue}
       const im=await loadImg((HM[n]||{}).img2||(HM[n]||{}).img);if(im){x.save();rr(x,ox,y+48,84,106,10);x.clip();x.drawImage(im,ox,y+48,84,106);x.restore()}
-      x.fillStyle='#e8efe9';x.font=`800 24px ${F}`;x.fillText(n,ox+96,y+70);const nw=x.measureText(n).width;x.fillStyle='#8fa8a3';x.font=`500 15px ${F}`;x.fillText([(HM[n]||{}).nation,(HM[n]||{}).troop].filter(Boolean).join('·'),ox+96+nw+8,y+70);
+      x.fillStyle='#e8efe9';x.font=`800 24px ${F}`;x.fillText(n,ox+96,y+70);const nw=x.measureText(n).width;x.fillStyle='#8fa8a3';x.font=`500 15px ${F}`;x.fillText([(HM[n]||{}).nation,(HM[n]||{}).troop,BLD[i].s[k]?'스탯 '+BLD[i].s[k]:''].filter(Boolean).join('·'),ox+96+nw+8,y+70);
       for(let j=0;j<2;j++){const t=BLD[i].t[k][j];if(!t)continue;const ti=await loadImg((SM[t]||{}).img2||(SM[t]||{}).img),yy=y+108+j*34;if(ti){x.save();rr(x,ox+96,yy-17,28,28,6);x.clip();x.drawImage(ti,ox+96,yy-17,28,28);x.restore()}
         x.fillStyle='#5fcfb1';x.font=`600 18px ${F}`;x.fillText(t,ox+132,yy+4)}}}
   x.fillStyle='#8fa8a3';x.font=`500 16px ${F}`;x.fillText('한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없음 · 무소유',30,H-20);
@@ -265,7 +270,8 @@ async function shareImg(){if(!BLD.some(u=>u.h.some(Boolean))){alert('편성이 �
 function rr(x,a,b,w,h,r){x.beginPath();x.moveTo(a+r,b);x.arcTo(a+w,b,a+w,b+h,r);x.arcTo(a+w,b+h,a,b+h,r);x.arcTo(a,b+h,a,b,r);x.arcTo(a,b,a+w,b,r);x.closePath()}
 function build(){const dk=D.rank.decks.slice().sort((a,b)=>a.idx-b.idx);
   const units=BLD.map((u,i)=>`<div class="unit"><div class="uh"><span class="badge">${i+1}부대</span>${BLD[i].src?`<span class="m">${esc((D.rank.decks.find(x=>x.name===BLD[i].src)||{}).tier||'')} <b>${esc(BLD[i].src)}</b> 기준</span>`:''}<select class="sq" onchange="if(this.value){fillTier(${i},this.value);}this.value=''"><option value="">티어덱 불러오기…</option>${dk.map(d=>`<option value="${esc(d.name)}">${esc(d.tier)} ${esc(d.name)}</option>`).join('')}</select><button class="sbtn" onclick="resetUnit(${i})">↺ 부대 초기화</button><span class="m dh">⠿ 장수·전법을 끌어서 옮기기(모바일은 길게 누르기)</span></div>
-    <div class="hs">${[0,1,2].map(k=>slotH(i,k)).join('')}</div>${[0,1].map(j=>`<div class="hs trow">${[0,1,2].map(k=>slotT(i,k,j)).join('')}</div>`).join('')}</div>`).join('');
+    <div class="hs fmr"><span class="m">진형</span><select class="sq" onchange="setF(${i},this.value)"><option value="">진형 선택…</option>${Object.keys(D.forms).map(n=>`<option ${u.f===n?'selected':''}>${esc(n)}</option>`).join('')}</select>${u.f?fm(u.f):''}</div>
+    <div class="hs">${[0,1,2].map(k=>slotH(i,k)).join('')}</div><div class="hs trow">${[0,1,2].map(k=>BLD[i].h[k]?`<select class="sq stsel" onchange="setS(${i},${k},this.value)"><option value="">스탯 투자…</option>${STS.map(x=>`<option ${u.s[k]===x?'selected':''}>${x}</option>`).join('')}</select>`:'<div></div>').join('')}</div>${[0,1].map(j=>`<div class="hs trow">${[0,1,2].map(k=>slotT(i,k,j)).join('')}</div>`).join('')}</div>`).join('');
   const n=BLD.flatMap(u=>u.h).filter(Boolean).length;
   return `<div class="m" style="margin-bottom:8px">내가 <b>보유한</b> 장수·전법으로 5부대를 직접 짭니다. <b>한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없습니다</b>(목록에서 사라짐). 편성은 자동 저장됩니다. 보유 체크는 <b>내 장수·전법</b> 탭에서 합니다.</div>
   ${ANS?`<div class="unit ansb"><div class="uh"><b>✍ 의뢰 답변 작성 중</b><span class="m">‘${esc(ANS.title)}’ · 의뢰자 <b>${esc(ANS.by)}</b>의 보유 장수 ${ANS.h.size}명·전법 ${ANS.s.size}개로만 편성할 수 있습니다</span></div></div>`:''}${picker()}<div class="bar"><button class="sbtn on" onclick="if(confirm('내 보유 장수·전법에 맞춰 티어 순서대로 5부대를 자동 편성합니다. 지금 편성은 덮어씁니다.'))autoCompose()">✨ 내 상황 맞춤 자동 편성 (티어순)</button><span class="m">부족한 자리는 비슷한 보유 장수·같은 계열 전법으로 메웁니다</span></div>${units}${ANS?`<div class="unit"><div class="uh"><b>답변 제출</b><span class="m">장수 ${n}명 · 같은 의뢰에는 한 번만 답변할 수 있고, 다시 제출하면 내 답변이 교체됩니다</span></div>
@@ -274,13 +280,13 @@ function build(){const dk=D.rank.decks.slice().sort((a,b)=>a.idx-b.idx);
   <div class="bar"><input class="sq" style="flex:1;min-width:140px" maxlength="24" placeholder="제목 (예: 도트딜 5부대)" value="${esc(MT)}" oninput="MT=this.value"><input class="sq" style="flex:2;min-width:180px" maxlength="120" placeholder="한 줄 설명 (선택)" value="${esc(MN)}" oninput="MN=this.value"></div>
   <div class="bar"><button class="sbtn on" onclick="postMk()">🛒 마켓에 올리기</button><button class="sbtn" onclick="shareImg()">📷 공유하기(이미지)</button><button class="sbtn" onclick="clearAll()">⟲ 전체 초기화</button></div></div>`}`}
 async function postMk(){if(!BLD.some(u=>u.h.some(Boolean))){alert('장수를 한 명 이상 넣어 주세요');return}if(!MT.trim()){alert('제목을 입력해 주세요');return}
-  if(await mpost({op:'mk_post',title:MT,note:MN,units:BLD.map(u=>({h:u.h,t:u.t.map(a=>a.filter(Boolean))}))})){MT='';MN='';alert('마켓에 올렸습니다');setTab('market')}}
+  if(await mpost({op:'mk_post',title:MT,note:MN,units:BLD.map(ser)})){MT='';MN='';alert('마켓에 올렸습니다');setTab('market')}}
 async function likeMk(id){if(await mpost({op:'mk_like',id})){const y=scrollY;draw();scrollTo(0,y)}}
 async function delMk(id){if(!confirm('이 편성을 삭제할까요? (받은 추천도 사라집니다)'))return;if(await mpost({op:'mk_del',id}))draw()}
 function mkStat(p){const oh=ownH(),os=ownS();let a=0,b=0;p.units.forEach(u=>u.h.forEach((h,k)=>{if(h){b++;if(oh.has(h))a++;(u.t[k]||[]).forEach(t=>{b++;if(os.has(t))a++})}}));return[a,b]}
-function unitsHtml(units,own){const oh=ownH(),os=ownS();return units.map((u,i)=>`<div class="mu"><span class="badge s">${i+1}</span>${[0,1,2].map(k=>{const h=u.h[k];if(!h)return'<div class="mh"></div>';const hv=own?true:oh.has(h);return `<div class="mh ${hv?'':'no'}">${imj((HM[h]||{}).img,'th')}<div><b>${esc(h)}</b>${hv?'':' <span class="x1">미보유</span>'}${(u.t[k]||[]).map(t=>`<div class="mt ${own||os.has(t)?'':'no'}">${own||os.has(t)?'✓':'✗'} ${esc(t)}</div>`).join('')}</div></div>`}).join('')}</div>`).join('')}
+function unitsHtml(units,own){const oh=ownH(),os=ownS();return units.map((u,i)=>`${u.f?`<div class="m" style="margin-top:6px">${i+1}부대 진형 ${fm(u.f)}</div>`:''}<div class="mu"><span class="badge s">${i+1}</span>${[0,1,2].map(k=>{const h=u.h[k];if(!h)return'<div class="mh"></div>';const hv=own?true:oh.has(h);return `<div class="mh ${hv?'':'no'}">${imj((HM[h]||{}).img,'th')}<div><b>${esc(h)}</b>${(u.s||[])[k]?` <span class="m">· ${esc(u.s[k])}</span>`:''}${hv?'':' <span class="x1">미보유</span>'}${(u.t[k]||[]).map(t=>`<div class="mt ${own||os.has(t)?'':'no'}">${own||os.has(t)?'✓':'✗'} ${esc(t)}</div>`).join('')}</div></div>`}).join('')}</div>`).join('')}
 function loadFrom(units){if(!confirm('내 편성기에 가져옵니다. 보유하지 않은 장수·전법은 빈 칸이 되며 지금 편성은 덮어씁니다. 계속할까요?'))return;
-  const oh=ownH(),os=ownS(),uh=new Set(),us=new Set();BLD=units.map(u=>{const o=T0();[0,1,2].forEach(k=>{const h=u.h[k];if(h&&oh.has(h)&&!uh.has(h)){o.h[k]=h;uh.add(h);(u.t[k]||[]).slice(0,2).forEach((t,j)=>{if(os.has(t)&&!us.has(t)){o.t[k][j]=t;us.add(t)}})}});return o});while(BLD.length<5)BLD.push(T0());saveDraft();setTab('build')}
+  const oh=ownH(),os=ownS(),uh=new Set(),us=new Set();BLD=units.map(u=>{const o=T0();o.f=u.f||'';[0,1,2].forEach(k=>{const h=u.h[k];if(h&&oh.has(h)&&!uh.has(h)){o.h[k]=h;o.s[k]=(u.s||[])[k]||'';uh.add(h);(u.t[k]||[]).slice(0,2).forEach((t,j)=>{if(os.has(t)&&!us.has(t)){o.t[k][j]=t;us.add(t)}})}});return o});while(BLD.length<5)BLD.push(T0());saveDraft();setTab('build')}
 function loadMk(id){const p=D.mk.posts.find(x=>x.id===id);if(p)loadFrom(p.units)}
 function loadAns(rid,aid){const r=D.mk.reqs.find(x=>x.id===rid),a=r&&r.ans.find(x=>x.id===aid);if(a)loadFrom(a.units)}
 const sb=p=>p.strat?' <span class="strat">🧠 지략가</span>':'';
@@ -291,10 +297,10 @@ async function delAns(id){if(!confirm('내 답변을 삭제할까요?'))return;i
 async function adopt(rid,aid){if(await mpost({op:'rq_adopt',rid,aid})){const y=scrollY;draw();scrollTo(0,y)}}
 function togReq(id){EXP.has(id)?EXP.delete(id):EXP.add(id);const y=scrollY;draw();scrollTo(0,y)}
 function startAns(rid){const r=D.mk.reqs.find(x=>x.id===rid);if(!r)return;MY=BLD;const old=r.ans.find(a=>a.mine);
-  ANS={rid,title:r.title,by:r.by,h:new Set(r.own.h),s:new Set(r.own.s),tr:r.own.tr||{}};BLD=(old?old.units:[]).map(u=>({h:[...u.h],t:[0,1,2].map(k=>{const a=[...((u.t||[])[k]||[])];while(a.length<2)a.push('');return a})}));while(BLD.length<5)BLD.push(T0());AN=old?old.note:'';PK=null;setTab('build')}
+  ANS={rid,title:r.title,by:r.by,h:new Set(r.own.h),s:new Set(r.own.s),tr:r.own.tr||{}};BLD=(old?old.units:[]).map(mkU);while(BLD.length<5)BLD.push(T0());AN=old?old.note:'';PK=null;setTab('build')}
 function endAns(){ANS=null;BLD=MY||BLD;MY=null;PK=null;draw()}
 async function submitAns(){if(!BLD.some(u=>u.h.some(Boolean))){alert('장수를 한 명 이상 넣어 주세요');return}
-  if(await mpost({op:'ans_post',rid:ANS.rid,note:AN,units:BLD.map(u=>({h:u.h,t:u.t.map(a=>a.filter(Boolean))}))})){alert('답변을 올렸습니다. 의뢰자가 추천·채택하면 지략가 점수가 올라갑니다');AN='';ANS=null;BLD=MY||BLD;MY=null;MKT='req';setTab('market')}}
+  if(await mpost({op:'ans_post',rid:ANS.rid,note:AN,units:BLD.map(ser)})){alert('답변을 올렸습니다. 의뢰자가 추천·채택하면 지략가 점수가 올라갑니다');AN='';ANS=null;BLD=MY||BLD;MY=null;MKT='req';setTab('market')}}
 function reqCard(r){const open=EXP.has(r.id),n=r.ans.length,hs=r.own.h.map(h=>`<span class="hchip" data-tip="${esc(h)}${(r.own.tr||{})[h]?' · 초월 '+r.own.tr[h]:''}">${imj((HM[h]||{}).img,'th')}${(r.own.tr||{})[h]?`<i class="ct">${r.own.tr[h]}</i>`:''}</span>`).join('');
   return `<div class="unit mk ${r.done?'done':''}"><div class="uh"><span class="nm">${r.done?'✅ ':''}${esc(r.title)}</span><span class="m">의뢰 <b>${esc(r.by)}</b>${sb(r)}</span>
     <div class="votes"><span class="m">보유 장수 ${r.own.h.length} · 전법 ${r.own.s.length} · 답변 ${n}</span>${r.mine?`<button class="vb d" onclick="delReq('${r.id}')">삭제</button>`:(r.done?'':`<button class="sbtn on" onclick="startAns('${r.id}')">✍ ${r.ans.some(a=>a.mine)?'내 답변 수정':'편성해주기'}</button>`)}<button class="sbtn" onclick="togReq('${r.id}')">${open?'접기 ▴':`답변 보기 ▾`}</button></div></div>

@@ -2986,7 +2986,11 @@ def mk_clean(raw, hd, skd, season):
                 if _nk(t) in seens: return None, f"전법 중복: {t} (한 번 쓴 전법은 다른 부대에서 쓸 수 없습니다)"
                 seens.add(_nk(t)); tl.append(t)
             row.append(tl)
-        out.append({"h": hs, "t": row})
+        f = str((u or {}).get("f") or "")[:10]
+        if f and f not in formations.FORMS: f = ""
+        st = (u or {}).get("s") or []
+        ss = [(str(st[k]) if k < len(st) and str(st[k]) in ("무력", "지력", "통솔", "민첩") and hs[k] else "") for k in range(3)]
+        out.append({"h": hs, "t": row, "f": f, "s": ss})
     if not seenh: return None, "장수를 한 명 이상 넣어 주세요"
     return out, None
 
