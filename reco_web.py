@@ -158,12 +158,16 @@ function slotT(u,k,j){const n=BLD[u].t[k][j],on=PK&&PK.u===u&&PK.k===k&&PK.kind=
   if(!hh)return`<div class="bs empty dis">전법${j+1}</div>`;
   return n?`<div class="bs t ${on?'sel':''}" onclick="pick(${u},${k},'t',${j})">${imj((SM[n]||{}).img,'ts')}<span>${esc(n)}</span><i class="x" onclick="event.stopPropagation();clr(${u},${k},'t',${j})">✕</i></div>`:`<div class="bs empty ${on?'sel':''}" onclick="pick(${u},${k},'t',${j})">＋ 전법${j+1}</div>`}
 function picker(){if(!PK)return'';const q=PQ.replace(/\s/g,''),GR={'전설':0,'영웅':1};let body='';
-  if(PK.kind==='h'){const uh=usedH(),nu=new Set(D.nu||[]);const l=D.all.h.filter(h=>ownH().has(h.n)&&!uh.has(h.n)&&!nu.has(h.n)&&(h.season||1)<=D.season&&(!q||h.n.includes(q))).sort((a,b)=>a.n.localeCompare(b.n,'ko'));
-    const NN={'촉':'촉','위':'위','오':'오','군':'군웅'},bt=h=>`<button class="oc hc on" onclick="assign('${esc(h.n)}')">${imj(h.img,'th')}<span class="nm">${esc(h.n)}</span><span class="m">${esc(h.troop)}</span></button>`;
-    body=['촉','위','오','군'].map(nt=>{const g=l.filter(h=>h.nation===nt);return g.length?`<div class="gh">${NN[nt]} (${g.length}명)</div>`+g.map(bt).join(''):''}).join('')+(l.filter(h=>!NN[h.nation]).map(bt).join('')||'')||'<span class="m">쓸 수 있는 보유 장수가 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
-  else{const us=usedS();const l=D.all.s.filter(x=>ownS().has(x.n)&&!us.has(x.n)&&(x.season||1)<=D.season&&(!q||x.n.replace(/\s/g,'').includes(q))).sort((a,b)=>((GR[a.grade]??9)-(GR[b.grade]??9))||a.n.localeCompare(b.n,'ko'));
-    body=l.map(x=>`<button class="oc sc on" onclick="assign('${esc(x.n).replace(/'/g,"\\'")}')">${imj(x.img,'ts')}<span class="nm">${esc(x.n)}</span><span class="m">${esc(x.grade)}·${esc(x.type)}·${esc(x.trait)}</span></button>`).join('')||'<span class="m">쓸 수 있는 보유 전법이 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
-  return `<div class="picker"><div class="bar"><b>${PK.u+1}부대 ${PK.kind==='h'?'장수':'전법'} 고르기</b><input id="pq" class="sq" placeholder="이름 검색" value="${esc(PQ)}" oninput="setPQ(this.value)"><button class="sbtn" onclick="PK=null;draw()">닫기</button></div><div class="ocs">${body}</div></div>`}
+  const grp=(l,key,order,lab)=>{const o=[...order];l.forEach(x=>{const k=key(x);if(!o.includes(k))o.push(k)});return o.map(k=>{const g=l.filter(x=>key(x)===k);return g.length?`<div class="gh">${esc(lab(k))} (${g.length})</div>`+g.map(x=>x._c).join(''):''}).join('')};
+  if(PK.kind==='h'){const uh=usedH(),nu=new Set(D.nu||[]);
+    const l=D.all.h.filter(h=>ownH().has(h.n)&&!uh.has(h.n)&&!nu.has(h.n)&&(h.season||1)<=D.season&&(!q||(h.n+h.nation+h.troop+h.pos).replace(/\s/g,'').includes(q))).sort((a,b)=>a.n.localeCompare(b.n,'ko'))
+      .map(h=>({...h,_c:`<button class="oc hc on" onclick="assign('${esc(h.n)}')">${imj(h.img,'th')}<span class="nm">${esc(h.n)}</span><span class="m">${esc(h.troop)}</span></button>`}));
+    body=grp(l,h=>h.nation||'기타',['촉','위','오','군'],k=>({'군':'군웅'}[k]||k))||'<span class="m">쓸 수 있는 보유 장수가 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
+  else{const us=usedS();
+    const l=D.all.s.filter(x=>ownS().has(x.n)&&!us.has(x.n)&&(x.season||1)<=D.season&&(!q||(x.n+x.trait+x.type+x.grade).replace(/\s/g,'').includes(q))).sort((a,b)=>((GR[a.grade]??9)-(GR[b.grade]??9))||a.n.localeCompare(b.n,'ko'))
+      .map(x=>({...x,_c:`<button class="oc sc on" onclick="assign('${esc(x.n).replace(/'/g,"\\'")}')">${imj(x.img,'ts')}<span class="nm">${esc(x.n)}</span><span class="m">${esc(x.grade)}·${esc(x.type)}</span></button>`}));
+    body=grp(l,x=>x.trait||'기타',['책략','병기','방어','치유','보조','문무'],k=>k)||'<span class="m">쓸 수 있는 보유 전법이 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
+  return `<div class="picker"><div class="bar"><b>${PK.u+1}부대 ${PK.kind==='h'?'장수':'전법'} 고르기</b><input id="pq" class="sq" placeholder="${PK.kind==='h'?'이름·나라·병종 검색':'이름·계열(책략/병기/방어/치유)·종류 검색'}" value="${esc(PQ)}" oninput="setPQ(this.value)"><button class="sbtn" onclick="PK=null;draw()">닫기</button></div><div class="ocs">${body}</div></div>`}
 function build(){const dk=D.rank.decks.slice().sort((a,b)=>a.idx-b.idx);
   const units=BLD.map((u,i)=>`<div class="unit"><div class="uh"><span class="badge">${i+1}부대</span><select class="sq" onchange="if(this.value){fillTier(${i},this.value);}this.value=''"><option value="">티어덱 불러오기…</option>${dk.map(d=>`<option value="${esc(d.name)}">${esc(d.tier)} ${esc(d.name)}</option>`).join('')}</select></div>
     <div class="hs">${[0,1,2].map(k=>slotH(i,k)).join('')}</div>${[0,1].map(j=>`<div class="hs trow">${[0,1,2].map(k=>slotT(i,k,j)).join('')}</div>`).join('')}</div>`).join('');
