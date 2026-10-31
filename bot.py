@@ -1604,6 +1604,12 @@ def invite_url():
     return f"https://discord.com/oauth2/authorize?client_id={bot.user.id}&permissions={INVITE_PERMS}&scope=bot%20applications.commands"
 
 
+async def web_bimg(request):
+    raw = await asyncio.to_thread(img_get, request.match_info.get("iid", ""))
+    if not raw: raise web.HTTPNotFound()
+    return web.Response(body=raw, content_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"})
+
+
 async def web_invite(request):
     u = invite_url()
     if not u: return web.Response(text="봇이 아직 준비 중입니다. 잠시 후 다시 시도해 주세요.", status=503)
@@ -1747,7 +1753,7 @@ async def web_dex_save(request):
     if not pr: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
     set_gid(pr[0]); cid = pr[1]
     clean = lambda v: sorted({str(x)[:30] for x in v if isinstance(x, str)})[:600] if isinstance(v, list) else []
-    def clean_tr(v):   # 초월·스탯 분배: 장수 → {n: 0~5, a:[무력,지력,통솔,선공 분배, 합계 ≤ 50(만렙 기본) + 10×n]}
+    def clean_tr(v):   # 돌·스탯 분배: 장수 → {n: 0~5, a:[무력,지력,통솔,선공 분배, 합계 ≤ 50(만렙 기본) + 10×n]}
         out = {}
         if not isinstance(v, dict): return out
         for k, x in v.items():
@@ -1984,7 +1990,7 @@ async def start_web():
     app = web.Application(); app.router.add_get("/", web_index)
     app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
     app.router.add_get("/admin", web_admin); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
-    app.router.add_get("/invite", web_invite)
+    app.router.add_get("/invite", web_invite); app.router.add_get("/bimg/{iid}", web_bimg)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()
@@ -2749,8 +2755,8 @@ class RecoVote(CtxView):
 
 _HS = {"at": 0.0, "d": {}}
 HERO_GID = os.environ.get("HERO_GID", "817745317")             # 구글 시트 '무장' 탭
-TR_BONUS = 10                                                     # 초월 1단계당 자유 분배 10포인트 (최대 5단계)
-LV_POINTS = 50                                                    # 만렙(50)이면 초월 0이어도 자유 분배 50포인트(10렙마다 10)
+TR_BONUS = 10                                                     # 돌 1단계당 자유 분배 10포인트 (최대 5단계)
+LV_POINTS = 50                                                    # 만렙(50)이면 돌 0이어도 자유 분배 50포인트(10렙마다 10)
 
 
 def hero_stats():
@@ -2784,7 +2790,7 @@ def hero_import(csv_text=None):
 
 
 def hero_eff(names, tr):
-    """부대 장수들의 실제 스탯 = 50렙 기본값 + 초월(단계×10, 각 스탯). → {장수: {atk,intl,lead,init,tr}}"""
+    """부대 장수들의 실제 스탯 = 50렙 기본값 + 돌(단계×10, 각 스탯). → {장수: {atk,intl,lead,init,tr}}"""
     hs, out = hero_stats(), {}
     for n in names:
         b = hs.get(n)
@@ -2883,7 +2889,7 @@ async def reco_deliver(it, did, season, first_edit=False, note=""):
 
 
 def _reco_page_core(did, season, token):
-    """추천덱 HTML 페이지에 쓸 데이터(장수 카드·전법·초월·턴 순서·평가 수·랭킹)."""
+    """추천덱 HTML 페이지에 쓸 데이터(장수 카드·전법·돌·턴 순서·평가 수·랭킹)."""
     err, res, who, deal, hd, skd, tr = reco_run(did, season)
     if err: return None, err
     import reco_img
@@ -2957,7 +2963,7 @@ def _reco_page_core(did, season, token):
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "don": _don_page(), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}}, "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "ally": ally_label(cur_gid()), "don": _don_page(), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}}, "stone": stone}, None
 
 
 def reco_page_data(did, season, token):
@@ -2982,7 +2988,7 @@ async def web_reco(request):
     return web.Response(text=reco_web.render(data, err), content_type="text/html", headers={"Cache-Control": "no-store"})
 
 
-# ---------- 공유마켓(편성대 공유) · 지략가 ----------
+# ---------- 편성대요청(편성 의뢰·완성 편성 공유) · 지략가 ----------
 MARKET_PATH = Path(os.environ.get("MARKET_PATH", "market.json"))
 STRAT_ROLE = "지략가"
 MK_MAX_POSTS = 5
@@ -3038,7 +3044,7 @@ def mk_clean(raw, hd, skd, season, trmap=None):
             x += [0] * (4 - len(x))
             if not hs[k]: x = [0, 0, 0, 0]
             cap = LV_POINTS + TR_BONUS * n
-            if sum(x) > cap: return None, f"{hs[k]}의 스탯 투자가 상한을 넘었습니다 ({sum(x)}/{cap}, 초월 {n}단계)"
+            if sum(x) > cap: return None, f"{hs[k]}의 스탯 투자가 상한을 넘었습니다 ({sum(x)}/{cap}, 돌 {n}단계)"
             aa.append(x); nn.append(n)
         out.append({"h": hs, "t": row, "f": f, "a": aa, "n": nn})
     if not seenh: return None, "장수를 한 명 이상 넣어 주세요"
@@ -3114,15 +3120,15 @@ def mk_data(cid):
     reqs.sort(key=lambda x: (x["done"], -x["ts"]))
     cms = {}
     for k, c in sorted((d.get("bcom") or {}).items(), key=lambda kv: kv[1].get("ts", 0)):
-        cms.setdefault(c["pid"], []).append({"id": k, "by": disp_name(c["cid"], c.get("by", ""), c.get("gid"), vg), "body": c.get("body", ""), "ts": c.get("ts", 0), "mine": c["cid"] == cid})
-    board = [{"id": k, "by": disp_name(p["cid"], p.get("by", ""), p.get("gid"), vg), "title": p.get("title", ""), "body": p.get("body", ""), "ts": p.get("ts", 0), "mine": p["cid"] == cid,
+        cms.setdefault(c["pid"], []).append({"id": k, "by": disp_name(c["cid"], c.get("by", ""), c.get("gid"), vg), "body": c.get("body", ""), "img": c.get("img", ""), "ts": c.get("ts", 0), "mine": c["cid"] == cid})
+    board = [{"id": k, "by": disp_name(p["cid"], p.get("by", ""), p.get("gid"), vg), "title": p.get("title", ""), "body": p.get("body", ""), "img": p.get("img", ""), "ts": p.get("ts", 0), "mine": p["cid"] == cid,
               "likes": len(likes.get(k, [])), "liked": cid in likes.get(k, []), "dis": len(dis.get(k, [])), "disliked": cid in dis.get(k, []), "strat": p["cid"] in top3, "com": cms.get(k, [])}
              for k, p in sorted((d.get("board") or {}).items(), key=lambda kv: -kv[1].get("ts", 0))[:150]]
     return {"board": board, "posts": out[:300], "reqs": reqs[:200], "rank": [{"by": disp_name(c, v["by"], v.get("gid"), vg), "likes": v["likes"], "posts": v["posts"], "adopt": v["adopt"], "score": v["score"], "strat": c in top3, "me": c == cid} for c, v in rk[:20]], "max": MK_MAX_POSTS, "adopt_bonus": ADOPT_BONUS}
 
 
 def rq_post(did, b, hd, skd):
-    """편성 의뢰: 내 보유 장수·전법(+초월)을 첨부해 다른 사람이 5부대를 짜 주게 한다."""
+    """편성 의뢰: 내 보유 장수·전법(+돌)을 첨부해 다른 사람이 5부대를 짜 주게 한다."""
     cid = _my_cid(did)
     if not cid: return "인증된 CID가 없습니다"
     season = 2 if b.get("season") == 2 else 1
@@ -3247,6 +3253,44 @@ def mk_like(did, pid, kind="up"):
 
 
 BD_MAX = 500
+IMG_MAX = 120 * 1024                                         # 게시판 이미지 1장 최대 크기(클라이언트가 줄여서 보냄)
+IMG_DAILY = 5
+
+
+def _img_save(cid, b64, recent_n):
+    """게시판 이미지(JPEG)를 따로 저장하고 id를 돌려준다. → (id, 오류)"""
+    if not b64: return "", None
+    if recent_n >= IMG_DAILY: return "", f"하루에 이미지는 {IMG_DAILY}장까지 올릴 수 있습니다"
+    try: raw = base64.b64decode(str(b64), validate=True)
+    except Exception: return "", "이미지가 올바르지 않습니다"
+    if len(raw) > IMG_MAX: return "", "이미지가 너무 큽니다(120KB 이하)"
+    if raw[:3] != b"\xff\xd8\xff": return "", "JPEG 이미지만 올릴 수 있습니다"
+    iid = uuid.uuid4().hex[:12]
+    tok = _CTX.set(GUILD_ID)
+    try: store_set("bimg_" + iid, Path("bimg") / f"{iid}.json", {"d": base64.b64encode(raw).decode("ascii")})
+    finally: _CTX.reset(tok)
+    return iid, None
+
+
+def img_get(iid):
+    if not re.fullmatch(r"[0-9a-f]{12}", iid or ""): return None
+    md = _mk_get()
+    if not any(x.get("img") == iid for x in list((md.get("board") or {}).values()) + list((md.get("bcom") or {}).values())): return None     # 모르는 id는 저장소를 건드리지 않는다
+    tok = _CTX.set(GUILD_ID)
+    try: d = store_get("bimg_" + iid, Path("bimg") / f"{iid}.json", None) or {}
+    finally: _CTX.reset(tok)
+    return base64.b64decode(d["d"]) if d.get("d") else None
+
+
+def _img_drop(iid):
+    if not iid: return
+    tok = _CTX.set(GUILD_ID)
+    try: store_set("bimg_" + iid, Path("bimg") / f"{iid}.json", {})
+    finally: _CTX.reset(tok)
+
+
+def _img_recent(d, cid, now):
+    return sum(1 for x in list((d.get("board") or {}).values()) + list((d.get("bcom") or {}).values()) if x["cid"] == cid and x.get("img") and now - x.get("ts", 0) < 86400)
 
 
 def _bd_by(cid): return (roster.by_uid.get(cid) or {}).get("name") or "익명"
@@ -3262,9 +3306,11 @@ def bd_post(did, b):
     with _mk_lock:
         d = _mk_get(); bd = dict(d.get("board") or {})
         if sum(1 for p in bd.values() if p["cid"] == cid and now - p.get("ts", 0) < 86400) >= 10: return "하루에 10개까지 글을 쓸 수 있습니다"
-        pid = "b" + uuid.uuid4().hex[:7]; bd[pid] = {"cid": cid, "by": _bd_by(cid), "gid": cur_gid(), "title": title, "body": body, "ts": now}
+        iid, ierr = _img_save(cid, b.get("img"), _img_recent(d, cid, now))
+        if ierr: return ierr
+        pid = "b" + uuid.uuid4().hex[:7]; bd[pid] = {"cid": cid, "by": _bd_by(cid), "gid": cur_gid(), "title": title, "body": body, "ts": now, "img": iid}
         if len(bd) > BD_MAX:
-            for k in sorted(bd, key=lambda k: bd[k].get("ts", 0))[:len(bd) - BD_MAX]: bd.pop(k, None)
+            for k in sorted(bd, key=lambda k: bd[k].get("ts", 0))[:len(bd) - BD_MAX]: _img_drop((bd.pop(k, None) or {}).get("img"))
         d["board"] = bd; _mk_set(d)
     return None
 
@@ -3272,6 +3318,8 @@ def bd_post(did, b):
 def _bd_purge(d, pid):
     for key in ("likes", "dislikes"):
         m = dict(d.get(key) or {}); m.pop(pid, None); d[key] = m
+    for v in (d.get("bcom") or {}).values():
+        if v.get("pid") == pid: _img_drop(v.get("img"))
     d["bcom"] = {k: v for k, v in (d.get("bcom") or {}).items() if v.get("pid") != pid}
 
 
@@ -3281,7 +3329,7 @@ def bd_del(did, pid):
         d = _mk_get(); bd = dict(d.get("board") or {}); p = bd.get(pid)
         if not p: return "없는 글입니다"
         if p["cid"] != cid: return "내 글만 삭제할 수 있습니다"
-        bd.pop(pid); d["board"] = bd; _bd_purge(d, pid); _mk_set(d)
+        bd.pop(pid); _img_drop(p.get("img")); d["board"] = bd; _bd_purge(d, pid); _mk_set(d)
     return None
 
 
@@ -3290,7 +3338,7 @@ def bd_com(did, b):
     cid = _my_cid(did)
     if not cid: return "인증된 CID가 없습니다"
     pid = str(b.get("pid", "")); body = re.sub(r"\s+", " ", str(b.get("body", ""))).strip()[:200]
-    if not body: return "내용을 입력해 주세요"
+    if not body and not b.get("img"): return "내용을 입력해 주세요"
     now = int(time.time())
     with _mk_lock:
         d = _mk_get()
@@ -3298,7 +3346,9 @@ def bd_com(did, b):
         cm = dict(d.get("bcom") or {})
         if sum(1 for c in cm.values() if c["cid"] == cid and now - c.get("ts", 0) < 86400) >= 50: return "하루에 댓글 50개까지 쓸 수 있습니다"
         if sum(1 for c in cm.values() if c.get("pid") == pid) >= 100: return "이 글의 댓글이 가득 찼습니다"
-        cm["c" + uuid.uuid4().hex[:7]] = {"pid": pid, "cid": cid, "by": _bd_by(cid), "gid": cur_gid(), "body": body, "ts": now}
+        iid, ierr = _img_save(cid, b.get("img"), _img_recent(d, cid, now))
+        if ierr: return ierr
+        cm["c" + uuid.uuid4().hex[:7]] = {"pid": pid, "cid": cid, "by": _bd_by(cid), "gid": cur_gid(), "body": body, "ts": now, "img": iid}
         d["bcom"] = cm; _mk_set(d)
     return None
 
@@ -3309,7 +3359,7 @@ def bd_cdel(did, cidx):
         d = _mk_get(); cm = dict(d.get("bcom") or {}); c = cm.get(cidx)
         if not c: return "없는 댓글입니다"
         if c["cid"] != cid: return "내 댓글만 삭제할 수 있습니다"
-        cm.pop(cidx); d["bcom"] = cm; _mk_set(d)
+        cm.pop(cidx); _img_drop(c.get("img")); d["bcom"] = cm; _mk_set(d)
     return None
 
 

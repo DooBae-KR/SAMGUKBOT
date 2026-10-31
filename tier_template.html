@@ -539,7 +539,7 @@ dogam(){
   return `<h1>장수 도감</h1><p class="sub">${dsBar()}가지고 있는 장수를 눌러 켜세요. 장수 전용 전법은 장수를 가지면 자동 보유입니다. 그 외 학습 전법은 전법 도감에서 따로 눌러야 하고, 덱 진행도(%)는 장수 + 전용 전법 + 학습 전법을 모두 합쳐 계산합니다. 선택은 자동으로 저장됩니다.</p>
   <div class="bar"><b>보유 ${[...OWN].length}명 · 직접 고른 전법 ${OWNSK.size}개</b><button data-all>전체 선택</button><button data-clear>초기화</button></div>
   <div class="dogam">${used.map(n=>{const on=OWN.has(n);const sk=EXCL[n]?['전용: '+EXCL[n]]:[];
-    const x=HD[n]||{};return `<div class="dg ${on?'on':''}" data-own="${n}" title="${esc(((x.sk||'')+' — '+(x.desc||'')).slice(0,300))}">${IMG(n)?`<img src="${IMG(n)}" loading="lazy" onerror="this.outerHTML='<div class=noimg>${n}</div>'">`:`<div class="noimg">${n}</div>`}<b>${n}${x.season==2?' <i class="s2">S2</i>':''}</b><span class="hi">${[x.nation,x.pos,x.troop].filter(Boolean).join(' · ')}</span><span>${on?(sk.length?sk.join(' · '):'전용 전법 미확인'):'미보유'}</span>${on?`<span class="trs" data-trs="${n}"><span class="gms">${[1,2,3,4,5].map(k=>`<b class="gm${trN(n)>=k?' on':''}" data-gem="${n}|${k}" title="초월 ${k}단계"></b>`).join('')}</span><button class="trb" data-trb="${n}">스탯 조율 · 남은 ${50+trN(n)*10-trA(n).reduce((a,b)=>a+b,0)}</button></span>`:''}</div>`}).join('')}</div>
+    const x=HD[n]||{};return `<div class="dg ${on?'on':''}" data-own="${n}" title="${esc(((x.sk||'')+' — '+(x.desc||'')).slice(0,300))}">${IMG(n)?`<img src="${IMG(n)}" loading="lazy" onerror="this.outerHTML='<div class=noimg>${n}</div>'">`:`<div class="noimg">${n}</div>`}<b>${n}${x.season==2?' <i class="s2">S2</i>':''}</b><span class="hi">${[x.nation,x.pos,x.troop].filter(Boolean).join(' · ')}</span><span>${on?(sk.length?sk.join(' · '):'전용 전법 미확인'):'미보유'}</span>${on?`<span class="trs" data-trs="${n}"><span class="gms">${[1,2,3,4,5].map(k=>`<b class="gm${trN(n)>=k?' on':''}" data-gem="${n}|${k}" title="돌 ${k}단계"></b>`).join('')}</span><button class="trb" data-trb="${n}">스탯 조율 · 남은 ${50+trN(n)*10-trA(n).reduce((a,b)=>a+b,0)}</button></span>`:''}</div>`}).join('')}</div>
   ${recHTML()}
   <div class="sec">내 덱 완성도 <small style="font-weight:400">(장수 + 전용 전법 + 학습 전법)</small></div>
   <div class="comp">${rows.map(({d,s})=>`<div class="cp ${s.tp===100?'full':''}"><div class="cph"><b>${d.name}</b><span class="tag ${d.menu==='pvp'?'pvp':'dev'}">${d.menu==='pvp'?'PvP 0티어':'개척'}</span><span class="big">${s.tp}%</span></div>
@@ -649,7 +649,7 @@ function trModal(n){
   const a=trA(n),k=trN(n),cap=50+k*10,used=a.reduce((x,y)=>x+y,0),b=trBase(n),L=['무력','지력','통솔','선공'];
   let m=document.getElementById('trm');if(!m){m=document.createElement('div');m.id='trm';document.body.appendChild(m)}
   m.dataset.n=n;
-  m.innerHTML=`<div class="trp"><h3><span>${n} · 초월 ${k}/5</span><button data-trm="close" style="background:#2a3138;color:#e8e2d0;border:1px solid #4a525a;border-radius:6px;padding:4px 10px;cursor:pointer">돌아가기</button></h3>
+  m.innerHTML=`<div class="trp"><h3><span>${n} · 돌 ${k}/5</span><button data-trm="close" style="background:#2a3138;color:#e8e2d0;border:1px solid #4a525a;border-radius:6px;padding:4px 10px;cursor:pointer">돌아가기</button></h3>
   <div class="bar"><button data-trm="reset">↺ 초기화</button><div class="av">사용 가능<b>${cap-used}</b></div></div>
   ${L.map((l,i)=>`<div class="r"><span class="l">${l}</span><span class="v">${b?b[i]+a[i]:'-'}${a[i]?`<em>(+${a[i]})</em>`:''}</span><button data-trm="m|${i}"${a[i]?'':' disabled'}>−</button><button data-trm="p|${i}"${used>=cap?' disabled':''}>+</button></div>`).join('')}
   ${b?'':'<div style="font-size:12px;color:#9bb">기본 스탯 정보가 없어 증가분만 표시됩니다.</div>'}</div>`;

@@ -75,7 +75,7 @@ _STONE = {}
 
 
 def _stones(im, cx, y, n, w=13, h=17, gap=2):
-    """초월 돌(최대 5개): n개는 원래 색, 나머지는 어둡게. cx=가운데 x."""
+    """돌(최대 5개): n개는 원래 색, 나머지는 어둡게. cx=가운데 x."""
     if "im" not in _STONE:
         try: _STONE["im"] = Image.open(Path(__file__).parent / "assets" / "stone.png").convert("RGBA").resize((w, h), Image.LANCZOS)
         except Exception: _STONE["im"] = None
@@ -96,7 +96,7 @@ def _hero_card(im, d, x, y, h, tac, hd, skd, info, eff=None, rank=None):
     else: d.rounded_rectangle((x + 8, y + 8, x + 104, y + 158), 6, fill=BG, outline=LINE); d.text((x + 56, y + 83), n, font=_f(15), fill=TXT, anchor="mm")
     x2 = x + 114; x_end = x + CW - 18; v = hd.get(n) or {}
     e0 = (eff or {}).get(n)
-    if e0 and e0.get("tr"): _stones(im, x + 8 + 48, y + 8 + 150 - 46, e0["tr"])           # 초월 단계만큼 켜진 돌
+    if e0 and e0.get("tr"): _stones(im, x + 8 + 48, y + 8 + 150 - 46, e0["tr"])           # 돌 단계만큼 켜진 돌
     d.text((x2, y + 8), n, font=_f(19), fill=TXT)
     nc = NATION.get(v.get("nation"), MUTE)
     if v.get("nation"):
@@ -105,9 +105,9 @@ def _hero_card(im, d, x, y, h, tac, hd, skd, info, eff=None, rank=None):
     d.text((x2, y + 34), _fit(d, " · ".join(z for z in (v.get("pos"), v.get("troop")) if z), _f(12), x_end - x2), font=_f(12), fill=MUTE)
     d.text((x2, y + 50), _fit(d, f"{v.get('sk', '')} ({v.get('sktype', '')})" if v.get("sk") else "", _f(12), x_end - x2), font=_f(12), fill=GOLD)
     e = (eff or {}).get(n)
-    if e:                                                           # 선공(초월 반영)·행동 순서
+    if e:                                                           # 선공(돌 반영)·행동 순서
         add = "".join(f" {l}+{q}" for l, q in zip("무지통선", e.get("add", [0, 0, 0, 0])) if q)
-        d.text((x2, y + 66), _fit(d, f"선공 {e['init']:g}" + (f" ·{add}" if add else (f" · 초월{e['tr']}" if e["tr"] else "")), _f(11), x_end - x2), font=_f(11), fill=JADE)
+        d.text((x2, y + 66), _fit(d, f"선공 {e['init']:g}" + (f" ·{add}" if add else (f" · 돌{e['tr']}" if e["tr"] else "")), _f(11), x_end - x2), font=_f(11), fill=JADE)
         if rank: d.rounded_rectangle((x + CW - 46, y + 10, x + CW - 20, y + 34), 8, fill=JADE); d.text((x + CW - 33, y + 22), str(rank), font=_f(15), fill=(10, 20, 18), anchor="mm")
     elif h.get("src"): d.text((x2, y + 66), _fit(d, "← " + h["src"], _f(12), x_end - x2), font=_f(12), fill=(240, 150, 60))
     if e and h.get("src"): d.text((x2, y + 78), _fit(d, "← " + h["src"], _f(11), x_end - x2), font=_f(11), fill=(240, 150, 60))
