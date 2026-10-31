@@ -1407,7 +1407,7 @@ async def web_tier(request):
     info = roster.by_uid.get(cid) or {}
     dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
     cfg = await asyncio.to_thread(tier_sheet_cfg)
-    cfg |= {"t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {})}
+    cfg |= {"t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {}), "hs": {k: [v["atk"], v["intl"], v["lead"], v["init"]] for k, v in hero_stats().items()}}
     tpl = (Path(__file__).parent / "tier_template.html").read_text("utf-8")
     return web.Response(text=tpl.replace("__CFG__", json.dumps(cfg, ensure_ascii=False)), content_type="text/html", headers={"Cache-Control": "no-store"})
 
@@ -2315,7 +2315,7 @@ def hero_eff(names, tr):
         a = [int(q) for q in x.get("a", [])][:4] if isinstance(x, dict) else []
         a += [0] * (4 - len(a))
         if sum(a) > TR_BONUS * t: a = [0, 0, 0, 0]
-        out[n] = {k: b[k] + a[q] for q, k in enumerate(("atk", "intl", "lead", "init"))}; out[n]["tr"] = t
+        out[n] = {k: b[k] + a[q] for q, k in enumerate(("atk", "intl", "lead", "init"))}; out[n]["tr"] = t; out[n]["add"] = a
     return out
 
 

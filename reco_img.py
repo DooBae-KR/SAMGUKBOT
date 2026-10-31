@@ -43,6 +43,21 @@ def _fit(d, text, font, maxw):
 W, PAD, CW = 960, 20, 300          # 이미지 너비, 바깥 여백, 장수 카드 너비
 
 
+_STONE = {}
+
+
+def _stones(im, cx, y, n, w=13, h=17, gap=2):
+    """초월 돌(최대 5개): n개는 원래 색, 나머지는 어둡게. cx=가운데 x."""
+    if "im" not in _STONE:
+        try: _STONE["im"] = Image.open(Path(__file__).parent / "assets" / "stone.png").convert("RGBA").resize((w, h), Image.LANCZOS)
+        except Exception: _STONE["im"] = None
+    s = _STONE["im"]
+    if s is None: return
+    off = Image.merge("RGBA", (*[c.point(lambda v: int(v * 0.55)) for c in s.convert("RGB").convert("L").convert("RGB").split()], s.getchannel("A").point(lambda v: int(v * 0.85))))
+    x0 = int(cx - (5 * w + 4 * gap) / 2)
+    for i in range(5): im.alpha_composite(s if i < n else off, (x0 + i * (w + gap), y)) if im.mode == "RGBA" else im.paste(s if i < n else off, (x0 + i * (w + gap), y), s if i < n else off)
+
+
 def _hero_card(im, d, x, y, h, tac, hd, skd, info, eff=None, rank=None):
     n = h["n"]; hh = 196
     d.rounded_rectangle((x, y, x + CW - 10, y + hh), 10, fill=CARD, outline=LINE)
@@ -52,6 +67,8 @@ def _hero_card(im, d, x, y, h, tac, hd, skd, info, eff=None, rank=None):
     if p: im.paste(p, (x + 8, y + 8))
     else: d.rounded_rectangle((x + 8, y + 8, x + 104, y + 158), 6, fill=BG, outline=LINE); d.text((x + 56, y + 83), n, font=_f(15), fill=TXT, anchor="mm")
     x2 = x + 114; x_end = x + CW - 18; v = hd.get(n) or {}
+    e0 = (eff or {}).get(n)
+    if e0 and e0.get("tr"): _stones(im, x + 8 + 48, y + 8 + 150 - 46, e0["tr"])           # 초월 단계만큼 켜진 돌
     d.text((x2, y + 8), n, font=_f(19), fill=TXT)
     nc = NATION.get(v.get("nation"), MUTE)
     if v.get("nation"):
@@ -61,7 +78,8 @@ def _hero_card(im, d, x, y, h, tac, hd, skd, info, eff=None, rank=None):
     d.text((x2, y + 50), _fit(d, f"{v.get('sk', '')} ({v.get('sktype', '')})" if v.get("sk") else "", _f(12), x_end - x2), font=_f(12), fill=GOLD)
     e = (eff or {}).get(n)
     if e:                                                           # 선공(초월 반영)·행동 순서
-        d.text((x2, y + 66), f"선공 {e['init']:g}" + (f"  (초월 {e['tr']})" if e["tr"] else ""), font=_f(12), fill=JADE)
+        add = "".join(f" {l}+{q}" for l, q in zip("무지통선", e.get("add", [0, 0, 0, 0])) if q)
+        d.text((x2, y + 66), _fit(d, f"선공 {e['init']:g}" + (f" ·{add}" if add else (f" · 초월{e['tr']}" if e["tr"] else "")), _f(11), x_end - x2), font=_f(11), fill=JADE)
         if rank: d.rounded_rectangle((x + CW - 46, y + 10, x + CW - 20, y + 34), 8, fill=JADE); d.text((x + CW - 33, y + 22), str(rank), font=_f(15), fill=(10, 20, 18), anchor="mm")
     elif h.get("src"): d.text((x2, y + 66), _fit(d, "← " + h["src"], _f(12), x_end - x2), font=_f(12), fill=(240, 150, 60))
     if e and h.get("src"): d.text((x2, y + 78), _fit(d, "← " + h["src"], _f(11), x_end - x2), font=_f(11), fill=(240, 150, 60))
