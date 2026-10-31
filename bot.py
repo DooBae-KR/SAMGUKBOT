@@ -30,6 +30,7 @@ SHEET_NAME = os.environ.get("SHEET_NAME", "")            # 비우면 첫 시트
 VERIFY_CHANNEL_ID = int(os.environ.get("VERIFY_CHANNEL_ID", "0"))  # 인증 안내 채널
 MEMBER_ROLE = os.environ.get("MEMBER_ROLE", "동맹원")
 OFFICER_ROLE = os.environ.get("OFFICER_ROLE", "간부")
+RESERVE_TITLES = {s.replace(" ", "") for s in os.environ.get("RESERVE_TITLES", "예비").split(",") if s.strip()}   # 인사 명단 직위가 이 값이면 동맹원 대신 예비 역할
 RESERVE_ROLE = os.environ.get("RESERVE_ROLE", "예비")           # 정규 소속은 아니지만 서비스를 이용하는 예비 동맹원 역할
 DIPLOMAT_ROLE = os.environ.get("DIPLOMAT_ROLE", "외교관")     # 외교 목적으로 들어온 타 동맹원 역할
 OFFICER_TITLES = {s.replace(" ", "") for s in os.environ.get("OFFICER_TITLES", "태위,군주,사공,사도,대장군,대홍려,진군장군,무군장군,익군장군,안국장군,분무장군,복파장군,파로장군,호위장군").split(",") if s.strip()}
@@ -334,6 +335,9 @@ async def apply_verification(member: discord.Member, uid, job, nick, info):
     mem_role = discord.utils.get(guild.roles, name=MEMBER_ROLE)
     off_role = discord.utils.get(guild.roles, name=OFFICER_ROLE)
     is_officer = info["title"].replace(" ", "") in OFFICER_TITLES
+    is_res = info["title"].replace(" ", "") in RESERVE_TITLES and not is_officer
+    res_role = discord.utils.get(guild.roles, name=RESERVE_ROLE) if is_res else None
+    if res_role: mem_role = res_role                          # 명단 직위가 '예비'면 동맹원 대신 예비 역할
     target = off_role if is_officer else mem_role
     if target is None: raise RuntimeError(f"서버에 '{OFFICER_ROLE if is_officer else MEMBER_ROLE}' 역할이 없습니다.")
     notes = []
@@ -593,6 +597,7 @@ async def sync_members(guild: discord.Guild):
     """인증된 사람들을 명단(캐릭터 ID)과 대조해 별명/역할을 맞춘다."""
     mem_role = discord.utils.get(guild.roles, name=MEMBER_ROLE)
     off_role = discord.utils.get(guild.roles, name=OFFICER_ROLE)
+    res_role = discord.utils.get(guild.roles, name=RESERVE_ROLE)
     res = {"nick": 0, "role": 0, "removed": 0, "fail": 0, "total": 0}
     db = db_load(); nicks = db.setdefault("nick", {}); nchg = False; missing = []
     dips = {**db.get("res", {}), **db.get("dip", {})}
@@ -608,8 +613,10 @@ async def sync_members(guild: discord.Guild):
                 if roster.by_uid: missing.append((uid, str(did), m))        # 명단 이탈 의심 → 관리자 확인 후 처리(자동 회수 안 함)
                 continue
             is_off = info["title"].replace(" ", "") in OFFICER_TITLES
-            add = [r for r in ((mem_role,) + ((off_role,) if is_off else ())) if r and r not in m.roles]
-            drop = [off_role] if (not is_off and off_role and off_role in m.roles) else []
+            is_res = (not is_off) and info["title"].replace(" ", "") in RESERVE_TITLES and res_role is not None
+            base = res_role if is_res else mem_role
+            add = [r for r in ((base,) + ((off_role,) if is_off else ())) if r and r not in m.roles]
+            drop = [r for r in ((off_role,) if (not is_off and off_role) else ()) + ((mem_role,) if is_res and mem_role else ()) + ((res_role,) if (not is_res and res_role) else ()) if r in m.roles]
             if add: await m.add_roles(*add, reason="명단 동기화"); await asyncio.sleep(0.4)
             if drop: await m.remove_roles(*drop, reason="명단 동기화"); await asyncio.sleep(0.4)
             if add or drop: res["role"] += 1
