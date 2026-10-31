@@ -331,8 +331,9 @@ def db_load(): return store_get("verified", DB_PATH, {"uid": {}, "tries": {}})
 def db_save(d): store_set("verified", DB_PATH, d)
 
 
-def make_nick(job, nick):
+def make_nick(job, nick, badge=""):
     s = f"[{job}]{nick}"
+    if badge: return with_badge(s, badge)
     return s if len(s) <= 32 else s[:32]
 
 
@@ -347,7 +348,7 @@ async def apply_verification(member: discord.Member, uid, job, nick, info):
     target = off_role if is_officer else mem_role
     if target is None: raise RuntimeError(f"서버에 '{OFFICER_ROLE if is_officer else MEMBER_ROLE}' 역할이 없습니다.")
     notes = []
-    try: await member.edit(nick=make_nick(job, nick), reason="연맹 인증")
+    try: await member.edit(nick=make_nick(job, nick, badge_emoji(db_load(), member)), reason="연맹 인증")
     except discord.Forbidden: notes.append("별명 변경 권한이 없습니다(서버 주인이거나 봇 역할이 낮음).")
     roles_add = [target] + ([mem_role] if is_officer and mem_role else [])   # 간부는 동맹원 역할도 함께
     await member.add_roles(*roles_add, reason="연맹 인증")
@@ -647,7 +648,7 @@ async def sync_members(guild: discord.Guild):
             if drop: await m.remove_roles(*drop, reason="명단 동기화"); await asyncio.sleep(0.4)
             if add or drop: res["role"] += 1
             if info["job"] and info["name"]:
-                want = make_nick(info["job"], info["name"])
+                want = make_nick(info["job"], info["name"], badge_emoji(db, m))
                 if m.nick != want:
                     try: await m.edit(nick=want, reason="명단 동기화"); res["nick"] += 1; await asyncio.sleep(0.4)
                     except discord.Forbidden: pass
@@ -1489,19 +1490,155 @@ async def donate_loop():
         except Exception: log.exception("후원 안내 전송 실패: %s", gid)
 
 
+# ---------- 업적·칭호 (닉네임 뒤에 이모지로 표시) ----------
+ACH = [   # (id, 이모지, 이름, 달성 조건, 분류)
+    ("r_admin", "👑", "서버 관리자", "서버 관리자 권한 보유", "직위"),
+    ("r_officer", "⭐", "간부", f"'{OFFICER_ROLE}' 역할 보유", "직위"),
+    ("r_member", "🛡️", "동맹원", f"'{MEMBER_ROLE}' 역할 보유", "직위"),
+    ("r_dip", "🕊️", "외교관", f"'{DIPLOMAT_ROLE}' 역할 보유", "직위"),
+    ("r_res", "🌱", "예비", f"'{RESERVE_ROLE}' 역할 보유", "직위"),
+    ("s_1", "🥇", "지략가 1위", "지략가 랭킹 1위 달성", "지략가"),
+    ("s_2", "🥈", "지략가 2위", "지략가 랭킹 2위 달성", "지략가"),
+    ("s_3", "🥉", "지략가 3위", "지략가 랭킹 3위 달성", "지략가"),
+    ("s_first", "🧠", "지략가 데뷔", "편성·의뢰 답변으로 👍를 1개 이상 받기", "지략가"),
+    ("s_adopt", "🎯", "채택의 달인", "내 답변이 의뢰자에게 채택되기", "지략가"),
+    ("s_like10", "🔥", "인기 지략가", "받은 👍 합계 10개 이상", "지략가"),
+    ("d_1", "☕", "후원자", "제작자 커피 후원 (관리자가 부여)", "후원"),
+    ("d_2", "💎", "큰손 후원자", "꾸준한 후원 (관리자가 부여)", "후원"),
+]
+ACHD = {a[0]: a for a in ACH}
+_ACH_EM = sorted({a[1] for a in ACH}, key=len, reverse=True)
+_ACH_ROLE = {"r_officer": lambda m: any(r.name == OFFICER_ROLE for r in m.roles), "r_member": lambda m: any(r.name == MEMBER_ROLE for r in m.roles),
+             "r_dip": lambda m: any(r.name == DIPLOMAT_ROLE for r in m.roles), "r_res": lambda m: any(r.name == RESERVE_ROLE for r in m.roles),
+             "r_admin": lambda m: m.guild_permissions.administrator}
+
+
+def strip_badge(nick):
+    """별명 끝에 붙은 칭호 이모지를 떼어 낸다."""
+    t = (nick or "").rstrip()
+    for e in _ACH_EM:
+        if t.endswith(e): return t[:-len(e)].rstrip()
+    return t
+
+
+def with_badge(nick, emoji):
+    base = strip_badge(nick)
+    if not emoji: return base[:32]
+    return (base[:max(1, 32 - len(emoji) - 2)].rstrip() + " " + emoji)[:32]
+
+
+def _ach_ent(db, did):
+    a = db.setdefault("ach", {}); a.setdefault("grant", {}); a.setdefault("sel", {})
+    return a
+
+
+def ach_owned(db, m, grant_only=False):
+    """직위 업적은 지금 역할 기준, 나머지는 한 번 달성하면 기록(영구)."""
+    a = _ach_ent(db, m.id); own = set(a["grant"].get(str(m.id), []))
+    own |= {k for k, f in _ACH_ROLE.items() if f(m)}
+    return own
+
+
+def badge_emoji(db, m):
+    try:
+        sel = (db.get("ach") or {}).get("sel", {}).get(str(m.id))
+        return ACHD[sel][1] if sel in ACHD and sel in ach_owned(db, m) else ""
+    except Exception: return ""
+
+
+def ach_eval(db, m):
+    """시장 기록(지략가)으로 달성한 업적을 기록에 추가하고 보유 목록을 돌려준다."""
+    a = _ach_ent(db, m.id); g = set(a["grant"].get(str(m.id), []))
+    cid = next((c for c, d in (db.get("uid") or {}).items() if str(d) == str(m.id)), None)
+    try:
+        if cid:
+            d = _mk_get(); v = mk_scores(d).get(cid) or {}; top = mk_top3(d)
+            if cid in top: g.add(("s_1", "s_2", "s_3")[top.index(cid)])
+            if v.get("score", 0) > 0 or v.get("likes", 0) > 0: g.add("s_first")
+            if v.get("adopt", 0) > 0: g.add("s_adopt")
+            if v.get("likes", 0) >= 10: g.add("s_like10")
+    except Exception: log.exception("업적 계산 실패")
+    a["grant"][str(m.id)] = sorted(g)
+    return ach_owned(db, m)
+
+
+async def ach_apply(m, emoji):
+    cur = m.nick or m.display_name
+    new = with_badge(cur, emoji)
+    if (m.nick or "") == new or (m.nick is None and not emoji): return True
+    try: await m.edit(nick=new, reason="칭호 변경"); return True
+    except discord.Forbidden: return False
+
+
+def ach_text(db, m, own):
+    sel = (db.get("ach") or {}).get("sel", {}).get(str(m.id))
+    out = [f"**🏆 업적 달성 목록** — {len(own)}/{len(ACH)} 달성", f"현재 칭호: {ACHD[sel][1] + ' ' + ACHD[sel][2] if sel in ACHD and sel in own else '없음'}", ""]
+    cat = None
+    for k, e, n, c, g in ACH:
+        if g != cat: cat = g; out.append(f"**【{g}】**")
+        out.append(f"{'✅' if k in own else '🔒'} {e} **{n}** — {c}")
+    out += ["", "아래 메뉴에서 닉네임 뒤에 달 칭호를 고르세요. 달성한 업적만 고를 수 있습니다."]
+    return "\n".join(out)[:1950]
+
+
+class TitleView(discord.ui.View):
+    def __init__(self, uid, own):
+        super().__init__(timeout=300); self.uid = uid
+        opts = [discord.SelectOption(label="칭호 없음(해제)", value="-", emoji="➖")] + [discord.SelectOption(label=ACHD[k][2], value=k, description=ACHD[k][3][:90], emoji=ACHD[k][1]) for k in ACHD if k in own]
+        sel = discord.ui.Select(placeholder="달 칭호를 고르세요", options=opts[:25]); sel.callback = self.pick; self.add_item(sel)
+
+    async def pick(self, it: discord.Interaction):
+        if it.user.id != self.uid: return await it.response.send_message("본인만 고를 수 있습니다.", ephemeral=True)
+        set_gid(it.guild_id); await it.response.defer(ephemeral=True)
+        k = it.data["values"][0]; db = await asyncio.to_thread(db_load); own = ach_owned(db, it.user)
+        a = _ach_ent(db, it.user.id)
+        if k == "-": a["sel"].pop(str(it.user.id), None)
+        elif k in own: a["sel"][str(it.user.id)] = k
+        else: return await it.followup.send("아직 달성하지 못한 업적입니다.", ephemeral=True)
+        await asyncio.to_thread(db_save, db)
+        ok = await ach_apply(it.user, ACHD[k][1] if k != "-" else "")
+        await it.followup.send((f"✅ 칭호를 {ACHD[k][1]} **{ACHD[k][2]}**(으)로 바꿨습니다." if k != "-" else "✅ 칭호를 해제했습니다.") + ("" if ok else "\n⚠️ 닉네임을 바꿀 권한이 없어 이모지는 붙이지 못했습니다(서버 주인이거나 봇 역할이 낮음). 다음 명단 동기화 때 반영될 수 있습니다."), ephemeral=True)
+
+
+@bot.tree.command(name="칭호", description="업적 달성 목록을 보고, 닉네임 뒤에 달 칭호(이모지)를 고릅니다")
+async def cmd_title(it: discord.Interaction):
+    if not isinstance(it.user, discord.Member): return await it.response.send_message("서버에서만 사용할 수 있습니다.", ephemeral=True)
+    await it.response.defer(ephemeral=True)
+    db = await asyncio.to_thread(db_load); own = await asyncio.to_thread(ach_eval, db, it.user); await asyncio.to_thread(db_save, db)
+    await it.followup.send(ach_text(db, it.user, own), view=TitleView(it.user.id, own), ephemeral=True)
+
+
+@bot.tree.command(name="업적부여", description="[관리자] 후원자 등 수동 업적을 부여하거나 회수합니다")
+@app_commands.describe(유저="대상 유저", 업적="부여할 업적", 동작="부여 / 회수")
+@app_commands.choices(업적=[app_commands.Choice(name="☕ 후원자", value="d_1"), app_commands.Choice(name="💎 큰손 후원자", value="d_2")],
+                      동작=[app_commands.Choice(name="부여", value="add"), app_commands.Choice(name="회수", value="del")])
+async def cmd_ach_grant(it: discord.Interaction, 유저: discord.Member, 업적: app_commands.Choice[str], 동작: app_commands.Choice[str]):
+    if not is_admin(it): return await it.response.send_message("관리자만 사용할 수 있습니다.", ephemeral=True)
+    await it.response.defer(ephemeral=True)
+    db = db_load(); a = _ach_ent(db, 유저.id); g = set(a["grant"].get(str(유저.id), []))
+    if 동작.value == "add": g.add(업적.value)
+    else:
+        g.discard(업적.value)
+        if a["sel"].get(str(유저.id)) == 업적.value: a["sel"].pop(str(유저.id), None); await ach_apply(유저, "")
+    a["grant"][str(유저.id)] = sorted(g); db_save(db)
+    await hr_notify(it.guild, f"🏆 **업적 {동작.name}** — {유저.mention} · {ACHD[업적.value][1]} {ACHD[업적.value][2]} · 처리: {discord.utils.escape_markdown(it.user.display_name)}")
+    await it.followup.send(f"✅ {유저.mention}에게 {ACHD[업적.value][1]} **{ACHD[업적.value][2]}** 업적을 {동작.name}했습니다." + (" `/칭호`에서 고를 수 있습니다." if 동작.value == "add" else ""), ephemeral=True)
+
+
 CMD_HELP = {
     "동맹원": [("/동맹등록", "서버 번호·동맹명을 등록(서버 관리자, 바로 이용 가능)"),
              ("/인증", "CID 인증 창 열기(나에게만 보임)"),
              ("/부캐", "내 부계정을 닉네임으로 연결(닉네임1,닉네임2 …)"),
              ("/추천", "내 장수·전법으로 PvP·개척 5부대 편성 + 도감·상성 차트 등(개인 링크)"),
              ("/후원", "제작자 커피 후원 안내(QR)"),
+             ("/칭호", "업적 달성 목록 보기 · 닉네임 뒤에 달 칭호(이모지) 고르기"),
              ("/명령어", "내 역할로 쓸 수 있는 명령어 보기")],
     "간부": [("/인사", "인사데이터(상황판) 링크"),
            ("/공성등록", "공성 주둔지 등록"), ("/공성", "정철 개수·공성 예상 일정"), ("/공성취소", "등록한 공성 취소"),
            ("/공성예약", "공성 시각 예약(30분 전 간부 호출)"), ("/공성예약취소", "공성 예약 취소"),
            ("/정철설정", "정철 보유량 맞추기"), ("/동맹수정", "등록된 서버 번호·동맹명 수정"),
            ("/동맹원추가", "게임 엑셀(오전 8시 반영)에 아직 없는 동맹원을 직접 추가")],
-    "관리자": [("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
+    "관리자": [("/업적부여", "후원자(☕·💎) 업적 부여·회수"), ("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
 }
 
 
@@ -3428,6 +3565,14 @@ async def strat_sync():
                 for mid in want:
                     m = g.get_member(mid)
                     if m and role not in m.roles: await m.add_roles(role, reason="지략가 TOP3")
+                try:                                                       # 순위 업적(🥇🥈🥉)은 한 번 달성하면 기록
+                    dbx = await asyncio.to_thread(db_load); chg = False
+                    for rk, c in enumerate(top):
+                        if c in uid and str(uid[c]).isdigit():
+                            ent = _ach_ent(dbx, uid[c]); lst = set(ent["grant"].get(str(uid[c]), []))
+                            if ("s_1", "s_2", "s_3")[rk] not in lst: lst.add(("s_1", "s_2", "s_3")[rk]); ent["grant"][str(uid[c])] = sorted(lst); chg = True
+                    if chg: await asyncio.to_thread(db_save, dbx)
+                except Exception: log.exception("순위 업적 기록 실패 %s", gid)
             except Exception: log.exception("지략가 역할 동기화 실패 %s", gid)
             finally: _CTX.reset(tok)
 
