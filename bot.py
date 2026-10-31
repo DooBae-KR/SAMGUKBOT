@@ -1419,7 +1419,7 @@ async def web_dex_save(request):
     if not pr: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
     set_gid(pr[0]); cid = pr[1]
     clean = lambda v: sorted({str(x)[:30] for x in v if isinstance(x, str)})[:600] if isinstance(v, list) else []
-    def clean_tr(v):   # 초월: 장수 → {n: 0~5, a:[무력,지력,통솔,선공 분배, 합계 ≤ 10×n]}
+    def clean_tr(v):   # 초월·스탯 분배: 장수 → {n: 0~5, a:[무력,지력,통솔,선공 분배, 합계 ≤ 50(만렙 기본) + 10×n]}
         out = {}
         if not isinstance(v, dict): return out
         for k, x in v.items():
@@ -1428,11 +1428,10 @@ async def web_dex_save(request):
                 a = [max(0, int(t)) for t in (x.get("a") or [])][:4] if isinstance(x, dict) else []
             except Exception: continue
             n = max(0, min(5, n)); a += [0] * (4 - len(a))
-            if n <= 0: continue
-            cap = n * 10
+            cap = LV_POINTS + TR_BONUS * n
             for q in range(4):
                 a[q] = min(a[q], cap); cap -= a[q]
-            out[str(k)[:30]] = {"n": n, "a": a}
+            if n > 0 or sum(a) > 0: out[str(k)[:30]] = {"n": n, "a": a}
         return out
     info = roster.by_uid.get(cid) or {}
     data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")), "tr": clean_tr(b.get("tr")),
@@ -2272,6 +2271,7 @@ class RecoVote(CtxView):
 _HS = {"at": 0.0, "d": {}}
 HERO_GID = os.environ.get("HERO_GID", "817745317")             # 구글 시트 '무장' 탭
 TR_BONUS = 10                                                     # 초월 1단계당 자유 분배 10포인트 (최대 5단계)
+LV_POINTS = 50                                                    # 만렙(50)이면 초월 0이어도 자유 분배 50포인트(10렙마다 10)
 
 
 def hero_stats():
@@ -2314,7 +2314,7 @@ def hero_eff(names, tr):
         t = max(0, min(5, int(x.get("n", 0) if isinstance(x, dict) else x)))
         a = [int(q) for q in x.get("a", [])][:4] if isinstance(x, dict) else []
         a += [0] * (4 - len(a))
-        if sum(a) > TR_BONUS * t: a = [0, 0, 0, 0]
+        if sum(a) > LV_POINTS + TR_BONUS * t: a = [0, 0, 0, 0]
         out[n] = {k: b[k] + a[q] for q, k in enumerate(("atk", "intl", "lead", "init"))}; out[n]["tr"] = t; out[n]["add"] = a
     return out
 
