@@ -2894,7 +2894,7 @@ def _reco_page_core(did, season, token):
             cards.append({"n": n, "alts": alts[1:], "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "sk": v.get("sk", ""), "sktype": v.get("sktype", ""), "img": imgs["HERO"].get(n, ""), "tac": tac})
         return cards
     rk = [{"name": d["name"], "tier": d.get("tier", ""), "heroes": d["heroes"], "u": len(votes.get(vote_key(season, d["name"]), {}).get("u", [])), "d": len(votes.get(vote_key(season, d["name"]), {}).get("d", [])),
-           "net": score.get(d["name"], 0), "pin": d["name"] in pins, "idx": k, "note": d.get("note", ""), "form": d.get("form", ""), "slots": d["heroes"], "tc": next((r[1] for r in d.get("rows", []) if r[0] == "전법"), []),
+           "net": score.get(d["name"], 0), "pin": d["name"] in pins, "idx": k, "note": d.get("note", ""), "form": d.get("form", ""), "slots": d["heroes"], "tc": next((r[1] for r in d.get("rows", []) if r[0] == "전법"), []), "ts": tier_cells(d, "스탯"),
            "cards": deck_cards(d)} for k, d in enumerate(decks)]
     rk.sort(key=lambda x: (-x["net"], -x["u"], x["idx"]))
     pre = f"T{season}|"; tacs = []
@@ -2903,7 +2903,8 @@ def _reco_page_core(did, season, token):
             name, _, ts = k[len(pre):].partition("|"); net = len(v.get("u", [])) - len(v.get("d", []))
             if v.get("u") or v.get("d"): tacs.append({"deck": name, "tset": [skn_name for skn_name in ts.split(",") if skn_name], "u": len(v.get("u", [])), "d": len(v.get("d", [])), "net": net})
     tacs.sort(key=lambda x: (-x["net"], -x["u"]))
-    allx = {"h": [{"n": n, "style": v.get("style", ""), "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "season": v.get("season", 1), "img": imgs["HERO"] and reco_img.thumb("HERO", n, 44, 56), "img2": reco_img.thumb("HERO", n, 96, 122)} for n, v in hd.items()],
+    _hs0 = hero_stats()
+    allx = {"h": [{"n": n, "bs": [round(_hs0[n][k]) for k in ("atk", "intl", "lead", "init")] if n in _hs0 else None, "style": v.get("style", ""), "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "season": v.get("season", 1), "img": imgs["HERO"] and reco_img.thumb("HERO", n, 44, 56), "img2": reco_img.thumb("HERO", n, 96, 122)} for n, v in hd.items()],
             "s": [{"n": n, "type": v.get("type", ""), "trait": v.get("trait", ""), "grade": v.get("grade", ""), "season": v.get("season", 1), "kw": sorted(status_of(v.get("desc"))[0] | status_of(v.get("desc"))[1] | ({"치유", "회복"} if tact_info(n, skd)["heal"] or tact_info(n, skd)["kind"] == "회복" else set())), "desc": re.sub(r"\s+", " ", v.get("desc") or "")[:400], "img": reco_img.thumb("SKI", n, 40, 40), "img2": reco_img.thumb("SKI", n, 72, 72)} for n, v in skd.items()]}
     cid_ = (db_load()["uid"] or {}); cid2 = next((c for c, dd in cid_.items() if str(dd) == str(did)), None)
     dx = (store_get(f"dex_{cid2}", dex_path(cid2), {}) or {}) if cid2 else {}
