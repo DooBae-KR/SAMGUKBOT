@@ -74,6 +74,12 @@ class Roster:
         return re.sub(r"\s+", "", str(v)).lstrip("'")
 
     @staticmethod
+    def user_uid(v):
+        """사용자가 직접 입력한 CID 정리: 'CID20041056808', 'CID: 2004…', 공백·기호가 섞여도 숫자만 남긴다(숫자가 없으면 원문 정리값)."""
+        d = re.sub(r"\D", "", str(v or ""))
+        return d or Roster.norm_uid(v)
+
+    @staticmethod
     def parse_members(rows):
         rows = [list(r) for r in rows]
         hi = next((i for i, r in enumerate(rows) if "멤버" in [str(x).strip() for x in r]), None)
@@ -355,7 +361,7 @@ class VerifyModal(CtxModal, title="연맹 인증"):
         tries = db["tries"].get(did, 0)
         if tries >= MAX_TRIES:
             return await it.response.send_message("실패 횟수를 초과했습니다. 관리자에게 문의하세요.", ephemeral=True)
-        uid = Roster.norm_uid(self.uid.value); job = self.job.value.strip(); nick = self.nick.value.strip()
+        uid = Roster.user_uid(self.uid.value); job = self.job.value.strip(); nick = self.nick.value.strip()
         try: info = roster.get(uid)
         except Exception as e:
             log.exception("명단 로드 실패"); return await it.response.send_message("명단 파일을 읽지 못했습니다. 관리자에게 문의하세요.", ephemeral=True)
@@ -1679,8 +1685,8 @@ class MemberAddModal(CtxModal, title="동맹원 추가"):
 
     async def on_submit(self, it: discord.Interaction):
         await it.response.defer(ephemeral=True)
-        if not staff_ok(it, "/동맹수정"): return await it.followup.send("권한이 없습니다.", ephemeral=True)
-        gid = cur_gid(); cid = Roster.norm_uid(self.cid.value); nick = re.sub(r"\s+", " ", self.nick.value).strip(); job = self.job.value.strip()
+        if not staff_ok(it, "/동맹원추가"): return await it.followup.send("권한이 없습니다.", ephemeral=True)
+        gid = cur_gid(); cid = Roster.user_uid(self.cid.value); nick = re.sub(r"\s+", " ", self.nick.value).strip(); job = self.job.value.strip()
         if not cid.isdigit(): return await it.followup.send("❌ CID는 숫자로 입력해 주세요.", ephemeral=True)
         if not nick: return await it.followup.send("❌ 닉네임을 입력해 주세요.", ephemeral=True)
         try: r = await asyncio.to_thread(member_add, gid, cid, nick, job)
@@ -2399,7 +2405,7 @@ async def hr_link(it: discord.Interaction):
 @bot.tree.command(name="인증해제", description="[관리자] CID의 인증 기록을 지우고 실패 횟수를 초기화합니다(재인증 허용)")
 @admin
 async def unlink(it: discord.Interaction, uid: str):
-    db = db_load(); uid = Roster.norm_uid(uid); r = db["uid"].pop(uid, None)
+    db = db_load(); uid = Roster.user_uid(uid); r = db["uid"].pop(uid, None)
     fails = [d for d, c in db.get("tried", {}).items() if c == uid]              # 그 CID로 인증하다 실패한 계정의 실패 횟수도 초기화
     for d in fails: db["tries"].pop(d, None); db["tried"].pop(d, None)
     db_save(db)
