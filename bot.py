@@ -2897,32 +2897,12 @@ def dex_edit(did, add_h="", add_s="", del_h="", del_s=""):
     return out, None
 
 
-async def _reco_ac(it: discord.Interaction, cur: str, kind: str, mine_only: bool):
-    """쉼표로 여러 개를 이어 입력할 때 마지막 이름만 자동완성한다."""
-    head, _, last = (cur or "").rpartition(","); head = head.strip(); term = _nk(last)
-    hd, skd = reco_defs(); pool = list(hd if kind == "장수" else skd)
-    if mine_only:
-        cid = await asyncio.to_thread(_my_cid, it.user.id)
-        dex = (await asyncio.to_thread(lambda: store_get(f"dex_{cid}", dex_path(cid), {}) or {})) if cid else {}
-        pool = [x for x in pool if x in set(dex.get("own" if kind == "장수" else "ownsk") or [])]
-    have = {_nk(x) for x in _split_names(head)}
-    res = [x for x in pool if term in _nk(x) and _nk(x) not in have][:25]
-    pre = (head + ", ") if head else ""
-    return [app_commands.Choice(name=(pre + x)[-100:], value=(pre + x)[:100]) for x in res]
-
-
-@bot.tree.command(name="추천덱", description="내 보유 장수·전법으로 티어덱 순서대로 5부대를 편성해 줍니다(장수·전법 추가/제거도 가능)")
-@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)",
-                       장수추가="내 도감에 장수 추가 — 쉼표로 여러 명 (예: 곽가, 여포)", 전법추가="내 도감에 전법 추가 — 쉼표로 여러 개",
-                       장수제거="내 도감에서 장수 제거", 전법제거="내 도감에서 전법 제거")
+@bot.tree.command(name="추천덱", description="내 보유 장수·전법으로 티어덱 순서대로 5부대를 편성해 줍니다(추천덱 페이지에서 장수·전법 관리)")
+@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)")
 @app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2)])
-async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None, 장수추가: str = "", 전법추가: str = "", 장수제거: str = "", 전법제거: str = ""):
+async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
     did = it.user.id; note = ""
-    if 장수추가 or 전법추가 or 장수제거 or 전법제거:
-        lines, err = await asyncio.to_thread(dex_edit, did, 장수추가, 전법추가, 장수제거, 전법제거)
-        if err: return await it.response.send_message(err, ephemeral=True)
-        note = ("📝 **내 도감 수정**\n" + "\n".join(lines))[:1200]
     if 시즌 is None:
         saved = await asyncio.to_thread(lambda: pref_get(did).get("season"))
         if saved not in (1, 2):                                          # 처음이면 시즌을 묻는다
@@ -2932,22 +2912,6 @@ async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = N
         season = 시즌.value; await asyncio.to_thread(pref_set, did, season=season)
     await it.response.defer(ephemeral=True)
     await reco_deliver(it, did, season, note=note)
-
-
-@cmd_reco.autocomplete("장수추가")
-async def _ac_ah(it, cur): return await _reco_ac(it, cur, "장수", False)
-
-
-@cmd_reco.autocomplete("전법추가")
-async def _ac_as(it, cur): return await _reco_ac(it, cur, "전법", False)
-
-
-@cmd_reco.autocomplete("장수제거")
-async def _ac_dh(it, cur): return await _reco_ac(it, cur, "장수", True)
-
-
-@cmd_reco.autocomplete("전법제거")
-async def _ac_ds(it, cur): return await _reco_ac(it, cur, "전법", True)
 
 
 @bot.tree.command(name="도감", description="내 보유 장수·전법을 체크하는 개인 링크를 받습니다(시트에 자동 저장)")
