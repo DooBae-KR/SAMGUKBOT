@@ -362,6 +362,8 @@ class VerifyModal(CtxModal, title="연맹 인증"):
         if tries >= MAX_TRIES:
             return await it.response.send_message("실패 횟수를 초과했습니다. 관리자에게 문의하세요.", ephemeral=True)
         uid = Roster.user_uid(self.uid.value); job = self.job.value.strip(); nick = self.nick.value.strip()
+        if not uid.isdigit():                                              # 닉네임 등을 넣은 경우는 실패 횟수에 넣지 않고 안내만
+            return await it.response.send_message("❌ CID는 **숫자**입니다. 닉네임이 아니라 게임 내 캐릭터 ID(숫자)를 입력해 주세요. (실패 횟수에는 포함되지 않았습니다)", ephemeral=True)
         try: info = roster.get(uid)
         except Exception as e:
             log.exception("명단 로드 실패"); return await it.response.send_message("명단 파일을 읽지 못했습니다. 관리자에게 문의하세요.", ephemeral=True)
