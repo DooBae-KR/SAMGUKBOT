@@ -1598,6 +1598,18 @@ async def web_index(request):
 
 # ---------- 도감(보유 장수·전법) 페이지 ----------
 TIER_SECRET = os.environ.get("TIER_SECRET") or os.environ.get("DISCORD_TOKEN", "")
+INVITE_PERMS = 268561490                                   # 채널 관리·역할 관리·메시지 관리·멤버 추방·채널 보기·메시지 보내기·링크/파일·기록 읽기·반응
+def invite_url():
+    if bot.user is None: return ""
+    return f"https://discord.com/oauth2/authorize?client_id={bot.user.id}&permissions={INVITE_PERMS}&scope=bot%20applications.commands"
+
+
+async def web_invite(request):
+    u = invite_url()
+    if not u: return web.Response(text="봇이 아직 준비 중입니다. 잠시 후 다시 시도해 주세요.", status=503)
+    raise web.HTTPFound(u)
+
+
 PUBLIC_URL = (os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL") or f"http://localhost:{WEB_PORT}").rstrip("/")
 HR_HOURS = int(os.environ.get("HR_HOURS", "12"))     # /인사 링크 유효시간
 
@@ -1972,6 +1984,7 @@ async def start_web():
     app = web.Application(); app.router.add_get("/", web_index)
     app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
     app.router.add_get("/admin", web_admin); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
+    app.router.add_get("/invite", web_invite)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()
@@ -3375,6 +3388,11 @@ async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = N
         season = 시즌.value; await asyncio.to_thread(pref_set, did, season=season)
     await it.response.defer(ephemeral=True)
     await reco_deliver(it, did, season, note=note)
+
+
+@bot.tree.command(name="봇초대", description="이 봇을 다른 서버에 초대하는 링크를 봅니다")
+async def cmd_invite(it: discord.Interaction):
+    await it.response.send_message(f"🔗 **봇 초대 링크**\n{invite_url()}\n\n(바로가기: {PUBLIC_URL}/invite)\n초대 후 서버 관리자가 `/동맹등록`으로 등록하면 바로 사용할 수 있습니다. 봇 역할은 동맹원·간부·외교관·지략가 역할보다 위에 두어야 합니다.", ephemeral=True)
 
 
 @bot.tree.command(name="메뉴얼업데이트", description="[제작자] 관리자·이용자 가이드(이미지)를 승인된 모든 서버의 가이드 채널에 올리거나 갱신합니다")
