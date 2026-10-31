@@ -36,7 +36,7 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
 .trow{margin-top:6px}.trow .rl{display:none}.tc{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:5px 6px;min-width:0}.tc .tac{margin-top:0}
 .tinfo{margin-top:6px}.tinfo summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--gold);padding:4px 0}.tinfo .tc{white-space:normal;line-height:1.4}
 .bs{border:1px solid var(--line);background:var(--card2);border-radius:8px;padding:5px 7px;display:flex;align-items:center;gap:5px;min-height:44px;cursor:pointer;position:relative;font-size:13px;min-width:0}.bs.empty{color:var(--mute);justify-content:center}.bs.dis{opacity:.4;cursor:default}.bs.sel{border-color:var(--jade);box-shadow:0 0 0 2px var(--jade)}.bs.t span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.bs .x{margin-left:auto;font-style:normal;color:var(--mute);font-size:11px;padding:2px 4px}.bs b{font-size:13px}
-.picker{position:sticky;top:0;z-index:5;background:var(--bg);border:2px solid var(--jade);border-radius:12px;padding:8px;margin-bottom:12px;max-height:46vh;overflow:auto}
+.kw{display:block;font-size:10px;color:var(--gold)}.picker{position:sticky;top:0;z-index:5;background:var(--bg);border:2px solid var(--jade);border-radius:12px;padding:8px;margin-bottom:12px;max-height:46vh;overflow:auto}
 .mk .nm{font-size:15px}.strat{background:#f0c75e;color:#2b2000;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700}.mu{display:grid;grid-template-columns:22px repeat(3,minmax(0,1fr));gap:6px;align-items:start;margin-top:5px}.badge.s{padding:0 6px;text-align:center;height:20px}.mh{display:flex;gap:5px;font-size:12px;min-width:0}.mh .th{flex:none}.mh.no .th{opacity:.45}.mt{font-size:11px;color:var(--jade);line-height:1.3}.mt.no{color:var(--mute);text-decoration:line-through}.x1{color:#c0504d;font-size:10px}.vb:disabled{opacity:.5;cursor:default}
 @media(max-width:760px){.mu{grid-template-columns:18px repeat(3,minmax(0,1fr));gap:3px}.mh{flex-direction:column;gap:2px}.bs{padding:3px;font-size:11px;flex-direction:column;align-items:flex-start;gap:2px}.bs .x{position:absolute;top:0;right:0}.picker{max-height:50vh}}
 .fr{width:100%;height:78vh;border:1px solid var(--line);border-radius:12px;background:#fff}.vs{width:2px;height:24px;background:var(--line);margin:0 2px}.tab.late{background:#f7f2e4}.tab.mt,.tab.lt{font-weight:700;background:var(--card2)}.tab.lt{background:#efe6c8}.mo{font-weight:700}
@@ -108,10 +108,10 @@ function rank(){const R=D.rank;
   return `<h2>덱 랭킹 — 장수 조합 평가 점수(모든 서버 합산)</h2><div class="m" style="margin-bottom:6px">점수가 높을수록 추천 순위가 올라갑니다. <b>적용</b>을 누르면 그 덱을 내 추천에서 항상 먼저 편성합니다(보유 장수가 있을 때).</div>${dk}
   <h2>전법 조합 랭킹</h2>${tc}<h2>시너지 점수 TOP — 장수·전법 궁합(추천 점수에 더해집니다)</h2>${sy}`}
 function ownList(){TRS=TRS||Object.assign({},D.own.tr||{});OWNS=OWNS||{h:new Set(D.own.h),s:new Set(D.own.s)};const q=OQ.replace(/\s/g,'');
-  const keep=(n,o,ss)=>(ss||1)<=D.season&&(!q||n.replace(/\s/g,'').includes(q))&&(OF==='all'||(OF==='own')===o);
+  const keep=(n,o,ss,kwx)=>(ss||1)<=D.season&&(!q||n.replace(/\s/g,'').includes(q)||(kwx||'').replace(/\s/g,'').includes(q))&&(OF==='all'||(OF==='own')===o);
   const GR={'전설':0,'영웅':1},ko=(a,b)=>a.n.localeCompare(b.n,'ko');
   const hs=D.all.h.filter(h=>keep(h.n,OWNS.h.has(h.n),h.season)).sort(ko);
-  const ss=D.all.s.filter(s=>keep(s.n,OWNS.s.has(s.n),s.season)).sort((a,b)=>((GR[a.grade]??9)-(GR[b.grade]??9))||ko(a,b));
+  const ss=D.all.s.filter(s=>keep(s.n,OWNS.s.has(s.n),s.season,(s.kw||[]).join('')+(s.trait||'')+(s.desc||''))).sort((a,b)=>((GR[a.grade]??9)-(GR[b.grade]??9))||ko(a,b));
   const im=(b,c)=>b?`<img class="${c}" src="data:image/jpeg;base64,${b}">`:'';
   const stones=h=>{const n=TRS[h.n]||0;return `<span class="sts" title="초월 단계" style="--st:url(${D.stone})">${[1,2,3,4,5].map(k=>`<i class="sg ${k<=n?'on':''}" onclick="event.stopPropagation();setTr('${esc(h.n)}',${k})"></i>`).join('')}</span>`};
   const card=h=>`<div class="oc hc ${OWNS.h.has(h.n)?'on':''}" onclick="toggleOwn('h','${esc(h.n)}')">${im(h.img,'th')}<span><span class="nm">${esc(h.n)}</span>${OWNS.h.has(h.n)?stones(h):''}</span></div>`;
@@ -123,7 +123,7 @@ function ownList(){TRS=TRS||Object.assign({},D.own.tr||{});OWNS=OWNS||{h:new Set
   return `<h2>장수 (보유 ${OWNS.h.size})</h2><div class="ocs">${hc||'<span class="m">없음</span>'}</div><h2>전법 (보유 ${OWNS.s.size})</h2><div class="ocs">${sc||'<span class="m">없음</span>'}</div>`}
 function own(){TRS=TRS||Object.assign({},D.own.tr||{});OWNS=OWNS||{h:new Set(D.own.h),s:new Set(D.own.s)};
   return `<div class="m" style="margin-bottom:8px">눌러서 보유 여부를 바꿉니다(자동 저장). 보유 장수의 <b>붉은 돌</b>을 눌러 초월 단계(0~5)를 정합니다. 스탯 조율은 <b>장수 도감</b> 탭에서 합니다. 바꾼 뒤 <b>내 추천덱</b> 탭으로 돌아가면 다시 편성합니다.</div>
-  <div class="bar"><input id="oq" class="sq" placeholder="이름 검색" value="${esc(OQ)}" oninput="setQ(this.value)"><button class="sbtn ${OF==='all'?'on':''}" onclick="setF('all')">전체</button><button class="sbtn ${OF==='own'?'on':''}" onclick="setF('own')">보유</button><button class="sbtn ${OF==='no'?'on':''}" onclick="setF('no')">미보유</button></div><div id="ol">${ownList()}</div>`}
+  <div class="bar"><input id="oq" class="sq" placeholder="이름·키워드 검색 (예: 위협, 치유, 홍수)" value="${esc(OQ)}" oninput="setQ(this.value)"><button class="sbtn ${OF==='all'?'on':''}" onclick="setF('all')">전체</button><button class="sbtn ${OF==='own'?'on':''}" onclick="setF('own')">보유</button><button class="sbtn ${OF==='no'?'on':''}" onclick="setF('no')">미보유</button></div><div id="ol">${ownList()}</div>`}
 function eqBody(){const E=D.equip,PC={'필수':'#c0392b','권장':'#0f8a63','상황별':'#8a6a1c','하위':'#8a9a94'};const q=EQ.replace(/\s/g,'');
   const tbl=(rows,lab)=>`<table><tr><th>${lab}</th><th>우선순위</th><th>효과</th><th>평가</th></tr>${rows.filter(r=>!q||(r[0]+r[2]+r[3]).replace(/\s/g,'').includes(q)).map(r=>`<tr><td><b>${esc(r[0])}</b></td><td><span class="chip" style="border-color:${PC[r[1]]};color:${PC[r[1]]}">${esc(r[1])}</span></td><td>${esc(r[2])}</td><td class="m">${esc(r[3])}</td></tr>`).join('')}</table>`;
   return `<h2>장비 특기</h2>${tbl(E.traits,'특기')}<h2>이펙트</h2>${tbl(E.effects,'이펙트')}`}
@@ -166,11 +166,11 @@ function pickBody(){const q=PQ.replace(/\s/g,''),GR={'전설':0,'영웅':1};let 
       .map(h=>({...h,_c:`<button class="oc hc on" onclick="assign('${esc(h.n)}')">${imj(h.img,'th')}<span class="nm">${esc(h.n)}</span><span class="m">${esc(h.troop)}</span></button>`}));
     body=grp(l,h=>h.nation||'기타',['촉','위','오','군'],k=>({'군':'군웅'}[k]||k))||'<span class="m">쓸 수 있는 보유 장수가 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
   else{const us=usedS();
-    const l=D.all.s.filter(x=>ownS().has(x.n)&&!us.has(x.n)&&(x.season||1)<=D.season&&(!q||(x.n+x.trait+x.type+x.grade).replace(/\s/g,'').includes(q))).sort((a,b)=>((GR[a.grade]??9)-(GR[b.grade]??9))||a.n.localeCompare(b.n,'ko'))
-      .map(x=>({...x,_c:`<button class="oc sc on" onclick="assign('${esc(x.n).replace(/'/g,"\\'")}')">${imj(x.img,'ts')}<span class="nm">${esc(x.n)}</span><span class="m">${esc(x.grade)}·${esc(x.type)}</span></button>`}));
+    const l=D.all.s.filter(x=>ownS().has(x.n)&&!us.has(x.n)&&(x.season||1)<=D.season&&(!q||(x.n+x.trait+x.type+x.grade+(x.kw||[]).join('')+(x.desc||'')).replace(/\s/g,'').includes(q))).sort((a,b)=>((GR[a.grade]??9)-(GR[b.grade]??9))||a.n.localeCompare(b.n,'ko'))
+      .map(x=>({...x,_c:`<button class="oc sc on" onclick="assign('${esc(x.n).replace(/'/g,"\\'")}')">${imj(x.img,'ts')}<span class="nm">${esc(x.n)}</span><span class="m">${esc(x.grade)}·${esc(x.type)}</span>${(x.kw||[]).length?`<span class="kw">${(x.kw||[]).map(esc).join(' · ')}</span>`:''}</button>`}));
     body=grp(l,x=>x.trait||'기타',['책략','병기','방어','치유','보조','문무'],k=>k)||'<span class="m">쓸 수 있는 보유 전법이 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
   return body}
-function picker(){if(!PK)return'';return `<div class="picker"><div class="bar"><b>${PK.u+1}부대 ${PK.kind==='h'?'장수':'전법'} 고르기</b><input id="pq" class="sq" placeholder="${PK.kind==='h'?'이름·나라·병종 검색':'이름·계열(책략/병기/방어/치유)·종류 검색'}" value="${esc(PQ)}" oninput="setPQ(this.value)"><button class="sbtn" onclick="PK=null;draw()">닫기</button></div><div class="ocs" id="pl">${pickBody()}</div></div>`}
+function picker(){if(!PK)return'';return `<div class="picker"><div class="bar"><b>${PK.u+1}부대 ${PK.kind==='h'?'장수':'전법'} 고르기</b><input id="pq" class="sq" placeholder="${PK.kind==='h'?'이름·나라·병종 검색':'이름·계열·키워드 검색 (예: 위협, 치유, 홍수)'}" value="${esc(PQ)}" oninput="setPQ(this.value)"><button class="sbtn" onclick="PK=null;draw()">닫기</button></div><div class="ocs" id="pl">${pickBody()}</div></div>`}
 function build(){const dk=D.rank.decks.slice().sort((a,b)=>a.idx-b.idx);
   const units=BLD.map((u,i)=>`<div class="unit"><div class="uh"><span class="badge">${i+1}부대</span><select class="sq" onchange="if(this.value){fillTier(${i},this.value);}this.value=''"><option value="">티어덱 불러오기…</option>${dk.map(d=>`<option value="${esc(d.name)}">${esc(d.tier)} ${esc(d.name)}</option>`).join('')}</select></div>
     <div class="hs">${[0,1,2].map(k=>slotH(i,k)).join('')}</div>${[0,1].map(j=>`<div class="hs trow">${[0,1,2].map(k=>slotT(i,k,j)).join('')}</div>`).join('')}</div>`).join('');
