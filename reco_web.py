@@ -14,7 +14,10 @@ TPL = r'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name=
 .uh .nm{font-size:16px;font-weight:700}.uh .tr{color:var(--mute);font-size:12px}.votes{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
 .vg{display:flex;align-items:center;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:2px 4px;font-size:11px;color:var(--mute)}
 .vb{background:transparent;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:12px}.vb.u.on{background:#2e7d4f;border-color:#2e7d4f;color:#fff}.vb.d.on{background:#a64040;border-color:#a64040;color:#fff}
-.hs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:760px){.hs{grid-template-columns:1fr}}
+.hs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:760px){.hs{gap:5px;grid-template-columns:repeat(3,minmax(0,1fr))}.unit{padding:8px}.h,.hi,.tac>div{min-width:0}.h{flex-direction:column;gap:5px;padding:5px}.pic{width:100%;height:auto;aspect-ratio:3/4}.pic .lb{font-size:11px;padding:12px 0 2px}
+ .hn{font-size:13px;flex-wrap:wrap;gap:3px}.nat{font-size:10px;padding:0 4px}.hi>.m,.hi>.sk{display:none}.stats{gap:2px}.stats span{font-size:9.5px;padding:0 3px}.stats span:nth-child(-n+3){display:none}
+ .tac{gap:4px;margin-top:3px}.tac img{width:20px;height:28px}.tac .t{font-size:11px;line-height:1.2;word-break:keep-all}.tac .k{display:none}.eqp{font-size:10px}.src{font-size:10px}
+ .gems{margin-bottom:0}.rk{transform:scale(.85)}}
 .h{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;gap:10px}
 .pic{position:relative;width:96px;height:150px;flex:none;border-radius:6px;overflow:hidden;background:#0a1110}.pic img.p{width:100%;height:100%;object-fit:cover}
 .pic .lb{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.85));color:#fff;text-align:center;font-size:12px;padding:16px 0 3px}
@@ -30,7 +33,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th{color:var(--mute);fo
 h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:0 8px;margin:1px;font-size:12px}
 .fm{display:inline-flex;align-items:center;gap:4px;margin-right:6px}.fg{display:inline-grid;grid-template-columns:repeat(3,7px);gap:1px}.fg i{width:7px;height:7px;border-radius:2px;background:#cdd6d2}.fg i.on{background:#d9a94a}
 .eqp{font-size:11.5px;color:#6b7c76;margin-top:3px}.eqp b{color:#8a6a1c}
-.fr{width:100%;height:78vh;border:1px solid var(--line);border-radius:12px;background:#fff}.vs{width:2px;height:24px;background:var(--line);margin:0 2px}.tab.late{background:#f7f2e4}.mo{font-weight:700}
+.trow{margin-top:6px}.trow .rl{display:none}.tc{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:5px 6px;min-width:0}.tc .tac{margin-top:0}
+.fr{width:100%;height:78vh;border:1px solid var(--line);border-radius:12px;background:#fff}.vs{width:2px;height:24px;background:var(--line);margin:0 2px}.tab.late{background:#f7f2e4}.tab.mt,.tab.lt{font-weight:700;background:var(--card2)}.tab.lt{background:#efe6c8}.mo{font-weight:700}
 .ocs{display:flex;flex-wrap:wrap;gap:6px}.oc{display:flex;align-items:center;gap:6px;text-align:left}.oc .nm{font-weight:600}.oc .m{display:block;font-size:11px;color:var(--mute)}.th{width:33px;height:42px;border-radius:5px;object-fit:cover}.ts{width:30px;height:30px;border-radius:5px;object-fit:cover}.sts{display:flex;gap:3px;margin-top:3px}.sg{width:14px;height:18px;background:var(--st) center/contain no-repeat;filter:grayscale(1) brightness(.45);cursor:pointer;display:block}.sg.on{filter:none}.gh{flex:0 0 100%;font-size:12px;color:var(--gold);margin:6px 0 0;border-bottom:1px solid var(--line)}.oc{background:var(--card2);border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 9px;cursor:pointer;font-size:13px;opacity:.7}.oc.on{opacity:1;color:var(--txt);border-color:#2e9f5f;background:rgba(46,159,95,.15);font-weight:600}.sq{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:13px;min-width:160px}\n.rw{cursor:pointer}.rw:hover{background:var(--card2)}.dt td{background:var(--card2)}.dr{display:flex;gap:10px;margin:6px 0}.dr>b{width:70px;flex:none;color:var(--gold);font-size:12px}.dh{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;flex:1}.dc{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px;line-height:2}.ownt{color:#2e9f5f}.tk{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:6px;padding:0 5px;font-size:12px;background:var(--card2)}.tk.own{border-color:#2e9f5f;color:#2e9f5f;font-weight:700}.tk img{width:16px;height:23px;object-fit:cover;border-radius:2px}
 @media(max-width:760px){.dh{grid-template-columns:1fr}}
 .err{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;text-align:center}
@@ -61,6 +65,7 @@ function fm(s){const ns=(s||'').split(/[\/·,]/).map(x=>({'안영진':'안형진
 function pin(name,on){post({op:'pin',deck:name,on})}
 function setTab(t){if(DIRTY&&t==='mine'){DIRTY=false;try{sessionStorage.setItem('rtab','mine')}catch(e){}location.reload();return}TAB=t;try{sessionStorage.setItem('rtab',t)}catch(e){}draw()}
 function vg(label,v,i,scope){return `<span class="vg">${label}<button class="vb u ${v.m==='u'?'on':''}" onclick="vote(${i},'${scope}','u')">👍 ${v.u}</button><button class="vb d ${v.m==='d'?'on':''}" onclick="vote(${i},'${scope}','d')">👎 ${v.d}</button></span>`}
+function tcell(t){return `<div class="tac">${t.img?`<img src="data:image/jpeg;base64,${t.img}">`:'<img>'}<div><div class="t">${esc(t.n)}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc(t.type)}·${esc(t.trait)}</span></div></div></div>`}
 function hero(h){
   if(!h.n)return `<div class="h"><div class="empty">${esc(h.src||'보유 장수 부족')}</div></div>`;
   const gem=h.tr>0?`<div class="gems" style="--st:url(${D.stone})">${[1,2,3,4,5].map(k=>`<i class="${h.tr>=k?'on':''}"></i>`).join('')}</div>`:'';
@@ -70,14 +75,14 @@ function hero(h){
   return `<div class="h"><div class="pic">${h.img?`<img class="p" src="data:image/jpeg;base64,${h.img}">`:''}<div class="lb">${gem}50 ${esc(h.n)}</div></div><div class="hi">
   <div class="hn">${esc(h.n)}${h.nation?`<span class="nat" style="background:${NAT[h.nation]||'#999'}">${esc(h.nation)}</span>`:''}${h.rank?`<span class="rk" title="행동 순서">${h.rank}</span>`:''}</div>
   <div class="m">${esc([h.pos,h.troop].filter(Boolean).join(' · '))}</div><div class="sk">${esc(h.sk)}${h.sktype?` (${esc(h.sktype)})`:''}</div>
-  <div class="stats">${st}</div>${h.eq?`<div class="eqp" title="특기 대체: ${esc(h.eq.alt)}">🛡 특기 <b>${esc(h.eq.trait)}</b> · 이펙트 <b>${esc(h.eq.effects.join(', '))}</b></div>`:''}${h.src?`<div class="src">← ${esc(h.src)}</div>`:''}${tac}</div></div>`}
+  <div class="stats">${st}</div>${h.eq?`<div class="eqp" title="특기 대체: ${esc(h.eq.alt)}">🛡 특기 <b>${esc(h.eq.trait)}</b> · 이펙트 <b>${esc(h.eq.effects.join(', '))}</b></div>`:''}${h.src?`<div class="src">← ${esc(h.src)}</div>`:''}</div></div>`}
 function unit(u,i){
   const fl=u.flow,s=fl.start;
   const lines=[`<div><b>전투 시작</b><span>지휘 ${esc(s['지휘'].join(' · ')||'-')} → 패시브 ${esc(s['패시브'].join(' · ')||'-')}</span></div>`].concat(fl.turn.map((t,k)=>`<div><b>턴 ${k+1}번째</b><span>${esc(t[0])}${t[1]!=null?`(${t[1]})`:''} 액티브 ${esc(t[2].join(' · ')||'-')} → 평타${t[3].length?` → 추격 ${esc(t[3].join(' · '))}`:''}</span></div>`));
   if(u.status.g.length)lines.push(`<div><b>이상상태</b><span class="m">부여 ${esc(u.status.g.join(', '))}${u.status.miss.length?` · 부족 ${esc(u.status.miss.join(', '))}`:''}</span></div>`);
   return `<div class="unit"><div class="uh"><span class="badge">${u.i}부대</span>${u.name?`<span class="m">${esc(u.tier)}</span><span class="nm">${esc(u.name)}</span><span class="tr">${fm(u.form)}</span>`:'<span class="nm">자유 편성</span>'}
   ${u.name?`<div class="votes">${vg('장수 조합',u.hv,i,'h')}${u.tset.length?vg('전법 조합',u.tv,i,'t'):''}</div>`:''}</div>
-  <div class="hs">${u.heroes.map(hero).join('')}</div><div class="flow">${lines.join('')}</div></div>`}
+  <div class="hs">${u.heroes.map(hero).join('')}</div>${[0,1].map(k=>`<div class="hs trow"><div class="rl">전법${k+1}</div>${u.heroes.map(h=>`<div class="tc">${h.n&&h.tac[k]?tcell(h.tac[k]):'<span class="m">-</span>'}</div>`).join('')}</div>`).join('')}<div class="flow">${lines.join('')}</div></div>`}
 function mine(){const dv=MODE==='dev';return `<div class="bar"><button class="sbtn mo ${!dv?'on':''}" onclick="setMode('pvp')">PvP 추천</button><button class="sbtn mo ${dv?'on':''}" onclick="setMode('dev')">개척 추천</button><span class="m">${dv?'개척덱 기준':'PvP 티어덱 기준'} · 내 보유 장수·전법으로 5부대</span></div>`+US().map(unit).join('')+`<div class="m">티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웁니다. 장수 👎는 그 덱을 빼고, 전법 👎는 전법만 다시 고릅니다. 모든 서버의 평가가 합산됩니다.</div>`}
 function rank(){const R=D.rank;
   const own=new Set(D.ownsk||[]),nk=s=>s.replace(/[\s·\-]/g,'');
@@ -116,12 +121,21 @@ function equip(){const E=D.equip,PC={'필수':'#c0392b','권장':'#0f8a63','상�
   <div class="bar"><input class="sq" placeholder="특기·이펙트 검색" value="${esc(EQ)}" oninput="EQ=this.value;const y=scrollY;draw();const e=document.querySelector('.sq');e.focus();e.setSelectionRange(EQ.length,EQ.length);scrollTo(0,y)"></div>
   <h2>장비 특기</h2>${tbl(E.traits,'특기')}<h2>이펙트</h2>${tbl(E.effects,'이펙트')}`}
 function frame(v){return `<iframe class="fr" src="/tier?t=${encodeURIComponent(D.t)}&s=${D.season}&embed=1#${v}"></iframe>`}
+let MENU=true,LATE=true;try{MENU=sessionStorage.getItem('rmenu')!=='0';LATE=sessionStorage.getItem('rlate')!=='0'}catch(e){}
+function toggleMenu(){MENU=!MENU;try{sessionStorage.setItem('rmenu',MENU?'1':'0')}catch(e){}draw()}
+function toggleLate(){LATE=!LATE;try{sessionStorage.setItem('rlate',LATE?'1':'0')}catch(e){}draw()}
 function draw(){
   if(ERR){$('#app').innerHTML=`<div class="err"><h1>추천덱</h1><p>${esc(ERR)}</p></div>`;return}
   const q=s=>`?t=${encodeURIComponent(D.t)}&s=${s}`;
+  const tb=(k,l,c)=>`<button class="tab ${c||''} ${TAB===k?'on':''}" onclick="setTab('${k}')">${l}</button>`;
+  const NAME={mine:'내 추천덱',rank:'추천덱 랭킹',own:'내 장수·전법',equip:'장비',...FR};
+  const main=tb('mine','내 추천덱')+tb('rank','추천덱 랭킹')+tb('own','내 장수·전법')+tb('dogam','장수 도감')+tb('skdex','전법 도감');
+  const late=tb('equip','장비','late')+tb('chart','상성 차트','late')+tb('mx','상성표','late')+tb('fill','부족한 것 메우기','late')+tb('guide','상황 가이드','late');
   $('#app').innerHTML=`<h1>🃏 ${esc(D.who)} 추천덱 · 시즌${D.season}</h1><div class="sub">장수 카드·전법·초월 반영 선공 순서 · 한 번 쓴 장수·전법은 다시 쓰지 않음</div>
-  <div class="bar"><button class="tab ${TAB==='mine'?'on':''}" onclick="setTab('mine')">내 추천덱</button><button class="tab ${TAB==='rank'?'on':''}" onclick="setTab('rank')">추천덱 랭킹</button><button class="tab ${TAB==='own'?'on':''}" onclick="setTab('own')">내 장수·전법</button><button class="tab ${TAB==='dogam'?'on':''}" onclick="setTab('dogam')">장수 도감</button><button class="tab ${TAB==='skdex'?'on':''}" onclick="setTab('skdex')">전법 도감</button><button class="tab ${TAB==='equip'?'on':''}" onclick="setTab('equip')">장비</button><span class="vs"></span><button class="tab late ${TAB==='chart'?'on':''}" onclick="setTab('chart')">상성 차트</button><button class="tab late ${TAB==='mx'?'on':''}" onclick="setTab('mx')">상성표</button><button class="tab late ${TAB==='fill'?'on':''}" onclick="setTab('fill')">부족한 것 메우기</button><button class="tab late ${TAB==='guide'?'on':''}" onclick="setTab('guide')">상황 가이드</button><span class="sp"></span>
-  <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a></div>${TAB==='mine'?mine():TAB==='rank'?rank():TAB==='own'?own():TAB==='equip'?equip():FR[TAB]?frame(TAB):mine()}`}
+  <div class="bar"><button class="tab mt" onclick="toggleMenu()">☰ 메뉴 ${MENU?'접기 ▴':'펼치기 ▾'}</button>${MENU?'':`<span class="m">현재: <b>${esc(NAME[TAB]||'')}</b></span>`}<span class="sp"></span>
+  <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a></div>
+  ${MENU?`<div class="bar">${main}<span class="vs"></span><button class="tab lt" onclick="toggleLate()">참고 ${LATE?'접기 ▴':'펼치기 ▾'}</button>${LATE?late:''}</div>`:''}
+  ${TAB==='mine'?mine():TAB==='rank'?rank():TAB==='own'?own():TAB==='equip'?equip():FR[TAB]?frame(TAB):mine()}`}
 draw();
 </script></body></html>'''
 
