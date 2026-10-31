@@ -2888,8 +2888,8 @@ def _reco_page_core(did, season, token):
             name, _, ts = k[len(pre):].partition("|"); net = len(v.get("u", [])) - len(v.get("d", []))
             if v.get("u") or v.get("d"): tacs.append({"deck": name, "tset": [skn_name for skn_name in ts.split(",") if skn_name], "u": len(v.get("u", [])), "d": len(v.get("d", [])), "net": net})
     tacs.sort(key=lambda x: (-x["net"], -x["u"]))
-    allx = {"h": [{"n": n, "style": v.get("style", ""), "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "season": v.get("season", 1), "img": imgs["HERO"] and reco_img.thumb("HERO", n, 44, 56)} for n, v in hd.items()],
-            "s": [{"n": n, "type": v.get("type", ""), "trait": v.get("trait", ""), "grade": v.get("grade", ""), "season": v.get("season", 1), "kw": sorted(status_of(v.get("desc"))[0] | status_of(v.get("desc"))[1] | ({"치유", "회복"} if tact_info(n, skd)["heal"] or tact_info(n, skd)["kind"] == "회복" else set())), "desc": re.sub(r"\s+", " ", v.get("desc") or "")[:400], "img": reco_img.thumb("SKI", n, 40, 40)} for n, v in skd.items()]}
+    allx = {"h": [{"n": n, "style": v.get("style", ""), "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "season": v.get("season", 1), "img": imgs["HERO"] and reco_img.thumb("HERO", n, 44, 56), "img2": reco_img.thumb("HERO", n, 96, 122)} for n, v in hd.items()],
+            "s": [{"n": n, "type": v.get("type", ""), "trait": v.get("trait", ""), "grade": v.get("grade", ""), "season": v.get("season", 1), "kw": sorted(status_of(v.get("desc"))[0] | status_of(v.get("desc"))[1] | ({"치유", "회복"} if tact_info(n, skd)["heal"] or tact_info(n, skd)["kind"] == "회복" else set())), "desc": re.sub(r"\s+", " ", v.get("desc") or "")[:400], "img": reco_img.thumb("SKI", n, 40, 40), "img2": reco_img.thumb("SKI", n, 72, 72)} for n, v in skd.items()]}
     cid_ = (db_load()["uid"] or {}); cid2 = next((c for c, dd in cid_.items() if str(dd) == str(did)), None)
     dx = (store_get(f"dex_{cid2}", dex_path(cid2), {}) or {}) if cid2 else {}
     skn_ = {_nk(k): k for k in skd}; ski = {}
