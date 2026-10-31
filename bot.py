@@ -1064,7 +1064,7 @@ class AllyApplyModal(CtxModal, title="동맹 등록 신청"):
 
 # ---------- 후원 안내 ----------
 DONATE_PATH = Path(os.environ.get("DONATE_PATH", "donate.json"))
-DONATE_TEXT = "주에 한번씩 제작자의 서버비를 위해 열심히 일할 커피가 필요합니다.\n후원 한번씩 해주시면 감사하겠습니다!"
+DONATE_TEXT = "봇 제작자의 커피타임을 만들어주시면 더욱 좋은 기능으로 찾아뵙겠습니다!"
 DONATE_MAX = 2 * 1024 * 1024                              # QR 이미지 최대 크기
 
 
@@ -1087,7 +1087,7 @@ def donate_put(d):
     finally: _CTX.reset(tok)
 
 
-@bot.tree.command(name="후원", description="제작자 서버비 후원 안내(카카오 QR)를 봅니다")
+@bot.tree.command(name="후원", description="제작자 커피 후원 안내(QR)를 봅니다")
 async def cmd_donate(it: discord.Interaction):
     await it.response.defer(ephemeral=True)
     d = await asyncio.to_thread(donate_get); text = d.get("text") or DONATE_TEXT
@@ -1098,7 +1098,7 @@ async def cmd_donate(it: discord.Interaction):
 
 
 @bot.tree.command(name="후원안내설정", description="[제작자] 후원 QR 이미지와 안내 문구를 설정합니다")
-@app_commands.describe(이미지="카카오 QR 이미지(png/jpg)", 문구="안내 문구(비우면 기본 문구)")
+@app_commands.describe(이미지="후원 QR 이미지(png/jpg)", 문구="안내 문구(비우면 기본 문구)")
 async def cmd_donate_set(it: discord.Interaction, 이미지: discord.Attachment = None, 문구: str = ""):
     owner = await perm_owner()
     if it.user.id != owner.id: return await it.response.send_message("제작자만 사용할 수 있습니다.", ephemeral=True)
@@ -1133,7 +1133,7 @@ async def donate_channel(g):
         try:
             ow = {g.default_role: discord.PermissionOverwrite(send_messages=False, add_reactions=True),
                   g.me: discord.PermissionOverwrite(send_messages=True, attach_files=True, view_channel=True)}
-            ch = await g.create_text_channel(DONATE_CH, overwrites=ow, topic="제작자 서버비 후원 안내 (매주 토요일 19시)", category=await bot_cat(g), reason="후원 안내 채널")
+            ch = await g.create_text_channel(DONATE_CH, overwrites=ow, topic="제작자 커피 후원 안내 (매주 토요일 19시)", category=await bot_cat(g), reason="후원 안내 채널")
         except Exception: log.warning("후원 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id)
     elif getattr(ch, "category", None) is None: await to_bottom(g, ch)
     if ch and ok(ch): return ch
@@ -1377,7 +1377,7 @@ CMD_HELP = {
              ("/인증", "CID 인증 창 열기(나에게만 보임)"),
              ("/부캐", "내 부계정을 닉네임으로 연결(닉네임1,닉네임2 …)"),
              ("/추천", "내 장수·전법으로 PvP·개척 5부대 편성 + 도감·상성 차트 등(개인 링크)"),
-             ("/후원", "제작자 서버비 후원 안내(카카오 QR)"),
+             ("/후원", "제작자 커피 후원 안내(QR)"),
              ("/명령어", "내 역할로 쓸 수 있는 명령어 보기")],
     "간부": [("/인사", "인사데이터(상황판) 링크"),
            ("/공성등록", "공성 주둔지 등록"), ("/공성", "정철 개수·공성 예상 일정"), ("/공성취소", "등록한 공성 취소"),
