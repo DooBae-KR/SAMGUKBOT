@@ -376,6 +376,9 @@ class VerifyModal(CtxModal, title="연맹 인증"):
         uid = Roster.user_uid(self.uid.value); job = self.job.value.strip(); nick = self.nick.value.strip()
         if not uid.isdigit():                                              # 닉네임 등을 넣은 경우는 실패 횟수에 넣지 않고 안내만
             return await it.response.send_message("❌ CID는 **숫자**입니다. 닉네임이 아니라 게임 내 캐릭터 ID(숫자)를 입력해 주세요. (실패 횟수에는 포함되지 않았습니다)", ephemeral=True)
+        if bl_get(uid, db):                                                 # 블랙리스트: 인증 차단(실패 횟수에는 넣지 않음) + 관리자 알림
+            await it.response.send_message("❌ 인증할 수 없는 CID입니다. 관리자에게 문의해 주세요.", ephemeral=True)
+            return await bl_alert(it.guild, it.user, uid, "인증하기")
         try: info = roster.get(uid)
         except Exception as e:
             log.exception("명단 로드 실패"); return await it.response.send_message("명단 파일을 읽지 못했습니다. 관리자에게 문의하세요.", ephemeral=True)
@@ -397,6 +400,18 @@ class VerifyModal(CtxModal, title="연맹 인증"):
         db = db_load()                                                  # 역할 부여(await) 중에 다른 사람의 실패 기록이 바뀌었을 수 있으니 최신본에 반영(덮어쓰기 방지)
         db["uid"][uid] = did; db.setdefault("nick", {})[uid] = nick; db["tries"].pop(did, None); db.get("tried", {}).pop(did, None); db_save(db)
         await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + "\n📌 인증이 완료되면 `/추천`의 **내 장수·전법** 탭에서 **보유한 장수와 전법을 등록**해 주세요~" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
+
+
+def bl_get(uid, db=None):
+    """블랙리스트(관리 페이지에서 등록한 CID)에 있으면 그 기록을, 아니면 None."""
+    return ((db or db_load()).get("bl") or {}).get(Roster.norm_uid(uid))
+
+
+async def bl_alert(guild, who, uid, where):
+    """블랙리스트 CID로 인증·등록을 시도하면 로그 채널(관리자)에 알린다."""
+    e = bl_get(uid) or {}
+    try: await lv_send(guild, f"⛔ **블랙리스트 CID 시도** — {who.mention} · CID `{uid}` · **{e.get('name') or '-'}** · {where}" + (f"\n사유: {e['memo']}" if e.get("memo") else ""))
+    except Exception: log.exception("블랙리스트 알림 실패")
 
 
 # ---------- 외교관 인증 ----------
@@ -439,12 +454,16 @@ class DipModal(CtxModal, title="외교관 등록"):
         ally, uid, name = self.ally.value.strip(), Roster.norm_uid(self.uid.value), self.nick.value.strip()
         err = None
         if not (ally and uid and name): err = "동맹명, CID, 닉네임을 모두 입력해 주세요."
+        elif bl_get(uid, db): err = "등록할 수 없는 CID입니다. 관리자에게 문의해 주세요."
         elif roster.by_uid.get(uid): err = "우리 연맹 명단에 있는 CID입니다. 일반 인증(인증하기)을 이용해 주세요."
         elif uid in db["uid"] and db["uid"][uid] != did: err = "이미 다른 계정으로 등록된 CID입니다. 관리자에게 문의하세요."
         elif did in db["uid"].values() and db["uid"].get(uid) != did: err = "이미 인증된 계정입니다. 관리자에게 문의하세요."
         role = discord.utils.get(it.guild.roles, name=DIPLOMAT_ROLE) if it.guild else None
         if not err and role is None: err = f"서버에 '{DIPLOMAT_ROLE}' 역할이 없습니다. 관리자에게 문의하세요."
-        if err: return await it.response.send_message(f"❌ {err}", ephemeral=True)
+        if err:
+            await it.response.send_message(f"❌ {err}", ephemeral=True)
+            if bl_get(uid, db): await bl_alert(it.guild, it.user, uid, "외교관 등록")
+            return
         await it.response.defer(ephemeral=True); notes = []
         nick = f"[{ally}] {name}"[:32]
         try: await it.user.edit(nick=nick, reason="외교관 등록")
@@ -897,7 +916,8 @@ async def cmd_reserve(it: discord.Interaction, 동작: app_commands.Choice[str],
     name = 닉네임.strip()
     if not (유저 and name): return await it.followup.send("❌ 등록하려면 유저, CID, 닉네임을 모두 입력해 주세요.", ephemeral=True)
     err = None
-    if roster.by_uid.get(uid) and uid not in res: err = "이미 인사 명단에 있는 CID입니다. 정규 인증(인증하기)을 이용해 주세요."
+    if bl_get(uid, db): err = "블랙리스트에 등록된 CID입니다."
+    elif roster.by_uid.get(uid) and uid not in res: err = "이미 인사 명단에 있는 CID입니다. 정규 인증(인증하기)을 이용해 주세요."
     elif uid in db["uid"] and db["uid"][uid] != str(유저.id): err = "이미 다른 계정으로 등록된 CID입니다."
     elif str(유저.id) in db["uid"].values() and db["uid"].get(uid) != str(유저.id): err = "이 유저는 이미 다른 CID로 인증되어 있습니다."
     if err: return await it.followup.send(f"❌ {err}", ephemeral=True)
@@ -1765,7 +1785,8 @@ def adm_state(gid):
         m = gg.get_member(int(r["d"])) if gg and str(r["d"]).isdigit() else None
         r["dn"] = str(m) if m else ""; r["ok"] = bool(r["d"])
     reserve = sorted(rsv.values(), key=lambda x: (x["ok"], x["n"]))
-    return {"reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
+    blk = sorted(({"c": c, "n": v.get("name", ""), "memo": v.get("memo", ""), "t": v.get("t", ""), "ok": bool(did_of.get(c))} for c, v in (db.get("bl") or {}).items()), key=lambda x: x["c"])
+    return {"blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
@@ -1826,6 +1847,24 @@ async def web_admin_api(request):
             d = str(body.get("id", "")).strip()
             if not (d.isascii() and d.isdigit()): raise ValueError("사용자 ID가 올바르지 않습니다.")
             await adm_revoke(gid, int(d), uid); msg = "✅ 관리자 권한을 뺐습니다."
+        elif op == "bl_save":
+            cid, nick, memo = str(body.get("cid", "")).strip(), re.sub(r"\s+", " ", str(body.get("nick", ""))).strip()[:20], str(body.get("memo", "")).strip()[:150]
+            if not (cid.isascii() and cid.isdigit() and 4 <= len(cid) <= 14): raise ValueError("CID는 숫자만 입력해 주세요.")
+            def bs():
+                set_gid(gid); db = db_load(); bl = db.setdefault("bl", {}); old = bl.get(cid) or {}
+                nm = nick or old.get("name") or (roster_for(gid).by_uid.get(cid) or {}).get("name", "")
+                bl[cid] = {**old, "name": nm, "memo": memo, "t": old.get("t") or (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d"), "by": str(uid)}
+                db_save(db); return ("수정" if old else "등록"), db["uid"].get(cid)
+            act, did = await asyncio.to_thread(bs)
+            msg = f"✅ 블랙리스트 {act}: {cid}" + (f"\n⚠️ 이미 인증된 계정입니다(디스코드 {did}). 필요하면 `/인증해제`로 인증을 풀어 주세요." if did else "")
+        elif op == "bl_del":
+            cid = str(body.get("cid", "")).strip()
+            if not (cid.isascii() and cid.isdigit()): raise ValueError("CID가 올바르지 않습니다.")
+            def bd():
+                set_gid(gid); db = db_load(); d = (db.get("bl") or {}).pop(cid, None)
+                if d is None: raise ValueError("블랙리스트에 없는 CID입니다.")
+                db_save(db)
+            await asyncio.to_thread(bd); msg = f"✅ 블랙리스트에서 뺐습니다: {cid}"
         elif op == "res_save":
             cid, nick, job, memo = str(body.get("cid", "")).strip(), re.sub(r"\s+", " ", str(body.get("nick", ""))).strip(), str(body.get("job", "")).strip()[:20], str(body.get("memo", "")).strip()[:100]
             if not (cid.isascii() and cid.isdigit() and 4 <= len(cid) <= 14): raise ValueError("CID는 숫자만 입력해 주세요.")
@@ -1833,6 +1872,7 @@ async def web_admin_api(request):
             def rv():
                 set_gid(gid); db = db_load(); res = db.setdefault("res", {})
                 if cid not in res and (roster_for(gid).by_uid.get(cid) or {}).get("title", "").replace(" ", "") not in RESERVE_TITLES and roster_for(gid).by_uid.get(cid): raise ValueError("이미 정규 명단에 있는 CID입니다.")
+                if bl_get(cid, db): raise ValueError("블랙리스트에 등록된 CID입니다.")
                 if cid not in res and cid in db["uid"]: raise ValueError("이미 인증된 CID입니다.")
                 old = res.get(cid) or {}
                 res[cid] = {**old, "name": nick, "job": job, "memo": memo, "t": old.get("t") or (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d"), "by": str(uid)}
@@ -2054,6 +2094,7 @@ class MemberAddModal(CtxModal, title="동맹원 추가"):
 
 def member_add(gid, cid, nick, job):
     """게임 엑셀(일배치)에 아직 없는 사람을 명단에 직접 넣는다. 엑셀에 나타나기 전까지 MANUAL_KEEP_DAYS일 동안 이탈 처리하지 않는다."""
+    if bl_get(cid): return f"⛔ 블랙리스트에 등록된 CID입니다: {cid}"
     _sb_ensure_tenant(gid)
     ex = _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&cid=eq.{cid}&select=cid,name") or []
     if ex: return f"이미 명단에 있습니다: **{ex[0].get('name') or '-'}** ({cid})"
