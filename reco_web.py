@@ -74,6 +74,7 @@ function setF(f){OF=f;draw()}
 function fm(s){const ns=(s||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진'}[x.trim()]||x.trim())).filter(x=>D.forms[x]);
   if(!ns.length)return s?esc(s):'';return ns.map(n=>`<span class="fm" title="${esc(n)}"><span class="fg">${D.forms[n].flat().map(v=>`<i class="${v?'on':''}"></i>`).join('')}</span>${esc(n)}</span>`).join(' ')}
 function pin(name,on){post({op:'pin',deck:name,on})}
+function donate(){const d=D.don||{};return `<div class="unit" style="text-align:center"><div class="uh" style="justify-content:center"><b>☕ 제작자 커피 후원</b></div><div style="margin:8px 0;line-height:1.6">${esc(d.text||'봇 제작자의 커피타임을 만들어주시면 더욱 좋은 기능으로 찾아뵙겠습니다!')}</div>${d.img?`<img alt="후원 QR" src="data:image/${esc(d.ext||'png')};base64,${d.img}" style="max-width:260px;width:80%;border-radius:12px;border:1px solid var(--line)">`:'<div class="m">QR 이미지를 준비 중입니다.</div>'}<div class="m" style="margin-top:8px">후원은 자율이며, 모든 기능은 후원 없이 이용할 수 있습니다. 디스코드 <b>/후원</b> 명령이나 <b>#후원</b> 채널에서도 볼 수 있습니다.</div></div>`}
 function setTab(t){if(DIRTY&&t==='build'){DIRTY=false;try{sessionStorage.setItem('rtab','build')}catch(e){}location.reload();return}TAB=t;try{sessionStorage.setItem('rtab',t)}catch(e){}draw()}
 function vg(label,v,i,scope){return `<span class="vg">${label}<button class="vb u ${v.m==='u'?'on':''}" onclick="vote(${i},'${scope}','u')">👍 ${v.u}</button><button class="vb d ${v.m==='d'?'on':''}" onclick="vote(${i},'${scope}','d')">👎 ${v.d}</button></span>`}
 function tcell(t){return `<div class="tac" data-tip="${esc(tipHtml(t.n))}">${t.img?`<img src="data:image/jpeg;base64,${t.img}">`:'<img>'}<div><div class="t">${esc(t.n)}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc(t.type)}·${esc(t.trait)}</span></div></div></div>`}
@@ -365,14 +366,14 @@ function draw(){
   if(ERR){$('#app').innerHTML=`<div class="err"><h1>추천덱</h1><p>${esc(ERR)}</p></div>`;return}
   const q=s=>`?t=${encodeURIComponent(D.t)}&s=${s}`;
   const tb=(k,l,c)=>`<button class="tab ${c||''} ${TAB===k?'on':''}" onclick="setTab('${k}')">${l}</button>`;
-  const NAME={rank:'티어덱',build:'편성기',market:'공유마켓',strat:'지략가',own:'내 장수·전법',equip:'장비',...FR};
-  const main=tb('rank','티어덱')+tb('build','편성기')+tb('market','🛒 공유마켓')+tb('strat','🧠 지략가')+tb('own','내 장수·전법')+tb('dogam','장수 도감')+tb('skdex','전법 도감');
+  const NAME={donate:'후원',rank:'티어덱',build:'편성기',market:'공유마켓',strat:'지략가',own:'내 장수·전법',equip:'장비',...FR};
+  const main=tb('donate','☕ 후원')+tb('rank','티어덱')+tb('build','편성기')+tb('market','🛒 공유마켓')+tb('strat','🧠 지략가')+tb('own','내 장수·전법')+tb('dogam','장수 도감')+tb('skdex','전법 도감');
   const late=tb('equip','장비','late')+tb('chart','상성 차트','late')+tb('mx','상성표','late')+tb('fill','부족한 것 메우기','late')+tb('guide','상황 가이드','late');
   $('#app').innerHTML=`<h1>🃏 ${esc(D.who)} · 티어덱 · 편성 공유마켓 · 시즌${D.season}</h1><div class="sub">티어덱을 보고, 내 보유 장수·전법으로 5부대를 짜서 공유하세요 · 한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없음</div>
   <div class="bar"><button class="tab mt" onclick="toggleMenu()">☰ 메뉴 ${MENU?'접기 ▴':'펼치기 ▾'}</button>${MENU?'':`<span class="m">현재: <b>${esc(NAME[TAB]||'')}</b></span>`}<span class="sp"></span>
   <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a></div>
   ${MENU?`<div class="bar">${main}<span class="vs"></span><button class="tab lt" onclick="toggleLate()">참고 ${LATE?'접기 ▴':'펼치기 ▾'}</button>${LATE?late:''}</div>`:''}
-  ${TAB==='build'?build():TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='own'?own():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}`}
+  ${TAB==='donate'?donate():TAB==='build'?build():TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='own'?own():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}`}
 draw();
 </script></body></html>'''
 

@@ -1106,6 +1106,14 @@ def donate_get():
     return d
 
 
+def _don_page():
+    """추천 페이지 '후원' 탭용 문구·QR(너무 큰 이미지는 제외)."""
+    try: d = donate_get()
+    except Exception: d = {}
+    img = d.get("img") or ""
+    return {"text": d.get("text") or DONATE_TEXT, "img": img if len(img) < 600000 else "", "ext": (d.get("ext") or ".png").lstrip(".").lower().replace("jpg", "jpeg")}
+
+
 def donate_put(d):
     tok = _CTX.set(GUILD_ID)
     try: store_set("donate", DONATE_PATH, d)
@@ -1149,6 +1157,13 @@ DONATE_SENT = Path(os.environ.get("DONATE_SENT_PATH", "donate_sent.json"))
 DONATE_CH = "후원"
 
 
+async def donate_top(g, ch):
+    """#후원 채널을 카테고리 밖 맨 위로 올린다(이미 맨 위쪽이면 그대로). 실패해도 무시."""
+    try:
+        if getattr(ch, "category", None) is not None: await ch.edit(category=None, position=0, sync_permissions=False)
+    except Exception as e: log.warning("후원 채널을 맨 위로 옮기지 못했습니다 서버=%s: %r", g.id, e)
+
+
 async def donate_channel(g):
     """#후원 채널을 돌려준다. 없으면 만들고(읽기 전용), 만들 수 없으면 시스템 채널 → 쓸 수 있는 첫 텍스트 채널."""
     me = g.me
@@ -1158,9 +1173,9 @@ async def donate_channel(g):
         try:
             ow = {g.default_role: discord.PermissionOverwrite(send_messages=False, add_reactions=True),
                   g.me: discord.PermissionOverwrite(send_messages=True, attach_files=True, view_channel=True)}
-            ch = await g.create_text_channel(DONATE_CH, overwrites=ow, topic="제작자 커피 후원 안내 (매주 토요일 19시)", category=await bot_cat(g), reason="후원 안내 채널")
+            ch = await g.create_text_channel(DONATE_CH, overwrites=ow, topic="제작자 커피 후원 안내 (매주 토요일 19시)", position=0, reason="후원 안내 채널(채널 목록 맨 위)")
         except Exception: log.warning("후원 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id)
-    elif getattr(ch, "category", None) is None: await to_bottom(g, ch)
+    elif getattr(ch, "category", None) is not None: await donate_top(g, ch)
     if ch and ok(ch): return ch
     if g.system_channel and ok(g.system_channel): return g.system_channel
     return next((c for c in g.text_channels if ok(c)), None)
@@ -1409,6 +1424,10 @@ async def idle_loop():
         if g is None: continue
         try: await verify_channel(g)                                    # 인증 채널 권한(메시지·명령어)을 매시간 점검
         except Exception: log.exception("인증 채널 점검 실패 %s", gid)
+        try:
+            dc = discord.utils.get(g.text_channels, name=DONATE_CH)
+            if dc is not None: await donate_top(g, dc)                # 예전에 '봇' 카테고리로 간 #후원을 맨 위로
+        except Exception: log.exception("후원 채널 점검 실패 %s", gid)
         try: await inquiry_channel(g)
         except Exception: log.exception("문의함 점검 실패 %s", gid)
     if IDLE_KICK_DAYS <= 0: return
@@ -2921,7 +2940,7 @@ def _reco_page_core(did, season, token):
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}}, "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "don": _don_page(), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}}, "stone": stone}, None
 
 
 def reco_page_data(did, season, token):
