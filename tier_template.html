@@ -374,14 +374,15 @@ let OWN=new Set();
 try{OWN=new Set(CFG.t?CFG.own:JSON.parse(localStorage.getItem('own')||'[]'))}catch(e){}
 let OWNSK=new Set();
 try{OWNSK=new Set(CFG.t?CFG.ownsk:JSON.parse(localStorage.getItem('ownsk')||'[]'))}catch(e){}
+let TRS={};try{TRS=CFG.t?(CFG.trs||{}):JSON.parse(localStorage.getItem('trs')||'{}')}catch(e){}
 let TR={};const trN=n=>{const v=TR[n];return !v?0:typeof v==='object'?(v.n|0):(v|0)};const trA=n=>{const v=TR[n];return v&&typeof v==='object'&&Array.isArray(v.a)?v.a.map(x=>x|0):[0,0,0,0]};
 try{TR=CFG.t?(CFG.tr||{}):JSON.parse(localStorage.getItem('tr')||'{}')}catch(e){}
 let _st=null,_tm=null;
 function _status(m,ok){if(!CFG.t)return;if(!_st){_st=document.createElement('div');_st.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99;padding:7px 12px;border-radius:8px;font:13px system-ui;background:#222;color:#fff;box-shadow:0 2px 8px #0004';document.body.appendChild(_st)}_st.textContent=m;_st.style.background=ok===false?'#b3261e':ok?'#1b7a4b':'#444'}
 const saveOwn=()=>{
-  if(!CFG.t){try{localStorage.setItem('own',JSON.stringify([...OWN]));localStorage.setItem('ownsk',JSON.stringify([...OWNSK]));localStorage.setItem('tr',JSON.stringify(TR))}catch(e){}return}
+  if(!CFG.t){try{localStorage.setItem('own',JSON.stringify([...OWN]));localStorage.setItem('ownsk',JSON.stringify([...OWNSK]));localStorage.setItem('tr',JSON.stringify(TR));localStorage.setItem('trs',JSON.stringify(TRS))}catch(e){}return}
   _status('저장 중…');clearTimeout(_tm);
-  _tm=setTimeout(()=>fetch(CFG.api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:CFG.t,own:[...OWN],ownsk:[...OWNSK],tr:TR})})
+  _tm=setTimeout(()=>fetch(CFG.api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:CFG.t,own:[...OWN],ownsk:[...OWNSK],tr:TR,trs:TRS})}).then(r=>{try{parent!==window&&parent.postMessage({dexSaved:1},'*')}catch(e){}return r})
     .then(r=>r.json()).then(j=>_status(j.ok?'시트에 저장됨 ✓':'저장 실패: '+(j.error||''),!!j.ok)).catch(()=>_status('저장 실패(네트워크)',false)),900);
 };
 if(CFG.t)addEventListener('load',()=>_status((CFG.name?CFG.name+'님 · ':'')+'체크하면 자동 저장됩니다',true));
@@ -530,7 +531,7 @@ skdex(){
   const hit=names.filter(n=>used(n).length).length;
   return `<h1>전법 도감</h1>${dsBar()}<p class="sub">전법 ${names.length}종 (시트 기준 · 시즌2 포함). 영상에서 추천된 전법은 ${hit}종입니다. 카드를 눌러 따로 가진 전법을 표시하면 덱의 전법 %에 반영됩니다. 장수 전용 전법은 장수를 가지면 자동 보유라 여기에는 없습니다.</p>
   <div class="dogam sk">${names.map(n=>{const u=used(n),auto=false,man=OWNSK.has(n);
-   return `<div class="dg ${auto||man?'on':''} ${u.length?'':'dim'}" data-ownsk="${n}" data-tip="s|${n}">${SKIMG(n)?`<img src="${SKIMG(n)}" loading="lazy" onerror="this.outerHTML='<div class=noimg>${n}</div>'">`:`<div class="noimg">${n}</div>`}<b>${n}${(SKD[n]||{}).season==2?' <i class="s2">S2</i>':''}</b><span class="bd">${auto?'':man?'보유':''}</span><span>${u.length?'추천 '+u.length+'개 덱':'—'}</span></div>`}).join('')}</div>`;
+   return `<div class="dg ${auto||man?'on':''} ${u.length?'':'dim'}" data-ownsk="${n}" data-tip="s|${n}">${SKIMG(n)?`<img src="${SKIMG(n)}" loading="lazy" onerror="this.outerHTML='<div class=noimg>${n}</div>'">`:`<div class="noimg">${n}</div>`}<b>${n}${(SKD[n]||{}).season==2?' <i class="s2">S2</i>':''}</b><span class="bd">${auto?'':man?'보유':''}</span>${man?`<span class="gms">${[1,2,3,4,5].map(k=>`<b class="gm${(TRS[n]|0)>=k?' on':''}" data-sgem="${n}|${k}" title="돌 ${k}단계"></b>`).join('')}</span>`:''}<span>${u.length?'추천 '+u.length+'개 덱':'—'}</span></div>`}).join('')}</div>`;
 },
 dogam(){
   const names=Object.keys(HD).filter(n=>(HD[n].season||1)<=DSEASON).sort();
@@ -665,6 +666,8 @@ document.addEventListener('click',e=>{
     if(v==='reset')a.fill(0);else{const[op,i]=v.split('|');if(op==='p'&&a.reduce((x,y)=>x+y,0)<50+k*10)a[+i]++;if(op==='m'&&a[+i]>0)a[+i]--}
     trSet(n,k,a);saveOwn();trModal(n);return}
   if(e.target.id==='trm'){e.target.remove();trRefresh();return}
+  const sg=e.target.closest('[data-sgem]');
+  if(sg){const[n,k]=sg.dataset.sgem.split('|'),lv=+k,nl=(TRS[n]|0)===lv?lv-1:lv;nl>0?TRS[n]=nl:delete TRS[n];trRefresh();return}
   const gm=e.target.closest('[data-gem]');
   if(gm){const[n,k]=gm.dataset.gem.split('|'),lv=+k,cur=trN(n);const nl=cur===lv?lv-1:lv;let a=trA(n);for(let c=50+nl*10;a.reduce((x,y)=>x+y,0)>c;){const i=a.lastIndexOf(Math.max(...a));a[i]--}trSet(n,nl,a);trRefresh();return}
   const tb=e.target.closest('[data-trb]');if(tb){trModal(tb.dataset.trb);return}
@@ -676,7 +679,7 @@ document.addEventListener('click',e=>{
   const os=e.target.closest('[data-ownsk]');if(os){const n=os.dataset.ownsk;OWNSK.has(n)?OWNSK.delete(n):OWNSK.add(n);saveOwn();const y=scrollY;render();scrollTo(0,y);return}
   const ow=e.target.closest('[data-own]');if(ow){const n=ow.dataset.own;OWN.has(n)?OWN.delete(n):OWN.add(n);saveOwn();const y=scrollY;render();scrollTo(0,y);return}
   if(e.target.closest('[data-all]')){Object.keys(HD).filter(n=>(HD[n].season||1)<=DSEASON).forEach(n=>OWN.add(n));saveOwn();render();return}
-  if(e.target.closest('[data-clear]')){OWN.clear();OWNSK.clear();TR={};saveOwn();render();return}
+  if(e.target.closest('[data-clear]')){OWN.clear();OWNSK.clear();TR={};TRS={};saveOwn();render();return}
   const o=e.target.closest('[data-open]');if(o)openDet(o.dataset.open);
 });
 document.addEventListener('change',e=>{if(e.target.id==='dsel'){DSEASON=+e.target.value;try{localStorage.setItem('ds',DSEASON)}catch(x){};const y=scrollY;render();scrollTo(0,y)}});

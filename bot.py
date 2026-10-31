@@ -399,7 +399,7 @@ class VerifyModal(CtxModal, title="연맹 인증"):
             log.exception("역할 부여 실패"); return await it.followup.send(f"처리 중 오류: {e}", ephemeral=True)
         db = db_load()                                                  # 역할 부여(await) 중에 다른 사람의 실패 기록이 바뀌었을 수 있으니 최신본에 반영(덮어쓰기 방지)
         db["uid"][uid] = did; db.setdefault("nick", {})[uid] = nick; db["tries"].pop(did, None); db.get("tried", {}).pop(did, None); db_save(db)
-        await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + "\n📌 인증이 완료되면 `/추천`의 **내 장수·전법** 탭에서 **보유한 장수와 전법을 등록**해 주세요~" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
+        await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + "\n📌 인증이 완료되면 `/추천`의 **장수 도감·전법** 탭에서 **보유한 장수와 전법을 등록**해 주세요~" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
 
 
 def bl_get(uid, db=None):
@@ -1740,7 +1740,7 @@ async def web_tier(request):
     info = roster.by_uid.get(cid) or {}
     dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
     cfg = await asyncio.to_thread(tier_sheet_cfg)
-    cfg |= {"embed": request.query.get("embed") == "1", "season": int(request.query["s"]) if request.query.get("s") in ("1", "2") else 0, "t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {}), "hs": {k: [v["atk"], v["intl"], v["lead"], v["init"]] for k, v in hero_stats().items()}}
+    cfg |= {"embed": request.query.get("embed") == "1", "season": int(request.query["s"]) if request.query.get("s") in ("1", "2") else 0, "t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {}), "trs": dex.get("trs", {}), "hs": {k: [v["atk"], v["intl"], v["lead"], v["init"]] for k, v in hero_stats().items()}}
     import reco_img
     tpl = await asyncio.to_thread(reco_img.tier_html)
     return web.Response(text=tpl.replace("__CFG__", json.dumps(cfg, ensure_ascii=False)), content_type="text/html", headers={"Cache-Control": "no-store"})
@@ -1767,8 +1767,16 @@ async def web_dex_save(request):
                 a[q] = min(a[q], cap); cap -= a[q]
             if n > 0 or sum(a) > 0: out[str(k)[:30]] = {"n": n, "a": a}
         return out
+    def clean_trs(v):   # 전법 돌: 전법 → 1~5
+        out = {}
+        if not isinstance(v, dict): return out
+        for k, x in v.items():
+            try: n = max(0, min(5, int(x)))
+            except Exception: continue
+            if n > 0: out[str(k)[:30]] = n
+        return out
     info = roster.by_uid.get(cid) or {}
-    data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")), "tr": clean_tr(b.get("tr")),
+    data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")), "tr": clean_tr(b.get("tr")), "trs": clean_trs(b.get("trs")),
             "at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")}
     DEX_DIR.mkdir(exist_ok=True)
     store_set(f"dex_{cid}", dex_path(cid), data)
@@ -2828,7 +2836,7 @@ def reco_run(did, season):
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
     if not cid: return "먼저 `/인증`으로 CID 인증을 해 주세요.", None, None, None, None, None, None
     dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
-    if not dex.get("own"): return "보유 장수가 없습니다. `/추천` 페이지의 **내 장수·전법** 탭에서 보유 장수와 전법을 먼저 체크해 주세요.", None, None, None, None, None, None
+    if not dex.get("own"): return "보유 장수가 없습니다. `/추천` 페이지의 **장수 도감·전법** 탭에서 보유 장수와 전법을 먼저 체크해 주세요.", None, None, None, None, None, None
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
     deal = "도트딜"                                                  # 딜 방식은 고정(누적 딜 우선) — 사용자가 고르지 않음
@@ -2963,7 +2971,7 @@ def _reco_page_core(did, season, token):
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "ally": ally_label(cur_gid()), "don": _don_page(), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}}, "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "ally": ally_label(cur_gid()), "don": _don_page(), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}, "trs": {k: int(v) for k, v in (dx.get("trs") or {}).items() if str(v).isdigit() and int(v) > 0}}, "stone": stone}, None
 
 
 def reco_page_data(did, season, token):
@@ -3012,7 +3020,12 @@ def _trmap(cid):
     return {k: int((v or {}).get("n", 0)) for k, v in (dex.get("tr") or {}).items() if isinstance(v, dict)}
 
 
-def mk_clean(raw, hd, skd, season, trmap=None):
+def _trsmap(cid):
+    dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
+    return {k: int(v) for k, v in (dex.get("trs") or {}).items() if str(v).isdigit()}
+
+
+def mk_clean(raw, hd, skd, season, trmap=None, trsmap=None):
     """편성(5부대×장수3×전법2) 검증. 장수·전법은 한 번 쓰면 다른 부대에서 쓸 수 없다. → (정리된 부대 목록, 오류문)"""
     if not isinstance(raw, list) or not raw: return None, "편성이 비어 있습니다"
     seenh, seens, out = set(), set(), []
@@ -3046,7 +3059,8 @@ def mk_clean(raw, hd, skd, season, trmap=None):
             cap = LV_POINTS + TR_BONUS * n
             if sum(x) > cap: return None, f"{hs[k]}의 스탯 투자가 상한을 넘었습니다 ({sum(x)}/{cap}, 돌 {n}단계)"
             aa.append(x); nn.append(n)
-        out.append({"h": hs, "t": row, "f": f, "a": aa, "n": nn})
+        tn = [[max(0, min(5, int((trsmap or {}).get(t, 0) or 0))) for t in tl] for tl in row]
+        out.append({"h": hs, "t": row, "f": f, "a": aa, "n": nn, "tn": tn})
     if not seenh: return None, "장수를 한 명 이상 넣어 주세요"
     return out, None
 
@@ -3135,7 +3149,7 @@ def rq_post(did, b, hd, skd):
     dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
     oh = [h for h in (dex.get("own") or []) if h in hd and h not in NOT_USED and hd[h].get("season", 1) <= season]
     os_ = [t for t in (dex.get("ownsk") or []) if t in skd and skd[t].get("season", 1) <= season]
-    if len(oh) < 3: return "보유 장수가 3명 미만입니다. 먼저 '내 장수·전법' 탭에서 보유를 체크해 주세요"
+    if len(oh) < 3: return "보유 장수가 3명 미만입니다. 먼저 '장수 도감' 탭에서 보유를 체크해 주세요"
     title = re.sub(r"\s+", " ", str(b.get("title", ""))).strip()[:24] or "5부대 편성 부탁드려요"
     tr = {k: int((v or {}).get("n", 0)) for k, v in (dex.get("tr") or {}).items() if k in oh and isinstance(v, dict) and int((v or {}).get("n", 0)) > 0}
     with _mk_lock:
@@ -3143,7 +3157,7 @@ def rq_post(did, b, hd, skd):
         if sum(1 for r in reqs.values() if r["cid"] == cid and not r.get("adopted")) >= 3: return "진행 중인 의뢰는 최대 3개입니다. 하나를 삭제하거나 채택해 주세요"
         rid = "r" + uuid.uuid4().hex[:7]
         reqs[rid] = {"cid": cid, "by": (roster.by_uid.get(cid) or {}).get("name") or "익명", "gid": cur_gid(), "season": season, "title": title, "note": str(b.get("note", ""))[:160],
-                     "own": {"h": sorted(oh), "s": sorted(os_), "tr": tr}, "ts": int(time.time()), "adopted": None}
+                     "own": {"h": sorted(oh), "s": sorted(os_), "tr": tr, "trs": {k: int(v) for k, v in (dex.get("trs") or {}).items() if k in os_ and str(v).isdigit() and int(v) > 0}}, "ts": int(time.time()), "adopted": None}
         d["reqs"] = reqs; _mk_set(d)
     return None
 
@@ -3168,7 +3182,7 @@ def ans_post(did, b, hd, skd):
         d = _mk_get(); r = (d.get("reqs") or {}).get(rid)
         if not r: return "없는 의뢰입니다"
         if r.get("adopted"): return "이미 채택된 의뢰입니다"
-        units, err = mk_clean(b.get("units"), hd, skd, r.get("season", 1), (r.get("own") or {}).get("tr") or {})
+        units, err = mk_clean(b.get("units"), hd, skd, r.get("season", 1), (r.get("own") or {}).get("tr") or {}, (r.get("own") or {}).get("trs") or {})
         if err: return err
         oh, os_ = set(r["own"]["h"]), set(r["own"]["s"])
         for u in units:
@@ -3212,7 +3226,7 @@ def mk_post(did, b, hd, skd):
     cid = _my_cid(did)
     if not cid: return "인증된 CID가 없습니다"
     season = 2 if b.get("season") == 2 else 1
-    units, err = mk_clean(b.get("units"), hd, skd, season, _trmap(cid))
+    units, err = mk_clean(b.get("units"), hd, skd, season, _trmap(cid), _trsmap(cid))
     if err: return err
     title = re.sub(r"\s+", " ", str(b.get("title", ""))).strip()[:24]
     if not title: return "제목을 입력해 주세요"
@@ -3460,7 +3474,7 @@ async def web_reco_api(request):
         elif op == "ans_del": err = await asyncio.to_thread(ans_del, did, str(b.get("id", "")))
         elif op == "rq_adopt": err = await asyncio.to_thread(rq_adopt, did, str(b.get("rid", "")), str(b.get("aid", "")))
         elif op == "draft":
-            units, err = mk_clean(b.get("units"), hd, skd, season, await asyncio.to_thread(_trmap, _my_cid(did))) if b.get("units") else ([], None)
+            units, err = mk_clean(b.get("units"), hd, skd, season, await asyncio.to_thread(_trmap, _my_cid(did)), await asyncio.to_thread(_trsmap, _my_cid(did))) if b.get("units") else ([], None)
             if not err: await asyncio.to_thread(pref_set, did, draft={str(season): units})
         else: err = None
         if err: return web.json_response({"ok": False, "error": err}, status=400)

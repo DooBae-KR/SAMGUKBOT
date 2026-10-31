@@ -50,6 +50,8 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
 .ocs{display:flex;flex-wrap:wrap;gap:6px}.oc{display:flex;align-items:center;gap:6px;text-align:left}.oc .nm{font-weight:600}.oc .m{display:block;font-size:11px;color:var(--mute)}.th{width:33px;height:42px;border-radius:5px;object-fit:cover}.ts{width:30px;height:30px;border-radius:5px;object-fit:cover}.sts{display:flex;gap:3px;margin-top:3px}.sg{width:14px;height:18px;background:var(--st) center/contain no-repeat;filter:grayscale(1) brightness(.45);cursor:pointer;display:block}.sg.on{filter:none}.gh{flex:0 0 100%;font-size:12px;color:var(--gold);margin:6px 0 0;border-bottom:1px solid var(--line)}.oc{background:var(--card2);border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 9px;cursor:pointer;font-size:13px;opacity:.7}.oc.on{opacity:1;color:var(--txt);border-color:#2e9f5f;background:rgba(46,159,95,.15);font-weight:600}.sq{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:13px;min-width:160px}\n.rw{cursor:pointer}.rw:hover{background:var(--card2)}.dt td{background:var(--card2)}.dr{display:flex;gap:10px;margin:6px 0}.dr>b{width:70px;flex:none;color:var(--gold);font-size:12px}.dh{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;flex:1}.dc{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px;line-height:2}.ownt{color:#2e9f5f}.tk{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:6px;padding:0 5px;font-size:12px;background:var(--card2)}.tk.own{border-color:#2e9f5f;color:#2e9f5f;font-weight:700}.tk img{width:16px;height:23px;object-fit:cover;border-radius:2px}
 @media(max-width:760px){.dh{grid-template-columns:1fr}}
 .err{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;text-align:center}
+.eqt{display:flex;flex-direction:column;gap:6px}.eqr{display:flex;gap:6px;align-items:stretch}.eql{flex:0 0 52px;color:#fff;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 0}.eql b{font-size:22px;line-height:1}.eql span{font-size:10px;opacity:.9}.eqc{flex:1;display:flex;flex-wrap:wrap;gap:6px}.eqi{flex:1 1 150px;max-width:100%;border:1px solid;border-radius:8px;padding:6px 8px;background:var(--card,#fff);display:flex;flex-direction:column;gap:2px;font-size:12px}.eqi b{font-size:14px}.eqi small{color:#8a9a94;font-size:10.5px}
+.tg{display:inline-flex;align-items:center;gap:1px;font-size:10px;color:var(--gold,#e0b65a);margin-left:3px}.tg:before{content:"";width:9px;height:12px;background:var(--st) center/contain no-repeat}
 </style></head><body><div class="wrap" id="app"></div>
 <script>
 const D=__DATA__;const ERR=__ERR__;const $=s=>document.querySelector(s);
@@ -57,7 +59,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const NAT={'촉':'#50aa6e','위':'#648cdc','오':'#dc645a','군':'#aaaaaa'};const KC={'한방딜':'burst','도트딜':'dot','일반딜':'norm','회복':'heal','지원':'sup'};
 let MODE='pvp';try{MODE=sessionStorage.getItem('rmode')||'pvp'}catch(e){}
 const FR={dogam:'장수 도감',skdex:'전법 도감',chart:'상성 차트',mx:'상성표',fill:'부족한 것 메우기',guide:'상황 가이드'};
-let EQ='';let TAB='rank';try{TAB=sessionStorage.getItem('rtab')||'rank';if(TAB==='mine')TAB='rank'}catch(e){}
+let EQ='';let TAB='rank';try{TAB=sessionStorage.getItem('rtab')||'rank';if(TAB==='mine'||TAB==='own')TAB='rank'}catch(e){}
 async function post(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok)alert(j.error||'실패');else location.reload()}catch(e){alert('네트워크 오류')}}
 function US(){return MODE==='dev'&&D.dev?D.dev.units:D.units}
 function setMode(m){MODE=m;try{sessionStorage.setItem('rmode',m)}catch(e){}draw()}
@@ -78,7 +80,8 @@ function pin(name,on){post({op:'pin',deck:name,on})}
 function showDon(){const m=document.createElement('div');m.className='shm';m.innerHTML=`<div class="shb" style="max-width:340px;text-align:center"><div class="bar"><b>☕ 제작자 커피 후원</b><span class="sp"></span><button class="sbtn" onclick="this.closest('.shm').remove()">닫기</button></div>`+donate()+`</div>`;m.onclick=e=>{if(e.target===m)m.remove()};document.body.appendChild(m)}
 function openDon(){const l=(D.don||{}).link;if(!l)return;const mob=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);location.href=l;if(!mob)setTimeout(()=>alert('토스 앱이 설치된 휴대폰에서 송금 페이지가 열립니다.\n휴대폰 카메라로 QR을 스캔해 주세요.'),600)}
 function donate(){const d=D.don||{};return `<div><div style="margin:8px 0;line-height:1.6">${esc(d.text||'봇 제작자의 커피타임을 만들어주시면 더욱 좋은 기능으로 찾아뵙겠습니다!')}</div>${d.img?`<img alt="후원 QR" src="data:image/${esc(d.ext||'png')};base64,${d.img}" style="max-width:260px;width:80%;border-radius:12px;border:1px solid var(--line);cursor:pointer" ondblclick="openDon()" title="더블클릭하면 송금 페이지로 이동">`:'<div class="m">QR 이미지를 준비 중입니다.</div>'}${d.link?`<div style="margin-top:10px"><button class="sbtn on" ondblclick="openDon()" onclick="this.nextElementSibling.style.display='block'">💸 송금하기 (더블클릭)</button><div class="m" style="display:none;margin-top:4px">QR 또는 이 버튼을 더블클릭하면 송금 페이지로 이동합니다.</div></div>`:''}<div class="m" style="margin-top:8px">후원은 자율이며, 모든 기능은 후원 없이 이용할 수 있습니다. 디스코드 <b>/후원</b> 명령이나 <b>#후원</b> 채널에서도 볼 수 있습니다.</div></div>`}
-function setTab(t){if(DIRTY&&t==='build'){DIRTY=false;try{sessionStorage.setItem('rtab','build')}catch(e){}location.reload();return}TAB=t;try{sessionStorage.setItem('rtab',t)}catch(e){}draw()}
+window.addEventListener('message',e=>{if(e.data&&e.data.dexSaved)DIRTY=true});
+function setTab(t){if(DIRTY&&(t==='build'||t==='market')){DIRTY=false;try{sessionStorage.setItem('rtab',t)}catch(e){}location.reload();return}TAB=t;try{sessionStorage.setItem('rtab',t)}catch(e){}draw()}
 function vg(label,v,i,scope){return `<span class="vg">${label}<button class="vb u ${v.m==='u'?'on':''}" onclick="vote(${i},'${scope}','u')">👍 ${v.u}</button><button class="vb d ${v.m==='d'?'on':''}" onclick="vote(${i},'${scope}','d')">👎 ${v.d}</button></span>`}
 function tcell(t){return `<div class="tac" data-tip="${esc(tipHtml(t.n))}">${t.img?`<img src="data:image/jpeg;base64,${t.img}">`:'<img>'}<div><div class="t">${esc(t.n)}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc(t.type)}·${esc(t.trait)}</span></div></div></div>`}
 function hero(h){
@@ -138,9 +141,9 @@ function ownList(){TRS=TRS||Object.assign({},D.own.tr||{});OWNS=OWNS||{h:new Set
 function own(){TRS=TRS||Object.assign({},D.own.tr||{});OWNS=OWNS||{h:new Set(D.own.h),s:new Set(D.own.s)};
   return `<div class="m" style="margin-bottom:8px">눌러서 보유 여부를 바꿉니다(자동 저장). 보유 장수의 <b>붉은 돌</b>을 눌러 돌 단계(0~5)를 정합니다. 스탯 조율은 <b>장수 도감</b> 탭에서 합니다. 바꾼 뒤 <b>내 추천덱</b> 탭으로 돌아가면 다시 편성합니다.</div>
   <div class="bar"><input id="oq" class="sq" placeholder="이름·키워드 검색 (예: 위협, 치유, 홍수)" value="${esc(OQ)}" oninput="setQ(this.value)"><button class="sbtn ${OF==='all'?'on':''}" onclick="setF('all')">전체</button><button class="sbtn ${OF==='own'?'on':''}" onclick="setF('own')">보유</button><button class="sbtn ${OF==='no'?'on':''}" onclick="setF('no')">미보유</button></div><div id="ol">${ownList()}</div>`}
-function eqBody(){const E=D.equip,PC={'필수':'#c0392b','권장':'#0f8a63','상황별':'#8a6a1c','하위':'#8a9a94'};const q=EQ.replace(/\s/g,'');
-  const tbl=(rows,lab)=>`<table><tr><th>${lab}</th><th>우선순위</th><th>효과</th><th>평가</th></tr>${rows.filter(r=>!q||(r[0]+r[2]+r[3]).replace(/\s/g,'').includes(q)).map(r=>`<tr><td><b>${esc(r[0])}</b></td><td><span class="chip" style="border-color:${PC[r[1]]};color:${PC[r[1]]}">${esc(r[1])}</span></td><td>${esc(r[2])}</td><td class="m">${esc(r[3])}</td></tr>`).join('')}</table>`;
-  return `<h2>장비 특기</h2>${tbl(E.traits,'특기')}<h2>이펙트</h2>${tbl(E.effects,'이펙트')}`}
+function eqBody(){const E=D.equip,TC=[['필수','S','#c0392b'],['권장','A','#0f8a63'],['상황별','B','#8a6a1c'],['하위','C','#8a9a94']];const q=EQ.replace(/\s/g,'');
+  const tbl=rows=>{const f=rows.filter(r=>!q||(r[0]+r[2]+r[3]).replace(/\s/g,'').includes(q));return `<div class="eqt">${TC.map(([k,L,c])=>{const g=f.filter(r=>r[1]===k);return g.length?`<div class="eqr"><div class="eql" style="background:${c}"><b>${L}</b><span>${k}</span></div><div class="eqc">${g.map(r=>`<div class="eqi" style="border-color:${c}55"><b>${esc(r[0])}</b><span>${esc(r[2])}</span><small>${esc(r[3])}</small></div>`).join('')}</div></div>`:''}).join('')||'<span class="m">검색 결과 없음</span>'}</div>`};
+  return `<h2>장비 특기</h2>${tbl(E.traits)}<h2>이펙트</h2>${tbl(E.effects)}`}
 function equip(){return `<div class="m" style="margin-bottom:8px">장비 특기 15종·이펙트 19종. 추천 부대 카드의 <b>🛡 특기·이펙트</b>는 장수 역할(병기·책략 딜러/탱커/서포터)과 쓰는 전법 종류로 고른 추천입니다. 평가는 중국 서버 기준이라 한국 서버와 다를 수 있습니다. (출처: cheonha-deck.xyz)</div>
   <div class="bar"><input class="sq" placeholder="특기·이펙트 검색" value="${esc(EQ)}" oninput="EQ=this.value;document.getElementById('el').innerHTML=eqBody()"></div>
   <div id="el">${eqBody()}</div>`}
@@ -176,7 +179,7 @@ function slotH(u,k){const n=BLD[u].h[k],on=PK&&PK.u===u&&PK.k===k&&PK.kind==='h'
   return n?`<div class="bs ${on?'sel':''}" data-du="${u}" data-dk="${k}" onclick="pick(${u},${k},'h')">${imj((HM[n]||{}).img,'th')}<b>${esc(n)}</b><i class="x" onclick="event.stopPropagation();clr(${u},${k},'h')">✕</i></div>`:`<div class="bs empty ${on?'sel':''}" data-du="${u}" data-dk="${k}" onclick="pick(${u},${k},'h')">＋ 장수</div>`}
 function slotT(u,k,j){const n=BLD[u].t[k][j],on=PK&&PK.u===u&&PK.k===k&&PK.kind==='t'&&PK.j===j,hh=BLD[u].h[k];
   if(!hh)return`<div class="bs empty dis">전법${j+1}</div>`;
-  return n?`<div class="bs t ${on?'sel':''}" data-tu="${u}" data-tk="${k}" data-tj="${j}" onclick="pick(${u},${k},'t',${j})">${imj((SM[n]||{}).img,'ts')}<span>${esc(n)}</span><i class="x" onclick="event.stopPropagation();clr(${u},${k},'t',${j})">✕</i></div>`:`<div class="bs empty ${on?'sel':''}" data-tu="${u}" data-tk="${k}" data-tj="${j}" onclick="pick(${u},${k},'t',${j})">＋ 전법${j+1}</div>`}
+  return n?`<div class="bs t ${on?'sel':''}" data-tu="${u}" data-tk="${k}" data-tj="${j}" onclick="pick(${u},${k},'t',${j})">${imj((SM[n]||{}).img,'ts')}<span>${esc(n)}</span>${tgm(tsOf(n))}<i class="x" onclick="event.stopPropagation();clr(${u},${k},'t',${j})">✕</i></div>`:`<div class="bs empty ${on?'sel':''}" data-tu="${u}" data-tk="${k}" data-tj="${j}" onclick="pick(${u},${k},'t',${j})">＋ 전법${j+1}</div>`}
 
 const CAN_HOVER=window.matchMedia&&matchMedia('(hover:hover) and (pointer:fine)').matches;let PD=null;
 const tipOf=x=>`${x.n} · ${x.grade}·${x.type}·${x.trait}${(x.kw||[]).length?'\n키워드: '+x.kw.join(', '):''}\n${x.desc||''}`;
@@ -240,6 +243,8 @@ function clampA(x,h){let c=capOf(h);return x.map(v=>{v=Math.max(0,Math.min(v,c))
 function fixA(u){[0,1,2].forEach(k=>{const h=u.h[k];if(!h)u.a[k]=Z4();else if(!u.a[k].some(Boolean))u.a[k]=defA(h);else u.a[k]=clampA(u.a[k],h)})}
 function setA(i,k,q,v,rel){const h=BLD[i].h[k];if(!h)return;const a=BLD[i].a[k],oth=a.reduce((p,c,j)=>j===q?p:p+c,0);let n=rel?a[q]+v:(parseInt(v)||0);n=Math.max(0,Math.min(n,capOf(h)-oth));a[q]=n;saveDraft();const y=scrollY;draw();scrollTo(0,y)}
 const stones=n=>n>0?`<span class="sts" style="--st:url(${D.stone})">${[1,2,3,4,5].map(k=>`<i class="sg ${k<=n?'on':''}"></i>`).join('')}</span>`:'';
+const tsOf=t=>ANS?((ANS.trs||{})[t]||0):(((D.own||{}).trs||{})[t]||0);
+const tgm=n=>n>0?`<b class="tg" style="--st:url(${D.stone})">${n}</b>`:'';
 const SI=['⚔','🔥','🛡','➤'];
 function statBox(i,k){const h=BLD[i].h[k];if(!h)return'<div></div>';const a=BLD[i].a[k],n=trOf(h),cap=capOf(h),used=a.reduce((p,c)=>p+c,0),bs=(HM[h]||{}).bs;
   const dk=BLD[i].src&&D.rank.decks.find(x=>x.name===BLD[i].src),rec=((dk&&dk.ts||[])[k]||[]).join(' ');
@@ -332,7 +337,7 @@ function unitsHtml(units,own){const oh=ownH(),os=ownS();return units.map((u,i)=>
     const hv=own?true:oh.has(h),a=(u.a||[])[k]||[0,0,0,0],bs=(HM[h]||{}).bs,n=(u.n||[])[k]||0;
     const hero=`<div class="gi r1 c${k}"><div class="bs ro ${hv?'':'no'}">${imj((HM[h]||{}).img,'th')}<b>${esc(h)}</b>${hv?'':'<i class="x1">미보유</i>'}</div></div>`;
     const sum=`<div class="gi r2 c${k}"><div class="sbs ro"><span class="sn">${SL.map((l,q)=>`<span><i>${l[0]}</i>${bs?bs[q]+(a[q]||0):(a[q]||0)}${a[q]&&bs?`<em>+${a[q]}</em>`:''}</span>`).join('')}</span><span class="sm">${stones(n)||'돌 0'}</span></div></div>`;
-    const tac=[0,1].map(j=>{const t=((u.t||[])[k]||[])[j];return `<div class="gi r${3+j} c${k}">${t?`<div class="bs t ro ${own||os.has(t)?'':'no'}" data-tip="${esc(tipHtml(t))}">${imj((SM[t]||{}).img,'ts')}<span>${esc(t)}</span>${own||os.has(t)?'':'<i class="x1">✗</i>'}</div>`:'<div class="bs empty">-</div>'}</div>`}).join('');
+    const tac=[0,1].map(j=>{const t=((u.t||[])[k]||[])[j];return `<div class="gi r${3+j} c${k}">${t?`<div class="bs t ro ${own||os.has(t)?'':'no'}" data-tip="${esc(tipHtml(t))}">${imj((SM[t]||{}).img,'ts')}<span>${esc(t)}</span>${tgm((((u.tn||[])[k]||[])[j])|0)}${own||os.has(t)?'':'<i class="x1">✗</i>'}</div>`:'<div class="bs empty">-</div>'}</div>`}).join('');
     return hero+sum+tac}).join('');
   return `<div class="unit mkv"><div class="uh"><span class="badge">${i+1}부대</span>${u.f?`<span class="m">진형</span>${fm(u.f)}`:''}</div><div class="hcols">${cells}</div></div>`}).join('')}
 function loadFrom(units){if(!confirm('내 편성기에 가져옵니다. 보유하지 않은 장수·전법은 빈 칸이 되며 지금 편성은 덮어씁니다. 계속할까요?'))return;
@@ -347,7 +352,7 @@ async function delAns(id){if(!confirm('내 답변을 삭제할까요?'))return;i
 async function adopt(rid,aid){if(await mpost({op:'rq_adopt',rid,aid})){const y=scrollY;draw();scrollTo(0,y)}}
 function togReq(id){EXP.has(id)?EXP.delete(id):EXP.add(id);const y=scrollY;draw();scrollTo(0,y)}
 function startAns(rid){const r=D.mk.reqs.find(x=>x.id===rid);if(!r)return;MY=BLD;const old=r.ans.find(a=>a.mine);
-  ANS={rid,title:r.title,by:r.by,h:new Set(r.own.h),s:new Set(r.own.s),tr:r.own.tr||{}};BLD=(old?old.units:[]).map(mkU);while(BLD.length<5)BLD.push(T0());BLD.forEach(fixA);AN=old?old.note:'';PK=null;setTab('build')}
+  ANS={rid,title:r.title,by:r.by,h:new Set(r.own.h),s:new Set(r.own.s),tr:r.own.tr||{},trs:r.own.trs||{}};BLD=(old?old.units:[]).map(mkU);while(BLD.length<5)BLD.push(T0());BLD.forEach(fixA);AN=old?old.note:'';PK=null;setTab('build')}
 function endAns(){ANS=null;BLD=MY||BLD;MY=null;PK=null;draw()}
 async function submitAns(){if(!BLD.some(u=>u.h.some(Boolean))){alert('장수를 한 명 이상 넣어 주세요');return}
   if(await mpost({op:'ans_post',rid:ANS.rid,note:AN,units:BLD.map(ser)})){alert('답변을 올렸습니다. 의뢰자가 추천·채택하면 지략가 점수가 올라갑니다');AN='';ANS=null;BLD=MY||BLD;MY=null;MKT='req';setTab('market')}}
@@ -384,7 +389,7 @@ function market(){const body=MKT==='req'?reqView():doneView();return `<div class
 function reqView(){const l=D.mk.reqs.filter(r=>r.season===D.season);const mine=l.some(r=>r.mine&&!r.done);
   return `<div class="unit"><div class="uh"><b>🙋 내 보유로 편성 의뢰하기</b><span class="m">내 보유 장수 ${D.own.h.length}명 · 전법 ${D.own.s.length}개(돌 포함)가 자동 첨부됩니다 · 시즌${D.season}</span></div>
   <div class="bar"><input class="sq" style="flex:1;min-width:140px" maxlength="24" placeholder="제목 (예: PvP 5부대 짜 주세요)" value="${esc(RT)}" oninput="RT=this.value"><input class="sq" style="flex:2;min-width:180px" maxlength="160" placeholder="요청 사항 (선택: 도트딜 위주, 병기 싫음 등)" value="${esc(RN)}" oninput="RN=this.value"><button class="sbtn on" onclick="postReq()">🙋 의뢰 올리기</button></div>
-  <div class="m">보유 목록을 바꾸고 싶으면 <b>내 장수·전법</b> 탭에서 먼저 수정하세요. 의뢰를 올린 시점의 보유가 첨부됩니다.</div></div>
+  <div class="m">보유 목록·돌을 바꾸고 싶으면 <b>장수 도감</b>·<b>전법 도감</b> 탭에서 먼저 수정하세요. 의뢰를 올린 시점의 보유가 첨부됩니다.</div></div>
   ${l.map(reqCard).join('')||'<div class="m">아직 올라온 의뢰가 없습니다.</div>'}`}
 function doneView(){let l=D.mk.posts.filter(p=>p.season===D.season);if(MF)l=l.filter(p=>{const[a,b]=mkStat(p);return a===b});l=l.slice().sort((a,b)=>MS==='like'?((b.likes-(b.dis||0))-(a.likes-(a.dis||0))||b.ts-a.ts):(b.ts-a.ts));
   const card=p=>{const[a,b]=mkStat(p);return `<div class="unit mk"><div class="uh"><span class="nm">${esc(p.title)}</span><span class="m">by <b>${esc(p.by)}</b>${sb(p)}</span>
@@ -400,14 +405,14 @@ function draw(){
   if(ERR){$('#app').innerHTML=`<div class="err"><h1>추천덱</h1><p>${esc(ERR)}</p></div>`;return}
   const q=s=>`?t=${encodeURIComponent(D.t)}&s=${s}`;
   const tb=(k,l,c)=>`<button class="tab ${c||''} ${TAB===k?'on':''}" onclick="setTab('${k}')">${l}</button>`;
-  const NAME={board:'자유게시판',rank:'티어덱',build:'편성기',market:'편성대요청',strat:'지략가',own:'내 장수·전법',equip:'장비',...FR};
-  const main=tb('rank','티어덱')+tb('build','편성기')+tb('market','🙋 편성대요청')+tb('board','💬 자유게시판')+tb('strat','🧠 지략가')+tb('own','내 장수·전법')+tb('dogam','장수 도감')+tb('skdex','전법 도감');
+  const NAME={board:'자유게시판',rank:'티어덱',build:'편성기',market:'편성대요청',strat:'지략가',equip:'장비',...FR};
+  const main=tb('rank','티어덱')+tb('build','편성기')+tb('market','🙋 편성대요청')+tb('board','💬 자유게시판')+tb('strat','🧠 지략가')+tb('dogam','장수 도감')+tb('skdex','전법 도감');
   const late=tb('equip','장비','late')+tb('chart','상성 차트','late')+tb('mx','상성표','late')+tb('fill','부족한 것 메우기','late')+tb('guide','상황 가이드','late');
   $('#app').innerHTML=`<div class="ttl"><h1>🃏 ${esc([D.ally,D.who].filter(Boolean).join(' '))} · 덱 검색기 · 시즌${D.season}</h1><button class="sbtn on dbtn" onclick="showDon()">☕ 후원</button></div><div class="sub">티어덱을 보고, 내 보유 장수·전법으로 5부대를 짜거나 편성대요청으로 도움을 받으세요 · 한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없음</div>
   <div class="bar"><button class="tab mt" onclick="toggleMenu()">☰ 메뉴 ${MENU?'접기 ▴':'펼치기 ▾'}</button>${MENU?'':`<span class="m">현재: <b>${esc(NAME[TAB]||'')}</b></span>`}<span class="sp"></span>
   <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a></div>
   ${MENU?`<div class="bar">${main}<span class="vs"></span><button class="tab lt" onclick="toggleLate()">참고 ${LATE?'접기 ▴':'펼치기 ▾'}</button>${LATE?late:''}</div>`:''}
-  ${TAB==='board'?board():TAB==='build'?`<div class="bwrap">${build()}</div>`:TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='own'?own():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}`}
+  ${TAB==='board'?board():TAB==='build'?`<div class="bwrap">${build()}</div>`:TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}`}
 draw();
 </script></body></html>'''
 
