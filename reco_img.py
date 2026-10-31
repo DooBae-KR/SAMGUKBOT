@@ -18,12 +18,40 @@ def _f(sz):
     return _FONTS[sz]
 
 
+_WM = []
+
+
+def _wm(b64):
+    """이미지 우측하단에 '무소유' 워터마크(assets/wm.png)를 찍어 JPEG base64로 돌려준다."""
+    try:
+        if not _WM: _WM.append(Image.open(HERE / "assets" / "wm.png").convert("RGBA"))
+        im = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGBA"); w, h = im.size; wm = _WM[0]
+        tw = max(24, int(w * 0.42)); th = max(8, int(wm.size[1] * tw / wm.size[0])); m = max(2, int(w * 0.03))
+        im.alpha_composite(wm.resize((tw, th), Image.LANCZOS), (w - tw - m, h - th - m))
+        o = io.BytesIO(); im.convert("RGB").save(o, "JPEG", quality=88); return base64.b64encode(o.getvalue()).decode("ascii")
+    except Exception: return b64
+
+
 def _imgs():
     if not _IMG:
         t = (HERE / "tier_template.html").read_text("utf-8"); dec = json.JSONDecoder()
         for k in ("HERO", "SKI"):
-            i = t.index(f"const {k}=") + len(f"const {k}="); _IMG[k] = dec.raw_decode(t[i:])[0]
+            i = t.index(f"const {k}=") + len(f"const {k}="); _IMG[k] = {n: _wm(v) for n, v in dec.raw_decode(t[i:])[0].items()}
     return _IMG
+
+
+_TPL = []
+
+
+def tier_html():
+    """도감 템플릿(HERO·SKI 이미지에 워터마크 적용본). 처음 한 번만 만든다."""
+    if not _TPL:
+        t = (HERE / "tier_template.html").read_text("utf-8"); dec = json.JSONDecoder(); im = _imgs()
+        for k in ("HERO", "SKI"):
+            s = t.index(f"const {k}=") + len(f"const {k}="); _, e = dec.raw_decode(t[s:])
+            t = t[:s] + json.dumps(im[k], ensure_ascii=False) + t[s + e:]
+        _TPL.append(t)
+    return _TPL[0]
 
 
 def _pic(kind, name, size):
