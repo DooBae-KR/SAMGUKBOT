@@ -1702,7 +1702,16 @@ def adm_state(gid):
     for r in _sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,alt_name,main_cid&limit=100000") or []:
         grp.setdefault(r["main_cid"], []).append({"c": r["alt_cid"], "n": r.get("alt_name") or nm.get(r["alt_cid"], "")})
     alts = sorted(({"c": k, "n": nm.get(k, ""), "alts": sorted(v, key=lambda a: a["n"])} for k, v in grp.items()), key=lambda x: x["n"])
-    return {"alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
+    rsv, did_of = {}, {u: d for u, d in (db.get("uid") or {}).items()}
+    for c, v in (roster_for(gid).by_uid or {}).items():                       # 인사 명단 직위가 '예비'인 사람
+        if (v.get("title") or "").replace(" ", "") in RESERVE_TITLES: rsv[c] = {"c": c, "n": v.get("name") or "", "j": v.get("job") or "", "src": "명단", "memo": "", "t": "", "d": did_of.get(c, "")}
+    for c, v in (db.get("res") or {}).items():                                # /예비 명령으로 임시 등록한 사람
+        rsv.setdefault(c, {"c": c, "n": v.get("name", ""), "j": "", "src": "명령", "memo": v.get("memo", ""), "t": v.get("t", ""), "d": did_of.get(c, v.get("did", ""))})
+    for r in rsv.values():
+        m = gg.get_member(int(r["d"])) if gg and str(r["d"]).isdigit() else None
+        r["dn"] = str(m) if m else ""; r["ok"] = bool(r["d"])
+    reserve = sorted(rsv.values(), key=lambda x: (x["ok"], x["n"]))
+    return {"reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):

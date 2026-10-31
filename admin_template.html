@@ -23,7 +23,7 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
 #toast.err{background:#3a1d1d;border-color:var(--verm)}.mute{color:var(--mute);font-size:12.5px}
 </style></head><body>
 <header><div class="wrap"><h1>🛠️ 관리 페이지</h1><div class="sub"><span id="dot" class="live"></span><span id="ally">불러오는 중…</span> · DB와 4초마다 자동 동기화</div></div></header>
-<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="alt">부캐</button><button data-t="adm">관리자 권한</button><button data-t="cmd">명령어 권한</button><button data-t="try">인증 횟수 제한</button></div></nav>
+<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="alt">부캐</button><button data-t="adm">관리자 권한</button><button data-t="cmd">명령어 권한</button><button data-t="rsv">예비</button><button data-t="try">인증 횟수 제한</button></div></nav>
 <main><div class="wrap">
 <div class="tab on" id="talk">
  <div class="card"><h2>톡방 참여자 <span class="mute" id="tcnt"></span></h2><p class="lead">여러 명은 줄바꿈이나 쉼표로 구분해 한 번에 추가할 수 있습니다. 명단에 없는 이름은 ⚠️로 표시됩니다.</p>
@@ -50,6 +50,9 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
 <div class="tab" id="cmd">
  <div class="card"><h2>간부 명령어 직책별 권한</h2><p class="lead">직책을 선택하면 그 직책만 해당 명령어를 쓸 수 있습니다. 아무것도 선택하지 않으면 간부 역할 전체가 쓸 수 있습니다. 관리자는 항상 쓸 수 있고, 클릭하면 바로 저장됩니다.</p><div id="plist"></div></div>
  <div class="card"><h2>명령어 권한</h2><p class="lead">역할별로 쓸 수 있는 명령어입니다. 관리자는 간부·동맹원 명령어도 모두 쓸 수 있고, 간부는 동맹원 명령어와 간부 명령어를 씁니다. 관리자 권한은 "관리자 권한" 탭에서 부여합니다.</p><div id="clist"></div></div>
+</div>
+<div class="tab" id="rsv">
+ <div class="card"><h2>예비 인원 <span class="mute" id="rcnt"></span></h2><p class="lead">인사 명단 직위가 <b>예비</b>인 사람과 <code>/예비</code> 명령으로 등록한 사람입니다. 인증을 마치면 <b>인증 완료</b>로 표시됩니다.</p><input id="rq" placeholder="이름·CID·메모 검색"><ul id="rlist"></ul></div>
 </div>
 <div class="tab" id="try">
  <div class="card"><h2>인증 횟수 제한 <span class="mute" id="tmax"></span></h2><p class="lead">CID 인증에 실패하면 디스코드 계정별로 횟수가 쌓이고, 한도에 이르면 잠깁니다. 잠긴 계정은 여기서 바로 풀 수 있습니다.</p>
@@ -79,7 +82,10 @@ function render(){if(!S)return;const a=S.ally||{};$("#ally").textContent=(a.serv
  $("#alts").innerHTML=S.alts.filter(g=>!aq||g.n.includes(aq)||g.alts.some(a=>a.n.includes(aq))).map(g=>`<li style="display:block"><b>${esc(g.n||g.c)}</b> <span class="mute">${esc(g.c)}</span><div class="row" style="gap:6px;margin-top:4px">${g.alts.map(a=>`<span class="tag">${esc(a.n||a.c)} <a href="#" data-ar="${esc(a.c)}" style="color:var(--verm);text-decoration:none">✕</a></span>`).join("")}</div></li>`).join("")||'<li class="mute">연결된 부캐가 없습니다</li>';
  $("#plist").innerHTML=S.staffCmds.map(c=>{const sel=S.cmdperm[c[0]]||[];return `<div style="padding:10px 0;border-top:1px solid var(--line)"><b>${esc(c[0])}</b> <span class="mute">${esc(c[1])}</span><div class="row" style="margin-top:6px;gap:6px"><button class="b ${sel.length?"g":""}" style="padding:3px 10px;font-size:12px;flex:0 0 auto" data-pc="${esc(c[0])}" data-all="1">전체</button>${S.titles.map(t=>`<button class="b ${sel.includes(t)?"":"g"}" style="padding:3px 10px;font-size:12px;flex:0 0 auto" data-pc="${esc(c[0])}" data-pt="${esc(t)}">${esc(t)}</button>`).join("")}<span class="tag ${sel.length?"w":""}" style="align-self:center">${sel.length?"제한: "+sel.length+"개 직책":"간부 전체"}</span></div></div>`}).join("");
  $("#tmax").textContent="(한도 "+S.maxTries+"회)";
- $("#trlist").innerHTML=S.tries.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">디스코드 ${esc(x.d)}${x.cid?" · 시도한 CID "+esc(x.cid):""}</span></span><span class="tag ${x.lock?"w":""}">${x.n}/${S.maxTries}${x.lock?" 잠김":""}</span><button class="b g" data-tr="${esc(x.d)}">초기화</button></li>`).join("")||'<li class="mute">실패 기록이 없습니다</li>';
+ {const q=$("#rq").value.trim().toLowerCase(),R=(S.reserve||[]).filter(x=>!q||(x.n+x.c+x.memo+x.dn).toLowerCase().includes(q));
+ $("#rcnt").textContent=`(${(S.reserve||[]).length}명 · 인증 ${(S.reserve||[]).filter(x=>x.ok).length})`;
+ $("#rlist").innerHTML=R.map(x=>`<li><span class="n">${esc(x.n||"(이름 없음)")}${x.j?" · "+esc(x.j):""} <span class="mute">CID ${esc(x.c)}${x.dn?" · "+esc(x.dn):""}${x.t?" · "+esc(x.t):""}${x.memo?" · "+esc(x.memo):""}</span></span><span class="tag">${x.src}</span><span class="tag ${x.ok?"o":"w"}">${x.ok?"인증 완료":"미인증"}</span></li>`).join("")||'<li class="mute">예비 인원이 없습니다</li>'}
+$("#trlist").innerHTML=S.tries.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">디스코드 ${esc(x.d)}${x.cid?" · 시도한 CID "+esc(x.cid):""}</span></span><span class="tag ${x.lock?"w":""}">${x.n}/${S.maxTries}${x.lock?" 잠김":""}</span><button class="b g" data-tr="${esc(x.d)}">초기화</button></li>`).join("")||'<li class="mute">실패 기록이 없습니다</li>';
  $("#alist").innerHTML=S.admins.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">${esc(x.id)}</span></span>${x.src=="owner"?'<span class="tag o">제작자</span>':x.src=="discord"?'<span class="tag">디스코드 관리자</span>':'<span class="tag o">부여됨</span>'}${x.src=="grant"&&x.id!=S.me?`<button class="b d" data-rev="${esc(x.id)}">권한 빼기</button>`:""}</li>`).join("")}
 $("#tbtn").onclick=async()=>{const v=$("#tadd").value.split(/[\n,]/).map(x=>x.trim()).filter(Boolean);if(!v.length)return toast("이름을 입력해 주세요",1);if(await api({op:"talk",req:{op:"add",names:v}}))$("#tadd").value=""};
 $("#tlist").onclick=async e=>{const d=e.target.dataset;if(d.del&&confirm(d.del+" 님을 톡방 목록에서 삭제할까요?"))api({op:"talk",req:{op:"remove",names:[d.del]}});
@@ -93,6 +99,7 @@ $("#abtn2").onclick=async()=>{if(await api({op:"alt_add",main:$("#am").value,nam
 $("#aq").oninput=render;
 $("#alts").onclick=e=>{const c=e.target.dataset.ar;if(c){e.preventDefault();if(confirm("이 부캐 연결을 해제할까요?"))api({op:"alt_remove",cid:c})}};
 $("#tbtn2").onclick=async()=>{if(await api({op:"tries_reset",id:$("#ti").value}))$("#ti").value=""};
+$("#rq").oninput=render;
 $("#trlist").onclick=e=>{const id=e.target.dataset.tr;if(id)api({op:"tries_reset",id})};
 api({op:"state"});setInterval(()=>{if(!busy&&!document.hidden)api({op:"state"},1)},4000);
 </script></body></html>
