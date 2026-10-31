@@ -29,6 +29,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th{color:var(--mute);fo
 .pin{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px}.pin.on{background:var(--gold);color:#2b2000;border-color:var(--gold);font-weight:700}
 h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:0 8px;margin:1px;font-size:12px}
 .fm{display:inline-flex;align-items:center;gap:4px;margin-right:6px}.fg{display:inline-grid;grid-template-columns:repeat(3,7px);gap:1px}.fg i{width:7px;height:7px;border-radius:2px;background:#cdd6d2}.fg i.on{background:#d9a94a}
+.fr{width:100%;height:78vh;border:1px solid var(--line);border-radius:12px;background:#fff}.vs{width:2px;height:24px;background:var(--line);margin:0 2px}.tab.late{background:#f7f2e4}.mo{font-weight:700}
 .ocs{display:flex;flex-wrap:wrap;gap:6px}.oc{display:flex;align-items:center;gap:6px;text-align:left}.oc .nm{font-weight:600}.oc .m{display:block;font-size:11px;color:var(--mute)}.th{width:33px;height:42px;border-radius:5px;object-fit:cover}.ts{width:30px;height:30px;border-radius:5px;object-fit:cover}.sts{display:flex;gap:3px;margin-top:3px}.sg{width:14px;height:18px;background:var(--st) center/contain no-repeat;filter:grayscale(1) brightness(.45);cursor:pointer;display:block}.sg.on{filter:none}.gh{flex:0 0 100%;font-size:12px;color:var(--gold);margin:6px 0 0;border-bottom:1px solid var(--line)}.oc{background:var(--card2);border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 9px;cursor:pointer;font-size:13px;opacity:.7}.oc.on{opacity:1;color:var(--txt);border-color:#2e9f5f;background:rgba(46,159,95,.15);font-weight:600}.sq{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:13px;min-width:160px}\n.rw{cursor:pointer}.rw:hover{background:var(--card2)}.dt td{background:var(--card2)}.dr{display:flex;gap:10px;margin:6px 0}.dr>b{width:70px;flex:none;color:var(--gold);font-size:12px}.dh{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;flex:1}.dc{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px;line-height:2}.ownt{color:#2e9f5f}.tk{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:6px;padding:0 5px;font-size:12px;background:var(--card2)}.tk.own{border-color:#2e9f5f;color:#2e9f5f;font-weight:700}.tk img{width:16px;height:23px;object-fit:cover;border-radius:2px}
 @media(max-width:760px){.dh{grid-template-columns:1fr}}
 .err{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;text-align:center}
@@ -37,9 +38,13 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
 const D=__DATA__;const ERR=__ERR__;const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const NAT={'촉':'#50aa6e','위':'#648cdc','오':'#dc645a','군':'#aaaaaa'};const KC={'한방딜':'burst','도트딜':'dot','일반딜':'norm','회복':'heal','지원':'sup'};
+let MODE='pvp';try{MODE=sessionStorage.getItem('rmode')||'pvp'}catch(e){}
+const FR={dogam:'장수 도감',skdex:'전법 도감',chart:'상성 차트',mx:'상성표',fill:'부족한 것 메우기',guide:'상황 가이드'};
 let TAB='mine';try{TAB=sessionStorage.getItem('rtab')||'mine'}catch(e){}
 async function post(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok)alert(j.error||'실패');else location.reload()}catch(e){alert('네트워크 오류')}}
-function vote(i,scope,kind){const u=D.units[i];if(scope==='h')post({op:'vote',scope:'h',key:u.hk,kind,heroes:u.heroes.filter(h=>h.n).map(h=>h.n)});else post({op:'vote',scope:'t',key:u.tk,kind,pairs:u.heroes.flatMap(h=>h.n?h.tac.map(t=>[h.n,t.n]):[]),tset:u.tset})}
+function US(){return MODE==='dev'&&D.dev?D.dev.units:D.units}
+function setMode(m){MODE=m;try{sessionStorage.setItem('rmode',m)}catch(e){}draw()}
+function vote(i,scope,kind){const u=US()[i];if(scope==='h')post({op:'vote',scope:'h',key:u.hk,kind,heroes:u.heroes.filter(h=>h.n).map(h=>h.n)});else post({op:'vote',scope:'t',key:u.tk,kind,pairs:u.heroes.flatMap(h=>h.n?h.tac.map(t=>[h.n,t.n]):[]),tset:u.tset})}
 function tg(k){const e=document.getElementById('dt'+k),a=document.getElementById('ar'+k);const o=e.style.display==='none';e.style.display=o?'':'none';a.textContent=o?'▾':'▸'}
 let TRS=null,OWNS=null,OQ='',OF='all',DIRTY=false;
 async function setTr(name,k){TRS=TRS||Object.assign({},D.own.tr||{});const n=(TRS[name]||0)===k?k-1:k;
@@ -72,7 +77,7 @@ function unit(u,i){
   return `<div class="unit"><div class="uh"><span class="badge">${u.i}부대</span>${u.name?`<span class="m">${esc(u.tier)}</span><span class="nm">${esc(u.name)}</span><span class="tr">${fm(u.form)}</span>`:'<span class="nm">자유 편성</span>'}
   ${u.name?`<div class="votes">${vg('장수 조합',u.hv,i,'h')}${u.tset.length?vg('전법 조합',u.tv,i,'t'):''}</div>`:''}</div>
   <div class="hs">${u.heroes.map(hero).join('')}</div><div class="flow">${lines.join('')}</div></div>`}
-function mine(){return D.units.map(unit).join('')+`<div class="m">티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웁니다. 장수 👎는 그 덱을 빼고, 전법 👎는 전법만 다시 고릅니다. 모든 서버의 평가가 합산됩니다.</div>`}
+function mine(){const dv=MODE==='dev';return `<div class="bar"><button class="sbtn mo ${!dv?'on':''}" onclick="setMode('pvp')">PvP 추천</button><button class="sbtn mo ${dv?'on':''}" onclick="setMode('dev')">개척 추천</button><span class="m">${dv?'개척덱 기준':'PvP 티어덱 기준'} · 내 보유 장수·전법으로 5부대</span></div>`+US().map(unit).join('')+`<div class="m">티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웁니다. 장수 👎는 그 덱을 빼고, 전법 👎는 전법만 다시 고릅니다. 모든 서버의 평가가 합산됩니다.</div>`}
 function rank(){const R=D.rank;
   const own=new Set(D.ownsk||[]),nk=s=>s.replace(/[\s·\-]/g,'');
   const rhero=h=>`<div class="h"><div class="pic">${h.img?`<img class="p" src="data:image/jpeg;base64,${h.img}">`:''}<div class="lb">50 ${esc(h.n)}</div></div><div class="hi">
@@ -101,15 +106,16 @@ function own(){TRS=TRS||Object.assign({},D.own.tr||{});OWNS=OWNS||{h:new Set(D.o
   const oth=hs.filter(h=>!(h.nation in NO));if(oth.length)hc+=`<div class="gh">기타</div>`+oth.map(card).join('');
   let sc='',lg=null;for(const s of ss){if(s.grade!==lg){lg=s.grade;sc+=`<div class="gh">${esc(lg||'기타')}</div>`}
    sc+=`<button class="oc sc ${OWNS.s.has(s.n)?'on':''}" onclick="toggleOwn('s','${esc(s.n).replace(/'/g,"\\'")}')">${im(s.img,'ts')}<span class="nm">${esc(s.n)}</span><span class="m">${esc(s.type)}·${esc(s.trait)}</span></button>`}
-  return `<div class="m" style="margin-bottom:8px">눌러서 보유 여부를 바꿉니다(자동 저장). 보유 장수의 <b>붉은 돌</b>을 눌러 초월 단계(0~5)를 정합니다. 스탯 조율은 <b>/도감</b> 페이지에서 합니다. 바꾼 뒤 <b>내 추천덱</b> 탭으로 돌아가면 다시 편성합니다.</div>
+  return `<div class="m" style="margin-bottom:8px">눌러서 보유 여부를 바꿉니다(자동 저장). 보유 장수의 <b>붉은 돌</b>을 눌러 초월 단계(0~5)를 정합니다. 스탯 조율은 <b>장수 도감</b> 탭에서 합니다. 바꾼 뒤 <b>내 추천덱</b> 탭으로 돌아가면 다시 편성합니다.</div>
   <div class="bar"><input id="oq" class="sq" placeholder="이름 검색" value="${esc(OQ)}" oninput="setQ(this.value)"><button class="sbtn ${OF==='all'?'on':''}" onclick="setF('all')">전체</button><button class="sbtn ${OF==='own'?'on':''}" onclick="setF('own')">보유</button><button class="sbtn ${OF==='no'?'on':''}" onclick="setF('no')">미보유</button></div>
   <h2>장수 (보유 ${OWNS.h.size})</h2><div class="ocs">${hc||'<span class="m">없음</span>'}</div><h2>전법 (보유 ${OWNS.s.size})</h2><div class="ocs">${sc||'<span class="m">없음</span>'}</div>`}
+function frame(v){return `<iframe class="fr" src="/tier?t=${encodeURIComponent(D.t)}&s=${D.season}&embed=1#${v}"></iframe>`}
 function draw(){
   if(ERR){$('#app').innerHTML=`<div class="err"><h1>추천덱</h1><p>${esc(ERR)}</p></div>`;return}
   const q=s=>`?t=${encodeURIComponent(D.t)}&s=${s}`;
   $('#app').innerHTML=`<h1>🃏 ${esc(D.who)} 추천덱 · 시즌${D.season}</h1><div class="sub">장수 카드·전법·초월 반영 선공 순서 · 한 번 쓴 장수·전법은 다시 쓰지 않음</div>
-  <div class="bar"><button class="tab ${TAB==='mine'?'on':''}" onclick="setTab('mine')">내 추천덱</button><button class="tab ${TAB==='rank'?'on':''}" onclick="setTab('rank')">추천덱 랭킹</button><button class="tab ${TAB==='own'?'on':''}" onclick="setTab('own')">내 장수·전법</button><span class="sp"></span>
-  <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a></div>${TAB==='mine'?mine():TAB==='rank'?rank():own()}`}
+  <div class="bar"><button class="tab ${TAB==='mine'?'on':''}" onclick="setTab('mine')">내 추천덱</button><button class="tab ${TAB==='rank'?'on':''}" onclick="setTab('rank')">추천덱 랭킹</button><button class="tab ${TAB==='own'?'on':''}" onclick="setTab('own')">내 장수·전법</button><button class="tab ${TAB==='dogam'?'on':''}" onclick="setTab('dogam')">장수 도감</button><button class="tab ${TAB==='skdex'?'on':''}" onclick="setTab('skdex')">전법 도감</button><span class="vs"></span><button class="tab late ${TAB==='chart'?'on':''}" onclick="setTab('chart')">상성 차트</button><button class="tab late ${TAB==='mx'?'on':''}" onclick="setTab('mx')">상성표</button><button class="tab late ${TAB==='fill'?'on':''}" onclick="setTab('fill')">부족한 것 메우기</button><button class="tab late ${TAB==='guide'?'on':''}" onclick="setTab('guide')">상황 가이드</button><span class="sp"></span>
+  <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a></div>${TAB==='mine'?mine():TAB==='rank'?rank():TAB==='own'?own():FR[TAB]?frame(TAB):mine()}`}
 draw();
 </script></body></html>'''
 

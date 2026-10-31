@@ -396,7 +396,7 @@ class VerifyModal(CtxModal, title="연맹 인증"):
             log.exception("역할 부여 실패"); return await it.followup.send(f"처리 중 오류: {e}", ephemeral=True)
         db = db_load()                                                  # 역할 부여(await) 중에 다른 사람의 실패 기록이 바뀌었을 수 있으니 최신본에 반영(덮어쓰기 방지)
         db["uid"][uid] = did; db.setdefault("nick", {})[uid] = nick; db["tries"].pop(did, None); db.get("tried", {}).pop(did, None); db_save(db)
-        await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + "\n📌 인증이 완료되면 `/도감`에서 **보유한 장수와 전법을 등록**해 주세요~" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
+        await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + "\n📌 인증이 완료되면 `/추천`의 **내 장수·전법** 탭에서 **보유한 장수와 전법을 등록**해 주세요~" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
 
 
 # ---------- 외교관 인증 ----------
@@ -1376,8 +1376,7 @@ CMD_HELP = {
     "동맹원": [("/동맹등록", "서버 번호·동맹명을 등록(승인 전 서버는 제작자에게 신청)"),
              ("/인증", "CID 인증 창 열기(나에게만 보임)"),
              ("/부캐", "내 부계정을 닉네임으로 연결(닉네임1,닉네임2 …)"),
-             ("/도감", "내 보유 장수·전법을 체크하는 개인 링크"),
-             ("/추천덱", "내 보유 장수·전법으로 티어덱 5부대 편성(시즌 선택은 기억)"),
+             ("/추천", "내 장수·전법으로 PvP·개척 5부대 편성 + 도감·상성 차트 등(개인 링크)"),
              ("/후원", "제작자 서버비 후원 안내(카카오 QR)"),
              ("/명령어", "내 역할로 쓸 수 있는 명령어 보기")],
     "간부": [("/인사", "인사데이터(상황판) 링크"),
@@ -1620,12 +1619,12 @@ def tier_sheet_cfg():
 
 async def web_tier(request):
     pr = tier_parse(request.query.get("t"))
-    if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /도감 으로 새 링크를 받으세요.")
+    if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /추천 으로 새 링크를 받으세요.")
     set_gid(pr[0]); cid = pr[1]
     info = roster.by_uid.get(cid) or {}
     dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
     cfg = await asyncio.to_thread(tier_sheet_cfg)
-    cfg |= {"t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {}), "hs": {k: [v["atk"], v["intl"], v["lead"], v["init"]] for k, v in hero_stats().items()}}
+    cfg |= {"embed": request.query.get("embed") == "1", "season": int(request.query["s"]) if request.query.get("s") in ("1", "2") else 0, "t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {}), "hs": {k: [v["atk"], v["intl"], v["lead"], v["init"]] for k, v in hero_stats().items()}}
     import reco_img
     tpl = await asyncio.to_thread(reco_img.tier_html)
     return web.Response(text=tpl.replace("__CFG__", json.dumps(cfg, ensure_ascii=False)), content_type="text/html", headers={"Cache-Control": "no-store"})
@@ -2284,6 +2283,7 @@ def synergy_add(kind, a, b, delta, note="", src="vote", cap=12.0):
     _SY["at"] = 0.0
 
 
+NOT_USED = {s.strip() for s in os.environ.get("NOT_USED", "화웅,안량,감녕").split(",") if s.strip()}   # 추천(빈자리 채우기 포함)에서 제외할 장수 — 실전에서 쓰지 않음
 PURSUE = ("황충", "손상향", "하후연", "허저")                     # 추격 전법으로 구성하는 장수 (관통 증가 효과 전법이 잘 어울림)
 LU_COMBO = ("원문사극",)                                          # 여포 연타 구성(운영 노하우)
 LU_COUNTER = ("용맹한삼군", "일인천군")                            # 여포 반격덱 구성
@@ -2368,11 +2368,27 @@ def finish_tactics(st, hd, skd):
     return out, (sorted(st["G"] - {"정화"}), sorted(x for x in st["U"] - st["G"] if x != "디버프"))
 
 
+import contextvars
+RECO_MODE = contextvars.ContextVar("reco_mode", default="pvp")      # 추천 대상 덱 목록: pvp(티어덱) / dev(개척덱)
+_DEV = []
+
+
+def dev_decks():
+    if not _DEV:
+        try: _DEV.extend(json.loads((Path(__file__).parent / "dev_decks.json").read_text("utf-8")))
+        except Exception: log.exception("개척덱 데이터 로드 실패")
+    return _DEV
+
+
+def reco_decks(season):
+    return dev_decks() if RECO_MODE.get() == "dev" else tier_data()["S1" if season == 1 else "S2"]
+
+
 def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", banned=(), votes=None, tpen=None, pins=()):
     """티어덱 순서대로 5부대 편성. 한 번 쓴 장수·전법은 다시 쓰지 않는다.
     덱을 통째로 못 만들면 2명 이상, 그다음 1명 이상 보유한 덱을 고르고 빈자리는 같은 역할의 미사용 보유 장수로 채운다."""
-    decks = tier_data()["S1" if season == 1 else "S2"]
-    own_h = {h for h in own_h if (hd.get(h) or {}).get("season", 1) <= season}
+    decks = reco_decks(season)
+    own_h = {h for h in own_h if (hd.get(h) or {}).get("season", 1) <= season and h not in NOT_USED}      # 실전에서 쓰지 않는 장수는 빈자리 채우기에도 쓰지 않음
     skn = {_nk(k): k for k in skd}
     own_s = {_nk(x) for x in own_s if (skd.get(x) or {}).get("season", 1) <= season}
     freq = {}
@@ -2458,7 +2474,7 @@ def reco_text(season, res, who, skd=None, deal="도트딜"):
             lines.append("  ↳ 발동순서: " + " → ".join(f"{t}" for t in seq if ORDER.get(tact_info(t, skd)["type"], 3) < 4) + (" → 평타 → " if any(ORDER.get(tact_info(t, skd)["type"], 3) < 4 for t in seq) else "평타 → ") + (", ".join(t for t in seq if ORDER.get(tact_info(t, skd)["type"], 3) > 4) or "(추격 없음)"))
         if st[0] or st[1]:
             lines.append("  ↳ 이상상태: " + (f"부여 {', '.join(st[0])}" if st[0] else "부여 없음") + (f" · 부족 {', '.join(st[1])}" if st[1] else ""))
-    lines.append("\n티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다. 시즌 변경: `/추천덱 시즌:2`")
+    lines.append("\n티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다. 시즌 변경: `/추천 시즌:2`")
     return "\n".join(lines)
 
 
@@ -2644,7 +2660,7 @@ def reco_run(did, season):
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
     if not cid: return "먼저 `/인증`으로 CID 인증을 해 주세요.", None, None, None, None, None, None
     dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
-    if not dex.get("own"): return "보유 장수가 없습니다. `/도감`에서 보유 장수와 전법을 먼저 체크해 주세요.", None, None, None, None, None, None
+    if not dex.get("own"): return "보유 장수가 없습니다. `/추천` 페이지의 **내 장수·전법** 탭에서 보유 장수와 전법을 먼저 체크해 주세요.", None, None, None, None, None, None
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
     deal = "도트딜"                                                  # 딜 방식은 고정(누적 딜 우선) — 사용자가 고르지 않음
@@ -2690,7 +2706,7 @@ async def reco_deliver(it, did, season, first_edit=False, note=""):
     else: await it.followup.send(head[:1990], view=view, ephemeral=True)
 
 
-def reco_page_data(did, season, token):
+def _reco_page_core(did, season, token):
     """추천덱 HTML 페이지에 쓸 데이터(장수 카드·전법·초월·턴 순서·평가 수·랭킹)."""
     err, res, who, deal, hd, skd, tr = reco_run(did, season)
     if err: return None, err
@@ -2716,7 +2732,7 @@ def reco_page_data(did, season, token):
             u |= {"tier": deck.get("tier", ""), "name": deck["name"], "form": deck.get("form", ""), "note": deck.get("note", ""), "hk": vote_key(season, deck["name"]), "tk": tvote_key(season, deck["name"], tset), "tset": tset,
                   "hv": vt(vote_key(season, deck["name"])), "tv": vt(tvote_key(season, deck["name"], tset))}
         units.append(u)
-    pins = set(reco_pins(did, season)); decks = tier_data()["S1" if season == 1 else "S2"]; score = reco_scores(season)
+    pins = set(reco_pins(did, season)); decks = reco_decks(season); score = reco_scores(season)
     skn_ = {_nk(k): k for k in skd}
 
     def deck_cards(d):
@@ -2765,9 +2781,20 @@ def reco_page_data(did, season, token):
     return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}}, "stone": stone}, None
 
 
+def reco_page_data(did, season, token):
+    """PvP(티어덱) 추천 + 개척덱 추천을 함께 계산해 한 페이지 데이터로 만든다. → (데이터, 오류 안내문)"""
+    r = _reco_page_core(did, season, token)
+    if not isinstance(r[0], dict): return r
+    tok = RECO_MODE.set("dev")
+    try: d = _reco_page_core(did, season, token)
+    finally: RECO_MODE.reset(tok)
+    if isinstance(d[0], dict): r[0]["dev"] = {"units": d[0]["units"]}
+    return r
+
+
 async def web_reco(request):
     pr = tier_parse(request.query.get("t"))
-    if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /추천덱 으로 새 링크를 받으세요.")
+    if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /추천 으로 새 링크를 받으세요.")
     set_gid(pr[0]); cid = pr[1]; did = (db_load()["uid"] or {}).get(cid)
     if not did: return web.Response(status=403, text="인증 정보를 찾지 못했습니다. 디스코드에서 /인증 후 다시 시도하세요.")
     sv = request.query.get("s"); season = int(sv) if sv in ("1", "2") else (pref_get(did).get("season") if pref_get(did).get("season") in (1, 2) else 1)
@@ -2898,7 +2925,7 @@ def dex_edit(did, add_h="", add_s="", del_h="", del_s=""):
     return out, None
 
 
-@bot.tree.command(name="추천덱", description="내 보유 장수·전법으로 티어덱 순서대로 5부대를 편성해 줍니다(추천덱 페이지에서 장수·전법 관리)")
+@bot.tree.command(name="추천", description="내 보유 장수·전법으로 PvP·개척 5부대를 편성해 주는 개인 페이지 링크(장수·전법·도감·상성도 여기서)")
 @app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)")
 @app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2)])
 async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None):
@@ -2913,13 +2940,6 @@ async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = N
         season = 시즌.value; await asyncio.to_thread(pref_set, did, season=season)
     await it.response.defer(ephemeral=True)
     await reco_deliver(it, did, season, note=note)
-
-
-@bot.tree.command(name="도감", description="내 보유 장수·전법을 체크하는 개인 링크를 받습니다(시트에 자동 저장)")
-async def dex_link(it: discord.Interaction):
-    cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(it.user.id)), None)
-    if not cid: return await it.response.send_message("먼저 인증(CID 등록)을 완료해 주세요.", ephemeral=True)
-    await it.response.send_message(f"🔗 내 도감 링크 (다른 사람에게 공유하지 마세요)\n{PUBLIC_URL}/tier?t={tier_token(cid, cur_gid())}\n장수·전법을 체크하면 자동으로 시트에 저장됩니다.", ephemeral=True)
 
 
 @bot.tree.command(name="메뉴얼업데이트", description="[제작자] 관리자·이용자 가이드(이미지)를 승인된 모든 서버의 가이드 채널에 올리거나 갱신합니다")
