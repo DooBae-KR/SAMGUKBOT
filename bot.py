@@ -2920,7 +2920,7 @@ def _reco_page_core(did, season, token):
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}}, "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}}, "stone": stone}, None
 
 
 def reco_page_data(did, season, token):
@@ -2964,7 +2964,12 @@ def _mk_set(d):
     finally: _CTX.reset(tok)
 
 
-def mk_clean(raw, hd, skd, season):
+def _trmap(cid):
+    dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
+    return {k: int((v or {}).get("n", 0)) for k, v in (dex.get("tr") or {}).items() if isinstance(v, dict)}
+
+
+def mk_clean(raw, hd, skd, season, trmap=None):
     """편성(5부대×장수3×전법2) 검증. 장수·전법은 한 번 쓰면 다른 부대에서 쓸 수 없다. → (정리된 부대 목록, 오류문)"""
     if not isinstance(raw, list) or not raw: return None, "편성이 비어 있습니다"
     seenh, seens, out = set(), set(), []
@@ -2988,9 +2993,17 @@ def mk_clean(raw, hd, skd, season):
             row.append(tl)
         f = str((u or {}).get("f") or "")[:10]
         if f and f not in formations.FORMS: f = ""
-        st = (u or {}).get("s") or []
-        ss = [(str(st[k]) if k < len(st) and str(st[k]) in ("무력", "지력", "통솔", "민첩") and hs[k] else "") for k in range(3)]
-        out.append({"h": hs, "t": row, "f": f, "s": ss})
+        raw_a = (u or {}).get("a") or []; aa, nn = [], []
+        for k in range(3):
+            n = max(0, min(5, int((trmap or {}).get(hs[k], 0) or 0))) if hs[k] else 0
+            try: x = [max(0, min(999, int(v))) for v in (raw_a[k] if k < len(raw_a) and isinstance(raw_a[k], list) else [])][:4]
+            except Exception: return None, "스탯 값이 올바르지 않습니다"
+            x += [0] * (4 - len(x))
+            if not hs[k]: x = [0, 0, 0, 0]
+            cap = LV_POINTS + TR_BONUS * n
+            if sum(x) > cap: return None, f"{hs[k]}의 스탯 투자가 상한을 넘었습니다 ({sum(x)}/{cap}, 초월 {n}단계)"
+            aa.append(x); nn.append(n)
+        out.append({"h": hs, "t": row, "f": f, "a": aa, "n": nn})
     if not seenh: return None, "장수를 한 명 이상 넣어 주세요"
     return out, None
 
@@ -3076,7 +3089,7 @@ def ans_post(did, b, hd, skd):
         if not r: return "없는 의뢰입니다"
         if r["cid"] == cid: return "내 의뢰에는 답변할 수 없습니다"
         if r.get("adopted"): return "이미 채택된 의뢰입니다"
-        units, err = mk_clean(b.get("units"), hd, skd, r.get("season", 1))
+        units, err = mk_clean(b.get("units"), hd, skd, r.get("season", 1), (r.get("own") or {}).get("tr") or {})
         if err: return err
         oh, os_ = set(r["own"]["h"]), set(r["own"]["s"])
         for u in units:
@@ -3120,7 +3133,7 @@ def mk_post(did, b, hd, skd):
     cid = _my_cid(did)
     if not cid: return "인증된 CID가 없습니다"
     season = 2 if b.get("season") == 2 else 1
-    units, err = mk_clean(b.get("units"), hd, skd, season)
+    units, err = mk_clean(b.get("units"), hd, skd, season, _trmap(cid))
     if err: return err
     title = re.sub(r"\s+", " ", str(b.get("title", ""))).strip()[:24]
     if not title: return "제목을 입력해 주세요"
@@ -3247,7 +3260,7 @@ async def web_reco_api(request):
         elif op == "ans_del": err = await asyncio.to_thread(ans_del, did, str(b.get("id", "")))
         elif op == "rq_adopt": err = await asyncio.to_thread(rq_adopt, did, str(b.get("rid", "")), str(b.get("aid", "")))
         elif op == "draft":
-            units, err = mk_clean(b.get("units"), hd, skd, season) if b.get("units") else ([], None)
+            units, err = mk_clean(b.get("units"), hd, skd, season, await asyncio.to_thread(_trmap, _my_cid(did))) if b.get("units") else ([], None)
             if not err: await asyncio.to_thread(pref_set, did, draft={str(season): units})
         else: err = None
         if err: return web.json_response({"ok": False, "error": err}, status=400)

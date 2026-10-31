@@ -14,7 +14,7 @@ TPL = r'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name=
 .uh .nm{font-size:16px;font-weight:700}.uh .tr{color:var(--mute);font-size:12px}.votes{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
 .vg{display:flex;align-items:center;gap:3px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:2px 4px;font-size:11px;color:var(--mute)}
 .vb{background:transparent;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:12px}.vb.u.on{background:#2e7d4f;border-color:#2e7d4f;color:#fff}.vb.d.on{background:#a64040;border-color:#a64040;color:#fff}
-.hs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:760px){.hs{gap:5px;grid-template-columns:repeat(3,minmax(0,1fr))}.unit{padding:8px}.h,.hi,.tac>div{min-width:0}.h{flex-direction:column;gap:5px;padding:5px}.pic{width:100%;height:auto;aspect-ratio:3/4}.pic .lb{font-size:11px;padding:12px 0 2px}
+.hs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:760px){.sbrow{grid-template-columns:1fr!important}.sbn{display:inline}.sbg{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}.sbr span{width:auto;min-width:28px;white-space:nowrap}.sbr input{max-width:none;flex:1}.hs{gap:5px;grid-template-columns:repeat(3,minmax(0,1fr))}.unit{padding:8px}.h,.hi,.tac>div{min-width:0}.h{flex-direction:column;gap:5px;padding:5px}.pic{width:100%;height:auto;aspect-ratio:3/4}.pic .lb{font-size:11px;padding:12px 0 2px}
  .hn{font-size:13px;flex-wrap:wrap;gap:3px}.nat{font-size:10px;padding:0 4px}.hi>.m,.hi>.sk{display:none}.stats{gap:2px}.stats span{font-size:9.5px;padding:0 3px}.stats span:nth-child(-n+3){display:none}
  .tac{gap:4px;margin-top:3px}.tac img{width:20px;height:28px}.tac .t{font-size:11px;line-height:1.2;word-break:keep-all}.tac .k{display:none}.eqp{font-size:10px}.src{font-size:10px}
  .gems{margin-bottom:0}.rk{transform:scale(.85)}}
@@ -42,7 +42,7 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
 .bs img{pointer-events:none;-webkit-user-drag:none}.dgh{position:fixed;z-index:120;pointer-events:none;background:var(--jade);color:#06231c;font-weight:700;border-radius:8px;padding:5px 10px;font-size:13px;box-shadow:0 6px 18px rgba(0,0,0,.35);opacity:.95}.bs.dsrc{opacity:.35}.bs.dz{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold);background:rgba(240,199,94,.15)}body.dragging{user-select:none;-webkit-user-select:none;cursor:grabbing}.bs[data-tu],.bs[data-du]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}.dh{font-size:11px}
 .shm{position:fixed;inset:0;z-index:130;background:rgba(0,0,0,.7);overflow:auto;padding:14px}.shb{max-width:760px;margin:0 auto;background:var(--card);border-radius:12px;padding:12px}.shb img{width:100%;border-radius:8px;margin-top:8px;display:block}
 .kw{display:block;font-size:10px;color:var(--gold)}.picker{display:flex;flex-direction:column;overflow:hidden!important;max-height:62vh}.picker>.bar{flex:none;margin:0 0 6px}#pdet{flex:none}#pl{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:2px}.pdet.empty{text-align:center;padding:10px}.pdet{background:var(--card);border:1px solid var(--jade);border-radius:10px;padding:8px;margin:6px 0}.pdet .dsc{font-size:12.5px;line-height:1.5;margin:4px 0}.oc.pd{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold)}.picker{position:sticky;top:0;z-index:5;background:var(--bg);border:2px solid var(--jade);border-radius:12px;padding:8px;margin-bottom:12px;}
-.hchips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.hchip{position:relative;display:inline-block}.hchip .th{width:34px;height:42px;border-radius:6px;object-fit:cover;display:block}.hchip .ct{position:absolute;right:0;bottom:0;background:#0d7a66;color:#fff;font-style:normal;font-size:10px;font-weight:700;padding:0 4px;border-radius:6px 0 6px 0}.ans{border-top:1px dashed var(--line);margin-top:10px;padding-top:8px}.ans.ad{background:rgba(13,122,102,.07);border-radius:8px;padding:8px}.ansb{border:2px solid #0d7a66}.fmr{display:flex;align-items:center;gap:8px;margin:6px 0}.stsel{width:100%;min-width:0}
+.hchips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.hchip{position:relative;display:inline-block}.hchip .th{width:34px;height:42px;border-radius:6px;object-fit:cover;display:block}.hchip .ct{position:absolute;right:0;bottom:0;background:#0d7a66;color:#fff;font-style:normal;font-size:10px;font-weight:700;padding:0 4px;border-radius:6px 0 6px 0}.ans{border-top:1px dashed var(--line);margin-top:10px;padding-top:8px}.ans.ad{background:rgba(13,122,102,.07);border-radius:8px;padding:8px}.ansb{border:2px solid #0d7a66}.fmr{display:flex;align-items:center;gap:8px;margin:6px 0}.sbn{display:none}.sbx{border:1px solid var(--line);border-radius:8px;padding:4px 6px;background:var(--card2)}.sbh{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px}.sbh .rem{margin-left:auto}.sbh .full{color:#b3541e;font-weight:700}.sbr{display:flex;align-items:center;gap:4px;margin-top:3px;font-size:13px}.sbr span{width:34px}.sbr input{width:100%;min-width:0;max-width:56px;text-align:center;border:1px solid var(--line);border-radius:6px;padding:3px 0;background:#fff;font-size:13px}.stb{border:1px solid var(--line);background:#fff;border-radius:6px;width:30px;height:28px;font-size:16px;line-height:1;cursor:pointer;padding:0}.stb:active{background:var(--card2)}
 .mk .nm{font-size:15px}.strat{background:#f0c75e;color:#2b2000;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700}.mu{display:grid;grid-template-columns:22px repeat(3,minmax(0,1fr));gap:6px;align-items:start;margin-top:5px}.badge.s{padding:0 6px;text-align:center;height:20px}.mh{display:flex;gap:5px;font-size:12px;min-width:0}.mh .th{flex:none}.mh.no .th{opacity:.45}.mt{font-size:11px;color:var(--jade);line-height:1.3}.mt.no{color:var(--mute);text-decoration:line-through}.x1{color:#c0504d;font-size:10px}.vb:disabled{opacity:.5;cursor:default}
 @media(max-width:760px){.mu{grid-template-columns:18px repeat(3,minmax(0,1fr));gap:3px}.mh{flex-direction:column;gap:2px}.bs{padding:3px;font-size:11px;flex-direction:column;align-items:flex-start;gap:2px}.bs .x{position:absolute;top:0;right:0}.picker{max-height:66vh}}
 .fr{width:100%;height:78vh;border:1px solid var(--line);border-radius:12px;background:#fff}.vs{width:2px;height:24px;background:var(--line);margin:0 2px}.tab.late{background:#f7f2e4}.tab.mt,.tab.lt{font-weight:700;background:var(--card2)}.tab.lt{background:#efe6c8}.mo{font-weight:700}
@@ -147,10 +147,10 @@ function toggleLate(){LATE=!LATE;try{sessionStorage.setItem('rlate',LATE?'1':'0'
 
 // ---------- 편성기 · 공유마켓 · 지략가 ----------
 const HM=Object.fromEntries(D.all.h.map(h=>[h.n,h])),SM=Object.fromEntries(D.all.s.map(x=>[x.n,x])),SNK=Object.fromEntries(D.all.s.map(x=>[x.n.replace(/[\s·\-]/g,''),x.n]));
-const STS=['무력','지력','통솔','민첩'];
-const T0=()=>({h:['','',''],t:[['',''],['',''],['','']],f:'',s:['','','']});
-const mkU=u=>({h:[...u.h],t:[0,1,2].map(k=>{const a=[...((u.t||[])[k]||[])];while(a.length<2)a.push('');return a}),f:u.f||'',s:[0,1,2].map(k=>(u.s||[])[k]||'')});
-const ser=u=>({h:u.h,t:u.t.map(a=>a.filter(Boolean)),f:u.f||'',s:u.s.map((x,k)=>u.h[k]?x:'')});
+const Z4=()=>[0,0,0,0];
+const T0=()=>({h:['','',''],t:[['',''],['',''],['','']],f:'',a:[Z4(),Z4(),Z4()]});
+const mkU=u=>({h:[...u.h],t:[0,1,2].map(k=>{const a=[...((u.t||[])[k]||[])];while(a.length<2)a.push('');return a}),f:u.f||'',a:[0,1,2].map(k=>{const x=((u.a||[])[k]||[]).slice(0,4).map(v=>+v||0);while(x.length<4)x.push(0);return x}),n:u.n});
+const ser=u=>({h:u.h,t:u.t.map(a=>a.filter(Boolean)),f:u.f||'',a:u.a.map((x,k)=>u.h[k]?x:Z4())});
 let BLD=(D.draft||[]).map(mkU);while(BLD.length<5)BLD.push(T0());
 let PK=null,PQ='',MS='like',MF=false,MT='',MN='',SVT=null;
 let ANS=null,MY=null,MKT='req',EXP=new Set(),RT='',RN='',AN='';
@@ -161,13 +161,13 @@ function saveDraft(){if(ANS)return;clearTimeout(SVT);SVT=setTimeout(()=>{fetch('
 async function mpost(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return false}if(j.mk)D.mk=j.mk;return true}catch(e){alert('네트워크 오류');return false}}
 function pick(u,k,kind,j){PD=null;PK={u,k,kind,j};PQ='';draw()}
 function setPQ(v){PQ=v;const e=document.getElementById('pl');if(e)e.innerHTML=pickBody()}
-function assign(name){PD=null;const p=PK;if(!p)return;const u=BLD[p.u];if(p.kind==='h')u.h[p.k]=name;else u.t[p.k][p.j]=name;PK=null;saveDraft();const y=scrollY;draw();scrollTo(0,y)}
-function clr(u,k,kind,j){if(kind==='h'){BLD[u].h[k]='';BLD[u].t[k]=['',''];BLD[u].s[k]=''}else BLD[u].t[k][j]='';PK=null;saveDraft();draw()}
+function assign(name){PD=null;const p=PK;if(!p)return;const u=BLD[p.u];if(p.kind==='h'){u.h[p.k]=name;u.a[p.k]=Z4();fixA(u)}else u.t[p.k][p.j]=name;PK=null;saveDraft();const y=scrollY;draw();scrollTo(0,y)}
+function clr(u,k,kind,j){if(kind==='h'){BLD[u].h[k]='';BLD[u].t[k]=['',''];BLD[u].a[k]=Z4()}else BLD[u].t[k][j]='';PK=null;saveDraft();draw()}
 function clearAll(){if(!confirm('5부대를 모두 비울까요?'))return;BLD=[0,1,2,3,4].map(T0);PK=null;saveDraft();draw()}
 function fillTier(u,name){const d=D.rank.decks.find(x=>x.name===name);if(!d)return;const o=BLD[u];BLD[u]=T0();BLD[u].f=(d.form||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진'}[x.trim()]||x.trim())).find(x=>D.forms[x])||'';const uh=usedH(),us=usedS(),oh=ownH(),os=ownS();
-  d.slots.forEach((slot,k)=>{const h=slot.split('/').find(x=>oh.has(x)&&!uh.has(x)&&HM[x]&&(HM[x].season||1)<=D.season);if(!h)return;BLD[u].h[k]=h;uh.add(h);BLD[u].s[k]=STS.find(x=>(((((d.heroes||[])[k]||{}).ti||{})['스탯']||[]).join(' ')).includes(x))||'';
+  d.slots.forEach((slot,k)=>{const h=slot.split('/').find(x=>oh.has(x)&&!uh.has(x)&&HM[x]&&(HM[x].season||1)<=D.season);if(!h)return;BLD[u].h[k]=h;uh.add(h);
     ((d.tc||[])[k]||[]).slice(0,2).forEach((cell,j)=>{const t=cell.split(/[>\/]/).map(x=>SNK[x.trim().replace(/[\s·\-]/g,'')]).find(x=>x&&os.has(x)&&!us.has(x)&&(SM[x].season||1)<=D.season);if(t){BLD[u].t[k][j]=t;us.add(t)}})});
-  saveDraft();draw()}
+  fixA(BLD[u]);saveDraft();draw()}
 function slotH(u,k){const n=BLD[u].h[k],on=PK&&PK.u===u&&PK.k===k&&PK.kind==='h';
   return n?`<div class="bs ${on?'sel':''}" data-du="${u}" data-dk="${k}" onclick="pick(${u},${k},'h')">${imj((HM[n]||{}).img,'th')}<b>${esc(n)}</b><i class="x" onclick="event.stopPropagation();clr(${u},${k},'h')">✕</i></div>`:`<div class="bs empty ${on?'sel':''}" data-du="${u}" data-dk="${k}" onclick="pick(${u},${k},'h')">＋ 장수</div>`}
 function slotT(u,k,j){const n=BLD[u].t[k][j],on=PK&&PK.u===u&&PK.k===k&&PK.kind==='t'&&PK.j===j,hh=BLD[u].h[k];
@@ -226,10 +226,20 @@ function autoCompose(){const ds=D.rank.decks.slice().sort((a,b)=>tierNum(a.tier)
     d.slots.forEach((slot,k)=>{if(u.h[k])return;const c=subH(slot.split('/')[0],uh)[0];if(c){u.h[k]=c[1].n;uh.add(c[1].n)}});
     d.slots.forEach((slot,k)=>{if(!u.h[k])return;const own=slot.split('/').includes(u.h[k]);((d.tc||[])[k]||[]).slice(0,2).forEach((cell,j)=>{const names=cellNames(cell);let t=own?names.find(x=>os.has(x)&&!us.has(x)&&(SM[x].season||1)<=D.season):null;if(!t&&names.length){const c=subT(names[0],us)[0];if(c)t=c[1].n}if(t){u.t[k][j]=t;us.add(t)}})});
     u.src=d.name;res.push(u)}
-  while(res.length<5)res.push(T0());BLD=res.slice(0,5);saveDraft();draw()}
+  while(res.length<5)res.push(T0());BLD=res.slice(0,5);BLD.forEach(fixA);saveDraft();draw()}
 
+const SL=['무력','지력','통솔','선공'];
+const trOf=h=>ANS?((ANS.tr||{})[h]||0):(((TRS||D.own.tr)||{})[h]||0);
+const capOf=h=>50+10*trOf(h);
+function defA(h){if(ANS)return Z4();const x=((D.own.tra||{})[h]||[]).slice(0,4).map(v=>+v||0);while(x.length<4)x.push(0);return clampA(x,h)}
+function clampA(x,h){let c=capOf(h);return x.map(v=>{v=Math.max(0,Math.min(v,c));c-=v;return v})}
+function fixA(u){[0,1,2].forEach(k=>{const h=u.h[k];if(!h)u.a[k]=Z4();else if(!u.a[k].some(Boolean))u.a[k]=defA(h);else u.a[k]=clampA(u.a[k],h)})}
+function setA(i,k,q,v,rel){const h=BLD[i].h[k];if(!h)return;const a=BLD[i].a[k],oth=a.reduce((p,c,j)=>j===q?p:p+c,0);let n=rel?a[q]+v:(parseInt(v)||0);n=Math.max(0,Math.min(n,capOf(h)-oth));a[q]=n;saveDraft();const y=scrollY;draw();scrollTo(0,y)}
+const stones=n=>n>0?`<span class="sts" style="--st:url(${D.stone})">${[1,2,3,4,5].map(k=>`<i class="sg ${k<=n?'on':''}"></i>`).join('')}</span>`:'';
+function statBox(i,k){const h=BLD[i].h[k];if(!h)return'<div></div>';const a=BLD[i].a[k],n=trOf(h),cap=capOf(h),used=a.reduce((p,c)=>p+c,0);
+  return `<div class="sbx"><div class="sbh"><b class="sbn">${esc(h)}</b><span class="m">초월</span>${stones(n)||'<span class="m">0단계</span>'}<span class="m rem ${used>=cap?'full':''}">포인트 ${used}/${cap}</span></div><div class="sbg">${SL.map((l,q)=>`<div class="sbr"><span>${l}</span><button class="stb" onclick="setA(${i},${k},${q},-1,1)">−</button><input type="number" min="0" value="${a[q]}" onchange="setA(${i},${k},${q},this.value)"><button class="stb" onclick="setA(${i},${k},${q},1,1)">＋</button></div>`).join('')}</div></div>`}
+const aTxt=a=>SL.map((l,q)=>a&&a[q]?l[0]+a[q]:'').filter(Boolean).join(' ');
 function setF(i,v){BLD[i].f=v;saveDraft();draw()}
-function setS(i,k,v){BLD[i].s[k]=v;saveDraft()}
 function resetUnit(i){if(!BLD[i].h.some(Boolean)||confirm(`${i+1}부대를 초기화할까요?`)){BLD[i]=T0();PK=null;saveDraft();draw()}}
 // ---- 끌어서 옮기기(마우스 즉시 / 터치 길게 누르기) ----
 let DR=null,SUP=0;
@@ -246,7 +256,7 @@ document.addEventListener('touchmove',e=>{if(DR&&DR.on)e.preventDefault()},{pass
 function drEnd(e,cancel){if(!DR)return;clearTimeout(DR.timer);const d=DR;DR=null;if(!d.on)return;d.g.remove();document.body.classList.remove('dragging');document.querySelectorAll('.dz,.dsrc').forEach(x=>x.classList.remove('dz','dsrc'));SUP=Date.now();if(cancel)return;
   const t=drTarget(e.clientX,e.clientY,d.src.kind);if(!t)return;const a=d.src,b=t.t;if(a.u===b.u&&a.k===b.k&&(a.kind==='h'||a.j===b.j))return;
   if(a.kind==='t'){const x=BLD[a.u].t[a.k][a.j];BLD[a.u].t[a.k][a.j]=BLD[b.u].t[b.k][b.j];BLD[b.u].t[b.k][b.j]=x}
-  else{const h=BLD[a.u].h[a.k],tt=BLD[a.u].t[a.k],ss=BLD[a.u].s[a.k];BLD[a.u].h[a.k]=BLD[b.u].h[b.k];BLD[a.u].t[a.k]=BLD[b.u].t[b.k];BLD[a.u].s[a.k]=BLD[b.u].s[b.k];BLD[b.u].h[b.k]=h;BLD[b.u].t[b.k]=tt;BLD[b.u].s[b.k]=ss}
+  else{const h=BLD[a.u].h[a.k],tt=BLD[a.u].t[a.k],ss=BLD[a.u].a[a.k];BLD[a.u].h[a.k]=BLD[b.u].h[b.k];BLD[a.u].t[a.k]=BLD[b.u].t[b.k];BLD[a.u].a[a.k]=BLD[b.u].a[b.k];BLD[b.u].h[b.k]=h;BLD[b.u].t[b.k]=tt;BLD[b.u].a[b.k]=ss}
   saveDraft();draw()}
 document.addEventListener('pointerup',e=>drEnd(e,false));document.addEventListener('pointercancel',e=>drEnd(e,true));
 document.addEventListener('click',e=>{if(Date.now()-SUP<350){e.stopPropagation();e.preventDefault()}},true);
@@ -262,7 +272,7 @@ async function shareImg(){if(!BLD.some(u=>u.h.some(Boolean))){alert('편성이 �
     {const lb=[BLD[i].src?BLD[i].src+' 기준':'',BLD[i].f?'진형 '+BLD[i].f:''].filter(Boolean).join(' · ');if(lb){x.fillStyle='#8fa8a3';x.font=`500 16px ${F}`;x.fillText(lb,112,y+33)}}
     for(let k=0;k<3;k++){const n=BLD[i].h[k],ox=28+k*350;if(!n){x.fillStyle='#223338';rr(x,ox,y+50,330,100,10);x.fill();continue}
       const im=await loadImg((HM[n]||{}).img2||(HM[n]||{}).img);if(im){x.save();rr(x,ox,y+48,84,106,10);x.clip();x.drawImage(im,ox,y+48,84,106);x.restore()}
-      x.fillStyle='#e8efe9';x.font=`800 24px ${F}`;x.fillText(n,ox+96,y+70);const nw=x.measureText(n).width;x.fillStyle='#8fa8a3';x.font=`500 15px ${F}`;x.fillText([(HM[n]||{}).nation,(HM[n]||{}).troop,BLD[i].s[k]?'스탯 '+BLD[i].s[k]:''].filter(Boolean).join('·'),ox+96+nw+8,y+70);
+      x.fillStyle='#e8efe9';x.font=`800 24px ${F}`;x.fillText(n,ox+96,y+70);const nw=x.measureText(n).width;x.fillStyle='#8fa8a3';x.font=`500 15px ${F}`;x.fillText([(HM[n]||{}).nation,(HM[n]||{}).troop,trOf(n)?'초월'+trOf(n):'',aTxt(BLD[i].a[k])].filter(Boolean).join('·'),ox+96+nw+8,y+70);
       for(let j=0;j<2;j++){const t=BLD[i].t[k][j];if(!t)continue;const ti=await loadImg((SM[t]||{}).img2||(SM[t]||{}).img),yy=y+108+j*34;if(ti){x.save();rr(x,ox+96,yy-17,28,28,6);x.clip();x.drawImage(ti,ox+96,yy-17,28,28);x.restore()}
         x.fillStyle='#5fcfb1';x.font=`600 18px ${F}`;x.fillText(t,ox+132,yy+4)}}}
   x.fillStyle='#8fa8a3';x.font=`500 16px ${F}`;x.fillText('한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없음 · 무소유',30,H-20);
@@ -271,7 +281,7 @@ function rr(x,a,b,w,h,r){x.beginPath();x.moveTo(a+r,b);x.arcTo(a+w,b,a+w,b+h,r);
 function build(){const dk=D.rank.decks.slice().sort((a,b)=>a.idx-b.idx);
   const units=BLD.map((u,i)=>`<div class="unit"><div class="uh"><span class="badge">${i+1}부대</span>${BLD[i].src?`<span class="m">${esc((D.rank.decks.find(x=>x.name===BLD[i].src)||{}).tier||'')} <b>${esc(BLD[i].src)}</b> 기준</span>`:''}<select class="sq" onchange="if(this.value){fillTier(${i},this.value);}this.value=''"><option value="">티어덱 불러오기…</option>${dk.map(d=>`<option value="${esc(d.name)}">${esc(d.tier)} ${esc(d.name)}</option>`).join('')}</select><button class="sbtn" onclick="resetUnit(${i})">↺ 부대 초기화</button><span class="m dh">⠿ 장수·전법을 끌어서 옮기기(모바일은 길게 누르기)</span></div>
     <div class="hs fmr"><span class="m">진형</span><select class="sq" onchange="setF(${i},this.value)"><option value="">진형 선택…</option>${Object.keys(D.forms).map(n=>`<option ${u.f===n?'selected':''}>${esc(n)}</option>`).join('')}</select>${u.f?fm(u.f):''}</div>
-    <div class="hs">${[0,1,2].map(k=>slotH(i,k)).join('')}</div><div class="hs trow">${[0,1,2].map(k=>BLD[i].h[k]?`<select class="sq stsel" onchange="setS(${i},${k},this.value)"><option value="">스탯 투자…</option>${STS.map(x=>`<option ${u.s[k]===x?'selected':''}>${x}</option>`).join('')}</select>`:'<div></div>').join('')}</div>${[0,1].map(j=>`<div class="hs trow">${[0,1,2].map(k=>slotT(i,k,j)).join('')}</div>`).join('')}</div>`).join('');
+    <div class="hs">${[0,1,2].map(k=>slotH(i,k)).join('')}</div><div class="hs trow sbrow">${[0,1,2].map(k=>statBox(i,k)).join('')}</div>${[0,1].map(j=>`<div class="hs trow">${[0,1,2].map(k=>slotT(i,k,j)).join('')}</div>`).join('')}</div>`).join('');
   const n=BLD.flatMap(u=>u.h).filter(Boolean).length;
   return `<div class="m" style="margin-bottom:8px">내가 <b>보유한</b> 장수·전법으로 5부대를 직접 짭니다. <b>한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없습니다</b>(목록에서 사라짐). 편성은 자동 저장됩니다. 보유 체크는 <b>내 장수·전법</b> 탭에서 합니다.</div>
   ${ANS?`<div class="unit ansb"><div class="uh"><b>✍ 의뢰 답변 작성 중</b><span class="m">‘${esc(ANS.title)}’ · 의뢰자 <b>${esc(ANS.by)}</b>의 보유 장수 ${ANS.h.size}명·전법 ${ANS.s.size}개로만 편성할 수 있습니다</span></div></div>`:''}${picker()}<div class="bar"><button class="sbtn on" onclick="if(confirm('내 보유 장수·전법에 맞춰 티어 순서대로 5부대를 자동 편성합니다. 지금 편성은 덮어씁니다.'))autoCompose()">✨ 내 상황 맞춤 자동 편성 (티어순)</button><span class="m">부족한 자리는 비슷한 보유 장수·같은 계열 전법으로 메웁니다</span></div>${units}${ANS?`<div class="unit"><div class="uh"><b>답변 제출</b><span class="m">장수 ${n}명 · 같은 의뢰에는 한 번만 답변할 수 있고, 다시 제출하면 내 답변이 교체됩니다</span></div>
@@ -284,9 +294,9 @@ async function postMk(){if(!BLD.some(u=>u.h.some(Boolean))){alert('장수를 한
 async function likeMk(id){if(await mpost({op:'mk_like',id})){const y=scrollY;draw();scrollTo(0,y)}}
 async function delMk(id){if(!confirm('이 편성을 삭제할까요? (받은 추천도 사라집니다)'))return;if(await mpost({op:'mk_del',id}))draw()}
 function mkStat(p){const oh=ownH(),os=ownS();let a=0,b=0;p.units.forEach(u=>u.h.forEach((h,k)=>{if(h){b++;if(oh.has(h))a++;(u.t[k]||[]).forEach(t=>{b++;if(os.has(t))a++})}}));return[a,b]}
-function unitsHtml(units,own){const oh=ownH(),os=ownS();return units.map((u,i)=>`${u.f?`<div class="m" style="margin-top:6px">${i+1}부대 진형 ${fm(u.f)}</div>`:''}<div class="mu"><span class="badge s">${i+1}</span>${[0,1,2].map(k=>{const h=u.h[k];if(!h)return'<div class="mh"></div>';const hv=own?true:oh.has(h);return `<div class="mh ${hv?'':'no'}">${imj((HM[h]||{}).img,'th')}<div><b>${esc(h)}</b>${(u.s||[])[k]?` <span class="m">· ${esc(u.s[k])}</span>`:''}${hv?'':' <span class="x1">미보유</span>'}${(u.t[k]||[]).map(t=>`<div class="mt ${own||os.has(t)?'':'no'}">${own||os.has(t)?'✓':'✗'} ${esc(t)}</div>`).join('')}</div></div>`}).join('')}</div>`).join('')}
+function unitsHtml(units,own){const oh=ownH(),os=ownS();return units.map((u,i)=>`${u.f?`<div class="m" style="margin-top:6px">${i+1}부대 진형 ${fm(u.f)}</div>`:''}<div class="mu"><span class="badge s">${i+1}</span>${[0,1,2].map(k=>{const h=u.h[k];if(!h)return'<div class="mh"></div>';const hv=own?true:oh.has(h);return `<div class="mh ${hv?'':'no'}">${imj((HM[h]||{}).img,'th')}<div><b>${esc(h)}</b>${stones((u.n||[])[k]||0)}${aTxt((u.a||[])[k])?`<div class="m">${aTxt(u.a[k])}</div>`:''}${hv?'':' <span class="x1">미보유</span>'}${(u.t[k]||[]).map(t=>`<div class="mt ${own||os.has(t)?'':'no'}">${own||os.has(t)?'✓':'✗'} ${esc(t)}</div>`).join('')}</div></div>`}).join('')}</div>`).join('')}
 function loadFrom(units){if(!confirm('내 편성기에 가져옵니다. 보유하지 않은 장수·전법은 빈 칸이 되며 지금 편성은 덮어씁니다. 계속할까요?'))return;
-  const oh=ownH(),os=ownS(),uh=new Set(),us=new Set();BLD=units.map(u=>{const o=T0();o.f=u.f||'';[0,1,2].forEach(k=>{const h=u.h[k];if(h&&oh.has(h)&&!uh.has(h)){o.h[k]=h;o.s[k]=(u.s||[])[k]||'';uh.add(h);(u.t[k]||[]).slice(0,2).forEach((t,j)=>{if(os.has(t)&&!us.has(t)){o.t[k][j]=t;us.add(t)}})}});return o});while(BLD.length<5)BLD.push(T0());saveDraft();setTab('build')}
+  const oh=ownH(),os=ownS(),uh=new Set(),us=new Set();BLD=units.map(u=>{const o=T0();o.f=u.f||'';[0,1,2].forEach(k=>{const h=u.h[k];if(h&&oh.has(h)&&!uh.has(h)){o.h[k]=h;o.a[k]=((u.a||[])[k]||Z4()).slice();uh.add(h);(u.t[k]||[]).slice(0,2).forEach((t,j)=>{if(os.has(t)&&!us.has(t)){o.t[k][j]=t;us.add(t)}})}});return o});while(BLD.length<5)BLD.push(T0());BLD.forEach(fixA);saveDraft();setTab('build')}
 function loadMk(id){const p=D.mk.posts.find(x=>x.id===id);if(p)loadFrom(p.units)}
 function loadAns(rid,aid){const r=D.mk.reqs.find(x=>x.id===rid),a=r&&r.ans.find(x=>x.id===aid);if(a)loadFrom(a.units)}
 const sb=p=>p.strat?' <span class="strat">🧠 지략가</span>':'';
@@ -297,7 +307,7 @@ async function delAns(id){if(!confirm('내 답변을 삭제할까요?'))return;i
 async function adopt(rid,aid){if(await mpost({op:'rq_adopt',rid,aid})){const y=scrollY;draw();scrollTo(0,y)}}
 function togReq(id){EXP.has(id)?EXP.delete(id):EXP.add(id);const y=scrollY;draw();scrollTo(0,y)}
 function startAns(rid){const r=D.mk.reqs.find(x=>x.id===rid);if(!r)return;MY=BLD;const old=r.ans.find(a=>a.mine);
-  ANS={rid,title:r.title,by:r.by,h:new Set(r.own.h),s:new Set(r.own.s),tr:r.own.tr||{}};BLD=(old?old.units:[]).map(mkU);while(BLD.length<5)BLD.push(T0());AN=old?old.note:'';PK=null;setTab('build')}
+  ANS={rid,title:r.title,by:r.by,h:new Set(r.own.h),s:new Set(r.own.s),tr:r.own.tr||{}};BLD=(old?old.units:[]).map(mkU);while(BLD.length<5)BLD.push(T0());BLD.forEach(fixA);AN=old?old.note:'';PK=null;setTab('build')}
 function endAns(){ANS=null;BLD=MY||BLD;MY=null;PK=null;draw()}
 async function submitAns(){if(!BLD.some(u=>u.h.some(Boolean))){alert('장수를 한 명 이상 넣어 주세요');return}
   if(await mpost({op:'ans_post',rid:ANS.rid,note:AN,units:BLD.map(ser)})){alert('답변을 올렸습니다. 의뢰자가 추천·채택하면 지략가 점수가 올라갑니다');AN='';ANS=null;BLD=MY||BLD;MY=null;MKT='req';setTab('market')}}
