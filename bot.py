@@ -3098,21 +3098,27 @@ def disp_name(c, by, gid, vg):
 
 def mk_data(cid):
     """마켓 글(완성 편성) + 편성 의뢰(답변 포함) + 지략가 랭킹."""
-    vg = cur_gid(); d = _mk_get(); posts, likes = d.get("posts") or {}, d.get("likes") or {}
+    vg = cur_gid(); d = _mk_get(); posts, likes = d.get("posts") or {}, d.get("likes") or {}; dis = d.get("dislikes") or {}
     tot = mk_scores(d); top3 = set(mk_top3(d))
     rk = sorted(tot.items(), key=lambda kv: (-kv[1]["score"], -kv[1]["posts"], kv[0]))
     out = [{"id": pid, "by": disp_name(p["cid"], p.get("by", ""), p.get("gid"), vg), "title": p.get("title", ""), "note": p.get("note", ""), "season": p.get("season", 1), "ts": p.get("ts", 0), "units": p.get("units", []),
-            "likes": len(likes.get(pid, [])), "liked": cid in likes.get(pid, []), "mine": p["cid"] == cid, "strat": p["cid"] in top3} for pid, p in posts.items()]
-    out.sort(key=lambda x: (-x["likes"], -x["ts"]))
+            "likes": len(likes.get(pid, [])), "liked": cid in likes.get(pid, []), "dis": len(dis.get(pid, [])), "disliked": cid in dis.get(pid, []), "mine": p["cid"] == cid, "strat": p["cid"] in top3} for pid, p in posts.items()]
+    out.sort(key=lambda x: (-(x["likes"] - x["dis"]), -x["ts"]))
     ans = d.get("ans") or {}; reqs = []
     for rid, r in (d.get("reqs") or {}).items():
-        al = [{"id": aid, "by": disp_name(a["cid"], a.get("by", ""), a.get("gid"), vg), "note": a.get("note", ""), "units": a.get("units", []), "ts": a.get("ts", 0), "likes": len(likes.get(aid, [])), "liked": cid in likes.get(aid, []),
+        al = [{"id": aid, "by": disp_name(a["cid"], a.get("by", ""), a.get("gid"), vg), "note": a.get("note", ""), "units": a.get("units", []), "ts": a.get("ts", 0), "likes": len(likes.get(aid, [])), "liked": cid in likes.get(aid, []), "dis": len(dis.get(aid, [])), "disliked": cid in dis.get(aid, []),
                "mine": a["cid"] == cid, "adopted": r.get("adopted") == aid, "strat": a["cid"] in top3} for aid, a in ans.items() if a.get("rid") == rid]
-        al.sort(key=lambda x: (not x["adopted"], -x["likes"], -x["ts"]))
+        al.sort(key=lambda x: (not x["adopted"], -(x["likes"] - x["dis"]), -x["ts"]))
         reqs.append({"id": rid, "by": disp_name(r["cid"], r.get("by", ""), r.get("gid"), vg), "title": r.get("title", ""), "note": r.get("note", ""), "season": r.get("season", 1), "ts": r.get("ts", 0), "own": r.get("own", {}),
                      "done": bool(r.get("adopted")), "mine": r["cid"] == cid, "strat": r["cid"] in top3, "ans": al})
     reqs.sort(key=lambda x: (x["done"], -x["ts"]))
-    return {"posts": out[:300], "reqs": reqs[:200], "rank": [{"by": disp_name(c, v["by"], v.get("gid"), vg), "likes": v["likes"], "posts": v["posts"], "adopt": v["adopt"], "score": v["score"], "strat": c in top3, "me": c == cid} for c, v in rk[:20]], "max": MK_MAX_POSTS, "adopt_bonus": ADOPT_BONUS}
+    cms = {}
+    for k, c in sorted((d.get("bcom") or {}).items(), key=lambda kv: kv[1].get("ts", 0)):
+        cms.setdefault(c["pid"], []).append({"id": k, "by": disp_name(c["cid"], c.get("by", ""), c.get("gid"), vg), "body": c.get("body", ""), "ts": c.get("ts", 0), "mine": c["cid"] == cid})
+    board = [{"id": k, "by": disp_name(p["cid"], p.get("by", ""), p.get("gid"), vg), "title": p.get("title", ""), "body": p.get("body", ""), "ts": p.get("ts", 0), "mine": p["cid"] == cid,
+              "likes": len(likes.get(k, [])), "liked": cid in likes.get(k, []), "dis": len(dis.get(k, [])), "disliked": cid in dis.get(k, []), "strat": p["cid"] in top3, "com": cms.get(k, [])}
+             for k, p in sorted((d.get("board") or {}).items(), key=lambda kv: -kv[1].get("ts", 0))[:150]]
+    return {"board": board, "posts": out[:300], "reqs": reqs[:200], "rank": [{"by": disp_name(c, v["by"], v.get("gid"), vg), "likes": v["likes"], "posts": v["posts"], "adopt": v["adopt"], "score": v["score"], "strat": c in top3, "me": c == cid} for c, v in rk[:20]], "max": MK_MAX_POSTS, "adopt_bonus": ADOPT_BONUS}
 
 
 def rq_post(did, b, hd, skd):
@@ -3223,15 +3229,87 @@ def mk_del(did, pid):
     return None
 
 
-def mk_like(did, pid):
+def mk_like(did, pid, kind="up"):
+    """👍(up)/👎(down) 토글. 한 글에 하나만(반대편을 누르면 옮겨 간다). 내 글에는 불가."""
     cid = _my_cid(did)
     if not cid: return "인증된 CID가 없습니다"
     with _mk_lock:
-        d = _mk_get(); p = (d.get("posts") or {}).get(pid) or (d.get("ans") or {}).get(pid)
+        d = _mk_get(); p = (d.get("posts") or {}).get(pid) or (d.get("ans") or {}).get(pid) or (d.get("board") or {}).get(pid)
         if not p: return "없는 글입니다"
-        if p["cid"] == cid: return "내 글에는 추천할 수 없습니다"
-        lk = dict(d.get("likes") or {}); cur = list(lk.get(pid, []))
-        cur = [x for x in cur if x != cid] if cid in cur else cur + [cid]; lk[pid] = cur; d["likes"] = lk; _mk_set(d)
+        if p["cid"] == cid: return "내 글에는 추천/비추천할 수 없습니다"
+        up = dict(d.get("likes") or {}); dn = dict(d.get("dislikes") or {})
+        mine, other = (up, dn) if kind == "up" else (dn, up)
+        cur = list(mine.get(pid, []))
+        if cid in cur: cur = [x for x in cur if x != cid]
+        else: cur.append(cid); other[pid] = [x for x in other.get(pid, []) if x != cid]
+        mine[pid] = cur; d["likes"] = up; d["dislikes"] = dn; _mk_set(d)
+    return None
+
+
+BD_MAX = 500
+
+
+def _bd_by(cid): return (roster.by_uid.get(cid) or {}).get("name") or "익명"
+
+
+def bd_post(did, b):
+    """자유 게시판 글쓰기(하루 10개)."""
+    cid = _my_cid(did)
+    if not cid: return "인증된 CID가 없습니다"
+    title = re.sub(r"\s+", " ", str(b.get("title", ""))).strip()[:30]; body = str(b.get("body", "")).strip()[:1000]
+    if not title: return "제목을 입력해 주세요"
+    now = int(time.time())
+    with _mk_lock:
+        d = _mk_get(); bd = dict(d.get("board") or {})
+        if sum(1 for p in bd.values() if p["cid"] == cid and now - p.get("ts", 0) < 86400) >= 10: return "하루에 10개까지 글을 쓸 수 있습니다"
+        pid = "b" + uuid.uuid4().hex[:7]; bd[pid] = {"cid": cid, "by": _bd_by(cid), "gid": cur_gid(), "title": title, "body": body, "ts": now}
+        if len(bd) > BD_MAX:
+            for k in sorted(bd, key=lambda k: bd[k].get("ts", 0))[:len(bd) - BD_MAX]: bd.pop(k, None)
+        d["board"] = bd; _mk_set(d)
+    return None
+
+
+def _bd_purge(d, pid):
+    for key in ("likes", "dislikes"):
+        m = dict(d.get(key) or {}); m.pop(pid, None); d[key] = m
+    d["bcom"] = {k: v for k, v in (d.get("bcom") or {}).items() if v.get("pid") != pid}
+
+
+def bd_del(did, pid):
+    cid = _my_cid(did)
+    with _mk_lock:
+        d = _mk_get(); bd = dict(d.get("board") or {}); p = bd.get(pid)
+        if not p: return "없는 글입니다"
+        if p["cid"] != cid: return "내 글만 삭제할 수 있습니다"
+        bd.pop(pid); d["board"] = bd; _bd_purge(d, pid); _mk_set(d)
+    return None
+
+
+def bd_com(did, b):
+    """게시글 댓글(하루 50개, 글당 100개)."""
+    cid = _my_cid(did)
+    if not cid: return "인증된 CID가 없습니다"
+    pid = str(b.get("pid", "")); body = re.sub(r"\s+", " ", str(b.get("body", ""))).strip()[:200]
+    if not body: return "내용을 입력해 주세요"
+    now = int(time.time())
+    with _mk_lock:
+        d = _mk_get()
+        if pid not in (d.get("board") or {}): return "없는 글입니다"
+        cm = dict(d.get("bcom") or {})
+        if sum(1 for c in cm.values() if c["cid"] == cid and now - c.get("ts", 0) < 86400) >= 50: return "하루에 댓글 50개까지 쓸 수 있습니다"
+        if sum(1 for c in cm.values() if c.get("pid") == pid) >= 100: return "이 글의 댓글이 가득 찼습니다"
+        cm["c" + uuid.uuid4().hex[:7]] = {"pid": pid, "cid": cid, "by": _bd_by(cid), "gid": cur_gid(), "body": body, "ts": now}
+        d["bcom"] = cm; _mk_set(d)
+    return None
+
+
+def bd_cdel(did, cidx):
+    cid = _my_cid(did)
+    with _mk_lock:
+        d = _mk_get(); cm = dict(d.get("bcom") or {}); c = cm.get(cidx)
+        if not c: return "없는 댓글입니다"
+        if c["cid"] != cid: return "내 댓글만 삭제할 수 있습니다"
+        cm.pop(cidx); d["bcom"] = cm; _mk_set(d)
     return None
 
 
@@ -3316,11 +3394,16 @@ async def web_reco_api(request):
         if err: return web.json_response({"ok": False, "error": err}, status=400)
         if any("없는" in l and "이름" in l for l in lines): return web.json_response({"ok": False, "error": "없는 이름입니다"}, status=400)
         return web.json_response({"ok": True})
-    elif op in ("mk_post", "mk_del", "mk_like", "mk_list", "draft", "rq_post", "rq_del", "ans_post", "ans_del", "rq_adopt"):
+    elif op in ("mk_post", "mk_del", "mk_like", "mk_dis", "bd_post", "bd_del", "bd_com", "bd_cdel", "mk_list", "draft", "rq_post", "rq_del", "ans_post", "ans_del", "rq_adopt"):
         hd, skd = reco_defs()
         if op == "mk_post": err = await asyncio.to_thread(mk_post, did, b, hd, skd)
         elif op == "mk_del": err = await asyncio.to_thread(mk_del, did, str(b.get("id", "")))
         elif op == "mk_like": err = await asyncio.to_thread(mk_like, did, str(b.get("id", "")))
+        elif op == "mk_dis": err = await asyncio.to_thread(mk_like, did, str(b.get("id", "")), "down")
+        elif op == "bd_post": err = await asyncio.to_thread(bd_post, did, b)
+        elif op == "bd_del": err = await asyncio.to_thread(bd_del, did, str(b.get("id", "")))
+        elif op == "bd_com": err = await asyncio.to_thread(bd_com, did, b)
+        elif op == "bd_cdel": err = await asyncio.to_thread(bd_cdel, did, str(b.get("id", "")))
         elif op == "rq_post": err = await asyncio.to_thread(rq_post, did, b, hd, skd)
         elif op == "rq_del": err = await asyncio.to_thread(rq_del, did, str(b.get("id", "")))
         elif op == "ans_post": err = await asyncio.to_thread(ans_post, did, b, hd, skd)
