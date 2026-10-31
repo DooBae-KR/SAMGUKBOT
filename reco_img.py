@@ -134,7 +134,16 @@ def _unit(im, d, y, i, deck, unit, st, hd, skd, info, order, flow=None, eff=None
     title = f"{deck['tier']}  {deck['name']}" if deck else "티어덱 없음 · 자유 편성"
     d.rounded_rectangle((PAD + 12, y + 10, PAD + 66, y + 34), 8, fill=GOLD); d.text((PAD + 39, y + 22), f"{i}부대", font=_f(15), fill=(10, 20, 18), anchor="mm")
     d.text((PAD + 76, y + 12), title, font=_f(18), fill=TXT)
-    if deck and deck.get("form"): d.text((W - PAD - 14, y + 14), "진형 " + deck["form"], font=_f(14), fill=MUTE, anchor="ra")
+    if deck and deck.get("form"):                                    # 진형: 피격 칸 미니 그림 + 이름(수치 없음). 오른쪽부터 배치
+        import formations
+        xr = W - PAD - 14; fn = formations.names(deck["form"])
+        if not fn: d.text((xr, y + 14), "진형 " + deck["form"], font=_f(14), fill=MUTE, anchor="ra")
+        for nm in reversed(fn):
+            tw = d.textlength(nm, font=_f(14)); d.text((xr, y + 14), nm, font=_f(14), fill=MUTE, anchor="ra"); gx = xr - tw - 6 - 3 * 9 + 1
+            for ri, row in enumerate(formations.cells(nm)):
+                for ci, on in enumerate(row):
+                    d.rounded_rectangle((gx + ci * 9, y + 7 + ri * 9, gx + ci * 9 + 7, y + 7 + ri * 9 + 7), 2, fill=GOLD if on else (44, 62, 58))
+            xr = gx - 12
     rk = {n: j for j, (n, *_r) in enumerate((flow or {}).get("turn", []), 1)}
     for k, (h, tac) in enumerate(unit): _hero_card(im, d, PAD + 8 + k * CW, y + 40, h, tac, hd, skd, info, eff, rk.get(h["n"]))
     by = y + 40 + 196 + 8; lx, mw = PAD + 16, W - 2 * PAD - 100
