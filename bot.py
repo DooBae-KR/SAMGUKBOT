@@ -3129,7 +3129,10 @@ def ally_label(gid):
     try: al = (store_get("alliance", ALLY_PATH, {}) or {}).get("name", "")
     except Exception: al = ""
     finally: _CTX.reset(tok)
-    lb = " ".join(x for x in ((g.name if g else ""), al) if x)
+    sn = (g.name if g else "").strip(); al = (al or "").strip()
+    nz = lambda x: re.sub(r"\s+", "", x)
+    if sn and al and (nz(al) in nz(sn) or nz(sn) in nz(al)): lb = sn if len(nz(sn)) >= len(nz(al)) else al      # 서버명과 동맹명이 같거나 포함되면 한 번만
+    else: lb = " ".join(x for x in (sn, al) if x)
     _AL_C[gid] = (time.time(), lb); return lb
 
 
