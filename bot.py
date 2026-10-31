@@ -412,6 +412,7 @@ async def bl_alert(guild, who, uid, where):
     e = bl_get(uid) or {}
     try: await lv_send(guild, f"⛔ **블랙리스트 CID 시도** — {who.mention} · CID `{uid}` · **{e.get('name') or '-'}** · {where}" + (f"\n사유: {e['memo']}" if e.get("memo") else ""))
     except Exception: log.exception("블랙리스트 알림 실패")
+    await hr_notify(guild, f"⛔ **블랙리스트 CID 시도** — {who.mention} · CID `{uid}` · **{e.get('name') or '-'}** · {where}")
 
 
 # ---------- 외교관 인증 ----------
@@ -685,24 +686,40 @@ LOG_CH = "명령어로그"
 _log_fail = {}                                                  # 서버 ID → 채널 생성 실패 시각(1시간 동안 재시도 안 함)
 
 
-async def log_channel(g, create=True):
-    """#명령어로그 채널(관리자·봇만 볼 수 있음). 없으면 자동으로 만든다. 만들 수 없으면 None."""
+async def priv_channel(g, name, topic, create=True):
+    """관리자·봇만 볼 수 있는 채널. 없으면 자동으로 만든다. 만들 수 없으면 None."""
     me = g.me
-    ch = discord.utils.get(g.text_channels, name=LOG_CH)
-    if ch is None and create and me is not None and time.time() - _log_fail.get(g.id, 0) > 3600:
-        topic = "명령어 사용 기록 (서버 관리자만 볼 수 있습니다)"
+    ch = discord.utils.get(g.text_channels, name=name)
+    if ch is None and create and me is not None and time.time() - _log_fail.get((g.id, name), 0) > 3600:
         try:
             ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
-            ch = await g.create_text_channel(LOG_CH, overwrites=ow, topic=topic, category=await bot_cat(g), reason="명령어 로그 채널 자동 생성")
+            ch = await g.create_text_channel(name, overwrites=ow, topic=topic, category=await bot_cat(g), reason="명령어 로그 채널 자동 생성")
         except Exception as e1:
             try:                                                   # 권한 덮어쓰기가 거부되면 일반 채널로 만든 뒤 비공개 설정을 따로 시도
-                ch = await g.create_text_channel(LOG_CH, topic=topic, category=await bot_cat(g), reason="명령어 로그 채널 자동 생성")
+                ch = await g.create_text_channel(name, topic=topic, category=await bot_cat(g), reason="명령어 로그 채널 자동 생성")
                 try: await ch.set_permissions(g.default_role, view_channel=False)
                 except Exception as e3: log.warning("로그 채널 비공개 설정 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e3)
             except Exception as e2:
-                _log_fail[g.id] = time.time(); log.warning("명령어 로그 채널 생성 실패 서버=%s 1차=%r 2차=%r (봇에 '채널 관리' 권한이 있는지 확인)", g.id, e1, e2); return None
+                _log_fail[(g.id, name)] = time.time(); log.warning("명령어 로그 채널 생성 실패 서버=%s 1차=%r 2차=%r (봇에 '채널 관리' 권한이 있는지 확인)", g.id, e1, e2); return None
     if ch is not None and getattr(ch, "category", None) is None: await to_bottom(g, ch)       # 예전에 위쪽에 만들어진 채널도 최하단으로
     return ch if ch and me is not None and ch.permissions_for(me).send_messages else None
+
+
+async def log_channel(g, create=True):
+    """#명령어로그 채널."""
+    return await priv_channel(g, LOG_CH, "명령어 사용 기록 (서버 관리자만 볼 수 있습니다)", create)
+
+
+HR_CH = "인사관리"
+
+
+async def hr_notify(g, text):
+    """예비·블랙리스트 등록/해제 등 인사 변동을 #인사관리 채널(관리자 전용)에 알린다. 실패해도 본 작업에는 영향 없음."""
+    try:
+        if g is None: return
+        ch = await priv_channel(g, HR_CH, "예비·블랙리스트 등 인사 변동 알림 (서버 관리자만 볼 수 있습니다)")
+        if ch is not None: await ch.send(text[:1900], allowed_mentions=discord.AllowedMentions.none())
+    except Exception: log.warning("인사관리 알림 실패", exc_info=True)
 
 
 async def cmd_log(it: discord.Interaction):
@@ -923,6 +940,7 @@ async def cmd_reserve(it: discord.Interaction, 동작: app_commands.Choice[str],
                 if role in m.roles: await m.remove_roles(role, reason=f"예비 해제({it.user.display_name})")
                 await m.edit(nick=None, reason="예비 해제")
             except discord.Forbidden: note = " (역할/별명 변경 권한 부족 — 직접 정리해 주세요)"
+        await hr_notify(it.guild, f"📤 **예비 해제** — **{d['name']}** · CID `{uid}` · 처리: {discord.utils.escape_markdown(it.user.display_name)}")
         return await it.followup.send(f"**{d['name']}** 예비 등록을 해제했습니다.{note}", ephemeral=True)
     name = 닉네임.strip()
     if not (유저 and name): return await it.followup.send("❌ 등록하려면 유저, CID, 닉네임을 모두 입력해 주세요.", ephemeral=True)
@@ -940,6 +958,7 @@ async def cmd_reserve(it: discord.Interaction, 동작: app_commands.Choice[str],
     stamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
     db["uid"][uid] = str(유저.id); db.setdefault("nick", {})[uid] = name
     res[uid] = {"name": name, "did": str(유저.id), "memo": 메모.strip()[:100], "t": stamp, "by": str(it.user.id)}; db_save(db)
+    await hr_notify(it.guild, f"📥 **예비 등록** — **{name}** · CID `{uid}` · {유저.mention}" + (f" · 메모: {메모.strip()[:100]}" if 메모.strip() else "") + f" · 처리: {discord.utils.escape_markdown(it.user.display_name)}")
     await it.followup.send(f"✅ {유저.mention} 예비 등록 완료 — **{name}** · CID `{uid}`" + (f" · 메모: {메모.strip()}" if 메모.strip() else "") + "\n도감·추천덱 등 서비스를 이용할 수 있습니다. 정규 편입은 `/예비 해제` 후 인증하기로 진행하세요." + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
 
 
@@ -1911,6 +1930,7 @@ async def web_admin_api(request):
                 bl[cid] = {**old, "name": nm, "memo": memo, "t": old.get("t") or (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d"), "by": str(uid)}
                 db_save(db); return ("수정" if old else "등록"), db["uid"].get(cid)
             act, did = await asyncio.to_thread(bs)
+            await hr_notify(bot.get_guild(gid), f"⛔ **블랙리스트 {act}** — CID `{cid}` · **{nick or (roster_for(gid).by_uid.get(cid) or {}).get('name') or '-'}**" + (f"\n사유: {memo}" if memo else "") + " · 처리: 관리 페이지")
             msg = f"✅ 블랙리스트 {act}: {cid}" + (f"\n⚠️ 이미 인증된 계정입니다(디스코드 {did}). 필요하면 `/인증해제`로 인증을 풀어 주세요." if did else "")
         elif op == "bl_del":
             cid = str(body.get("cid", "")).strip()
@@ -1920,6 +1940,7 @@ async def web_admin_api(request):
                 if d is None: raise ValueError("블랙리스트에 없는 CID입니다.")
                 db_save(db)
             await asyncio.to_thread(bd); msg = f"✅ 블랙리스트에서 뺐습니다: {cid}"
+            await hr_notify(bot.get_guild(gid), f"✅ **블랙리스트 해제** — CID `{cid}` · 처리: 관리 페이지")
         elif op == "res_save":
             cid, nick, job, memo = str(body.get("cid", "")).strip(), re.sub(r"\s+", " ", str(body.get("nick", ""))).strip(), str(body.get("job", "")).strip()[:20], str(body.get("memo", "")).strip()[:100]
             if not (cid.isascii() and cid.isdigit() and 4 <= len(cid) <= 14): raise ValueError("CID는 숫자만 입력해 주세요.")
@@ -1932,7 +1953,9 @@ async def web_admin_api(request):
                 old = res.get(cid) or {}
                 res[cid] = {**old, "name": nick, "job": job, "memo": memo, "t": old.get("t") or (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d"), "by": str(uid)}
                 db_save(db); roster_load_db(gid); return "수정" if old else "등록"
-            msg = f"✅ 예비 {await asyncio.to_thread(rv)} 완료: {nick} ({cid}). 이제 인증하기에서 이 CID로 인증할 수 있습니다."
+            _act = await asyncio.to_thread(rv)
+            await hr_notify(bot.get_guild(gid), f"📥 **예비 {_act}** — **{nick}** · CID `{cid}`" + (f" · 메모: {memo}" if memo else "") + " · 처리: 관리 페이지")
+            msg = f"✅ 예비 {_act} 완료: {nick} ({cid}). 이제 인증하기에서 이 CID로 인증할 수 있습니다."
         elif op == "res_del":
             cid = str(body.get("cid", "")).strip()
             if not (cid.isascii() and cid.isdigit()): raise ValueError("CID가 올바르지 않습니다.")
@@ -1948,6 +1971,7 @@ async def web_admin_api(request):
                     if role and role in m.roles: await m.remove_roles(role, reason="예비 삭제(관리 페이지)")
                     await m.edit(nick=None, reason="예비 삭제(관리 페이지)")
                 except discord.Forbidden: pass
+            await hr_notify(g, f"📤 **예비 삭제** — **{d.get('name', cid)}** · CID `{cid}` · 처리: 관리 페이지")
             msg = f"✅ 예비 삭제: {d.get('name', cid)}" + (" (역할·별명도 정리)" if m else "")
         elif op == "alt_add":
             key, raw = re.sub(r"\s+", " ", str(body.get("main", ""))).strip(), str(body.get("names", ""))[:2000]
