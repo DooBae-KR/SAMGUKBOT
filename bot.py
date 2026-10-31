@@ -3051,11 +3051,11 @@ ADOPT_BONUS = 5
 def mk_scores(d):
     """지략가 점수 = 내 편성 글이 받은 👍 + 의뢰 답변이 받은 👍 + 채택된 답변 × ADOPT_BONUS. → {cid: {by, likes, posts, adopt, score}}"""
     lk = d.get("likes") or {}; tot = {}
-    def add(cid, by, likes=0, posts=0, adopt=0):
-        t = tot.setdefault(cid, {"by": by, "likes": 0, "posts": 0, "adopt": 0}); t["by"] = by or t["by"]; t["likes"] += likes; t["posts"] += posts; t["adopt"] += adopt
-    for pid, p in (d.get("posts") or {}).items(): add(p["cid"], p.get("by", ""), len(lk.get(pid, [])), 1)
+    def add(cid, by, likes=0, posts=0, adopt=0, gid=None):
+        t = tot.setdefault(cid, {"by": by, "gid": gid, "likes": 0, "posts": 0, "adopt": 0}); t["by"] = by or t["by"]; t["gid"] = gid or t.get("gid"); t["likes"] += likes; t["posts"] += posts; t["adopt"] += adopt
+    for pid, p in (d.get("posts") or {}).items(): add(p["cid"], p.get("by", ""), len(lk.get(pid, [])), 1, 0, p.get("gid"))
     ad = {r.get("adopted"): r["cid"] for r in (d.get("reqs") or {}).values() if r.get("adopted")}      # 채택된 답변 → 의뢰자
-    for aid, a in (d.get("ans") or {}).items(): add(a["cid"], a.get("by", ""), len(lk.get(aid, [])), 0, 1 if (aid in ad and ad[aid] != a["cid"]) else 0)   # 내 의뢰에 내가 답한 채택은 점수 제외
+    for aid, a in (d.get("ans") or {}).items(): add(a["cid"], a.get("by", ""), len(lk.get(aid, [])), 0, 1 if (aid in ad and ad[aid] != a["cid"]) else 0, a.get("gid"))   # 내 의뢰에 내가 답한 채택은 점수 제외
     for t in tot.values(): t["score"] = t["likes"] + ADOPT_BONUS * t["adopt"]
     return tot
 
@@ -3065,23 +3065,54 @@ def mk_top3(d):
     return [c for c, v in sorted(tot.items(), key=lambda kv: (-kv[1]["score"], -kv[1]["posts"], kv[0]))[:3] if v["score"] > 0]
 
 
+_ADJ = "용맹한 날쌘 지혜로운 듬직한 영리한 고요한 푸른 붉은 은빛 황금빛 호쾌한 침착한 대담한 날카로운 느긋한 눈부신 신비한 의로운 재빠른 굳센 당당한 말쑥한 든든한 용감한 빛나는 우직한 세심한 상쾌한 단단한 활기찬 의젓한 늠름한 묵묵한 맑은 거침없는 정다운 씩씩한 꼼꼼한 유쾌한 믿음직한 또렷한 담대한 청렴한 호탕한 부지런한 슬기로운 영특한 비범한 변함없는".split()
+_NOUN = "호랑이 독수리 용 거북이 학 늑대 매 사자 여우 봉황 백마 청룡 해태 곰 부엉이 표범 사슴 기러기 제비 낙타 군마 창병 궁수 기병 책사 참모 군사 장군 도독 척후병 파발꾼 대장장이 방패병 깃발 북소리 성벽 요새 봉화 화살 보검 갑옷 투구 군량 나룻배 돛단배 산적 나그네 선비 장수 서생 낭인 무사".split()
+_AL_C = {}
+
+
+def anon_name(cid):
+    """CID로 만든 고정 익명 이름(형용사+명사). 같은 사람은 늘 같은 이름."""
+    h = hashlib.sha256(f"{TIER_SECRET}|anon|{cid}".encode()).digest()
+    return f"{_ADJ[h[0] % len(_ADJ)]} {_NOUN[h[1] % len(_NOUN)]}"
+
+
+def ally_label(gid):
+    """'서버명 동맹이름' (10분 캐시)."""
+    c = _AL_C.get(gid)
+    if c and time.time() - c[0] < 600: return c[1]
+    g = bot.get_guild(int(gid)) if gid else None
+    tok = _CTX.set(int(gid))
+    try: al = (store_get("alliance", ALLY_PATH, {}) or {}).get("name", "")
+    except Exception: al = ""
+    finally: _CTX.reset(tok)
+    lb = " ".join(x for x in ((g.name if g else ""), al) if x)
+    _AL_C[gid] = (time.time(), lb); return lb
+
+
+def disp_name(c, by, gid, vg):
+    """같은 동맹(서버) 사람이면 '[서버명 동맹이름] 닉네임', 아니면 익명 이름."""
+    if gid and vg and int(gid) == int(vg) and by:
+        lb = ally_label(gid); return f"[{lb}] {by}" if lb else by
+    return anon_name(c)
+
+
 def mk_data(cid):
     """마켓 글(완성 편성) + 편성 의뢰(답변 포함) + 지략가 랭킹."""
-    d = _mk_get(); posts, likes = d.get("posts") or {}, d.get("likes") or {}
+    vg = cur_gid(); d = _mk_get(); posts, likes = d.get("posts") or {}, d.get("likes") or {}
     tot = mk_scores(d); top3 = set(mk_top3(d))
     rk = sorted(tot.items(), key=lambda kv: (-kv[1]["score"], -kv[1]["posts"], kv[0]))
-    out = [{"id": pid, "by": p.get("by", ""), "title": p.get("title", ""), "note": p.get("note", ""), "season": p.get("season", 1), "ts": p.get("ts", 0), "units": p.get("units", []),
+    out = [{"id": pid, "by": disp_name(p["cid"], p.get("by", ""), p.get("gid"), vg), "title": p.get("title", ""), "note": p.get("note", ""), "season": p.get("season", 1), "ts": p.get("ts", 0), "units": p.get("units", []),
             "likes": len(likes.get(pid, [])), "liked": cid in likes.get(pid, []), "mine": p["cid"] == cid, "strat": p["cid"] in top3} for pid, p in posts.items()]
     out.sort(key=lambda x: (-x["likes"], -x["ts"]))
     ans = d.get("ans") or {}; reqs = []
     for rid, r in (d.get("reqs") or {}).items():
-        al = [{"id": aid, "by": a.get("by", ""), "note": a.get("note", ""), "units": a.get("units", []), "ts": a.get("ts", 0), "likes": len(likes.get(aid, [])), "liked": cid in likes.get(aid, []),
+        al = [{"id": aid, "by": disp_name(a["cid"], a.get("by", ""), a.get("gid"), vg), "note": a.get("note", ""), "units": a.get("units", []), "ts": a.get("ts", 0), "likes": len(likes.get(aid, [])), "liked": cid in likes.get(aid, []),
                "mine": a["cid"] == cid, "adopted": r.get("adopted") == aid, "strat": a["cid"] in top3} for aid, a in ans.items() if a.get("rid") == rid]
         al.sort(key=lambda x: (not x["adopted"], -x["likes"], -x["ts"]))
-        reqs.append({"id": rid, "by": r.get("by", ""), "title": r.get("title", ""), "note": r.get("note", ""), "season": r.get("season", 1), "ts": r.get("ts", 0), "own": r.get("own", {}),
+        reqs.append({"id": rid, "by": disp_name(r["cid"], r.get("by", ""), r.get("gid"), vg), "title": r.get("title", ""), "note": r.get("note", ""), "season": r.get("season", 1), "ts": r.get("ts", 0), "own": r.get("own", {}),
                      "done": bool(r.get("adopted")), "mine": r["cid"] == cid, "strat": r["cid"] in top3, "ans": al})
     reqs.sort(key=lambda x: (x["done"], -x["ts"]))
-    return {"posts": out[:300], "reqs": reqs[:200], "rank": [{"by": v["by"], "likes": v["likes"], "posts": v["posts"], "adopt": v["adopt"], "score": v["score"], "strat": c in top3, "me": c == cid} for c, v in rk[:20]], "max": MK_MAX_POSTS, "adopt_bonus": ADOPT_BONUS}
+    return {"posts": out[:300], "reqs": reqs[:200], "rank": [{"by": disp_name(c, v["by"], v.get("gid"), vg), "likes": v["likes"], "posts": v["posts"], "adopt": v["adopt"], "score": v["score"], "strat": c in top3, "me": c == cid} for c, v in rk[:20]], "max": MK_MAX_POSTS, "adopt_bonus": ADOPT_BONUS}
 
 
 def rq_post(did, b, hd, skd):
@@ -3136,7 +3167,7 @@ def ans_post(did, b, hd, skd):
                     if t not in os_: return f"의뢰자가 보유하지 않은 전법: {t}"
         ans = dict(d.get("ans") or {}); old = next((k for k, a in ans.items() if a.get("rid") == rid and a["cid"] == cid), None)
         aid = old or "a" + uuid.uuid4().hex[:7]
-        ans[aid] = {"rid": rid, "cid": cid, "by": (roster.by_uid.get(cid) or {}).get("name") or "익명", "note": str(b.get("note", ""))[:120], "units": units, "ts": int(time.time())}
+        ans[aid] = {"rid": rid, "cid": cid, "gid": cur_gid(), "by": (roster.by_uid.get(cid) or {}).get("name") or "익명", "note": str(b.get("note", ""))[:120], "units": units, "ts": int(time.time())}
         d["ans"] = ans
         if old: lk = dict(d.get("likes") or {}); lk.pop(old, None); d["likes"] = lk              # 답변을 고치면 이전 추천은 초기화
         _mk_set(d)
