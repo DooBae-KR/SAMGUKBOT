@@ -28,7 +28,7 @@ TPL = r'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name=
 table{width:100%;border-collapse:collapse;font-size:13px}th{color:var(--mute);font-size:11px;text-align:left;padding:6px;border-bottom:1px solid var(--line)}td{padding:7px 6px;border-bottom:1px solid var(--line)}
 .pin{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px}.pin.on{background:var(--gold);color:#2b2000;border-color:var(--gold);font-weight:700}
 h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:0 8px;margin:1px;font-size:12px}
-.rw{cursor:pointer}.rw:hover{background:var(--card2)}.dt td{background:var(--card2)}.dr{display:flex;gap:10px;margin:6px 0}.dr>b{width:70px;flex:none;color:var(--gold);font-size:12px}.dh{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;flex:1}.dc{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px;line-height:2}.ownt{color:#2e9f5f}.tk{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:6px;padding:0 5px;font-size:12px;background:var(--card2)}.tk.own{border-color:#2e9f5f;color:#2e9f5f;font-weight:700}.tk img{width:16px;height:23px;object-fit:cover;border-radius:2px}
+.ocs{display:flex;flex-wrap:wrap;gap:6px}.oc{background:var(--card2);border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 9px;cursor:pointer;font-size:13px;opacity:.7}.oc.on{opacity:1;color:var(--txt);border-color:#2e9f5f;background:rgba(46,159,95,.15);font-weight:600}.sq{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:13px;min-width:160px}\n.rw{cursor:pointer}.rw:hover{background:var(--card2)}.dt td{background:var(--card2)}.dr{display:flex;gap:10px;margin:6px 0}.dr>b{width:70px;flex:none;color:var(--gold);font-size:12px}.dh{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;flex:1}.dc{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px;line-height:2}.ownt{color:#2e9f5f}.tk{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:6px;padding:0 5px;font-size:12px;background:var(--card2)}.tk.own{border-color:#2e9f5f;color:#2e9f5f;font-weight:700}.tk img{width:16px;height:23px;object-fit:cover;border-radius:2px}
 @media(max-width:760px){.dh{grid-template-columns:1fr}}
 .err{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;text-align:center}
 </style></head><body><div class="wrap" id="app"></div>
@@ -40,8 +40,14 @@ let TAB='mine';try{TAB=sessionStorage.getItem('rtab')||'mine'}catch(e){}
 async function post(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok)alert(j.error||'실패');else location.reload()}catch(e){alert('네트워크 오류')}}
 function vote(i,scope,kind){const u=D.units[i];if(scope==='h')post({op:'vote',scope:'h',key:u.hk,kind,heroes:u.heroes.filter(h=>h.n).map(h=>h.n)});else post({op:'vote',scope:'t',key:u.tk,kind,pairs:u.heroes.flatMap(h=>h.n?h.tac.map(t=>[h.n,t.n]):[]),tset:u.tset})}
 function tg(k){const e=document.getElementById('dt'+k),a=document.getElementById('ar'+k);const o=e.style.display==='none';e.style.display=o?'':'none';a.textContent=o?'▾':'▸'}
+let OWNS=null,OQ='',OF='all',DIRTY=false;
+async function toggleOwn(kind,name){OWNS=OWNS||{h:new Set(D.own.h),s:new Set(D.own.s)};const on=!OWNS[kind].has(name);
+  try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'own',kind,name,on})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return}}catch(e){alert('네트워크 오류');return}
+  on?OWNS[kind].add(name):OWNS[kind].delete(name);DIRTY=true;const y=scrollY;draw();scrollTo(0,y)}
+function setQ(v){OQ=v;const y=scrollY;draw();const e=document.getElementById('oq');if(e){e.focus();e.setSelectionRange(v.length,v.length)}scrollTo(0,y)}
+function setF(f){OF=f;draw()}
 function pin(name,on){post({op:'pin',deck:name,on})}
-function setTab(t){TAB=t;try{sessionStorage.setItem('rtab',t)}catch(e){}draw()}
+function setTab(t){if(DIRTY&&t==='mine'){DIRTY=false;try{sessionStorage.setItem('rtab','mine')}catch(e){}location.reload();return}TAB=t;try{sessionStorage.setItem('rtab',t)}catch(e){}draw()}
 function vg(label,v,i,scope){return `<span class="vg">${label}<button class="vb u ${v.m==='u'?'on':''}" onclick="vote(${i},'${scope}','u')">👍 ${v.u}</button><button class="vb d ${v.m==='d'?'on':''}" onclick="vote(${i},'${scope}','d')">👎 ${v.d}</button></span>`}
 function hero(h){
   if(!h.n)return `<div class="h"><div class="empty">${esc(h.src||'보유 장수 부족')}</div></div>`;
@@ -76,12 +82,21 @@ function rank(){const R=D.rank;
   const sy=R.syn.length?`<table><tr><th>종류</th><th>궁합</th><th>점수</th><th>메모</th></tr>${R.syn.map(s=>`<tr><td>${KN[s.kind]||s.kind}</td><td><b>${esc(s.a)}</b> ↔ <b>${esc(s.b)}</b></td><td>${s.score>0?'+':''}${s.score}</td><td class="m">${esc(s.note)}${s.src==='vote'?' (평가로 학습)':''}</td></tr>`).join('')}</table>`:'<div class="m">저장된 시너지가 없습니다.</div>';
   return `<h2>덱 랭킹 — 장수 조합 평가 점수(모든 서버 합산)</h2><div class="m" style="margin-bottom:6px">점수가 높을수록 추천 순위가 올라갑니다. <b>적용</b>을 누르면 그 덱을 내 추천에서 항상 먼저 편성합니다(보유 장수가 있을 때).</div>${dk}
   <h2>전법 조합 랭킹</h2>${tc}<h2>시너지 점수 TOP — 장수·전법 궁합(추천 점수에 더해집니다)</h2>${sy}`}
+function own(){OWNS=OWNS||{h:new Set(D.own.h),s:new Set(D.own.s)};const q=OQ.replace(/\s/g,'');
+  const keep=(n,o,ss)=>(ss||1)<=D.season&&(!q||n.replace(/\s/g,'').includes(q))&&(OF==='all'||(OF==='own')===o);
+  const hs=D.all.h.filter(h=>keep(h.n,OWNS.h.has(h.n),h.season)).sort((a,b)=>(OWNS.h.has(b.n)-OWNS.h.has(a.n))||a.n.localeCompare(b.n,'ko'));
+  const ss=D.all.s.filter(s=>keep(s.n,OWNS.s.has(s.n),s.season)).sort((a,b)=>(OWNS.s.has(b.n)-OWNS.s.has(a.n))||a.n.localeCompare(b.n,'ko'));
+  const hc=hs.map(h=>`<button class="oc ${OWNS.h.has(h.n)?'on':''}" onclick="toggleOwn('h','${esc(h.n)}')"><span class="nat" style="background:${NAT[h.nation]||'#999'}">${esc(h.nation)}</span> ${esc(h.n)}<span class="m"> ${esc(h.troop)}</span></button>`).join('');
+  const sc=ss.map(s=>`<button class="oc ${OWNS.s.has(s.n)?'on':''}" onclick="toggleOwn('s','${esc(s.n).replace(/'/g,"\\'")}')">${esc(s.n)}<span class="m"> ${esc(s.type)}·${esc(s.trait)}</span></button>`).join('');
+  return `<div class="m" style="margin-bottom:8px">눌러서 보유 여부를 바꿉니다(자동 저장). 초월·스탯 조율은 <b>/도감</b> 페이지에서 합니다. 바꾼 뒤 <b>내 추천덱</b> 탭으로 돌아가면 다시 편성합니다.</div>
+  <div class="bar"><input id="oq" class="sq" placeholder="이름 검색" value="${esc(OQ)}" oninput="setQ(this.value)"><button class="sbtn ${OF==='all'?'on':''}" onclick="setF('all')">전체</button><button class="sbtn ${OF==='own'?'on':''}" onclick="setF('own')">보유</button><button class="sbtn ${OF==='no'?'on':''}" onclick="setF('no')">미보유</button></div>
+  <h2>장수 (보유 ${OWNS.h.size})</h2><div class="ocs">${hc||'<span class="m">없음</span>'}</div><h2>전법 (보유 ${OWNS.s.size})</h2><div class="ocs">${sc||'<span class="m">없음</span>'}</div>`}
 function draw(){
   if(ERR){$('#app').innerHTML=`<div class="err"><h1>추천덱</h1><p>${esc(ERR)}</p></div>`;return}
   const q=s=>`?t=${encodeURIComponent(D.t)}&s=${s}`;
   $('#app').innerHTML=`<h1>🃏 ${esc(D.who)} 추천덱 · 시즌${D.season}</h1><div class="sub">장수 카드·전법·초월 반영 선공 순서 · 한 번 쓴 장수·전법은 다시 쓰지 않음</div>
-  <div class="bar"><button class="tab ${TAB==='mine'?'on':''}" onclick="setTab('mine')">내 추천덱</button><button class="tab ${TAB==='rank'?'on':''}" onclick="setTab('rank')">추천덱 랭킹</button><span class="sp"></span>
-  <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a></div>${TAB==='mine'?mine():rank()}`}
+  <div class="bar"><button class="tab ${TAB==='mine'?'on':''}" onclick="setTab('mine')">내 추천덱</button><button class="tab ${TAB==='rank'?'on':''}" onclick="setTab('rank')">추천덱 랭킹</button><button class="tab ${TAB==='own'?'on':''}" onclick="setTab('own')">내 장수·전법</button><span class="sp"></span>
+  <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a></div>${TAB==='mine'?mine():TAB==='rank'?rank():own()}`}
 draw();
 </script></body></html>'''
 
