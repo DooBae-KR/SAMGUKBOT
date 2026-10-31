@@ -2393,6 +2393,35 @@ def pin_tactics(st, own_s, used, hd, skd, skn):
         for k in (LU_COUNTER if counter else LU_COMBO): put(k, "여포", "여포 반격" if counter else "여포 연타")
 
 
+def tier_cells(deck, kind):
+    """티어덱 표의 한 줄(스탯·전법·병법·장비) → 칸 목록. 없으면 []."""
+    for r in (deck or {}).get("rows") or []:
+        if r and r[0] == kind: return r[1]
+    return []
+
+
+def cell_names(txt):
+    """'A>B/C' → [A, B, C] (왼쪽이 우선, '>' 뒤는 대체, '/'는 같은 자리 후보)."""
+    return [x.strip() for x in re.split(r"[>/]", txt or "") if x.strip()]
+
+
+def deck_tactics(st, own_s, used, hd, skd, skn):
+    """티어덱이 장수마다 정해 둔 전법 2칸을 우선 배정한다(왼쪽 후보부터, 보유·미사용인 것). 못 채운 칸은 점수 방식이 채운다."""
+    cells = tier_cells(st.get("deck"), "전법")
+    if not cells: return
+    for h in st["hs"]:
+        k = (st.get("slots") or {}).get(h)
+        if k is None or k >= len(cells): continue
+        for cell in cells[k][:2]:
+            for nm in cell_names(cell):
+                key = _nk(nm)
+                if key in own_s and key not in used and key in skn:
+                    n = skn[key]; ti = tact_info(n, skd); used.add(key); st["G"] |= ti["g"]; st["U"] |= ti["u"]
+                    if ti["heal"] or ti["kind"] == "회복": st["healed"] = True
+                    st["picks"].append((n, "티어덱 추천")); st.setdefault("pin", {})[n] = h
+                    break
+
+
 def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜", pen=None):
     """한 부대에 전법을 count개 더 고른다.
     ① 딜 방식: 선호(기본 도트딜)와 같으면 +3, 반대 방식(한방딜)이면 -1.5  ② 책략 부대는 홍수 부여(+5)·홍수 활용(+3),
@@ -2505,8 +2534,8 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", ba
         deck, got = (decks[sel[0]], sel[1]) if sel else (None, [None, None, None])
         if sel: usedD.add(sel[0])
         hs = []
-        for g in got:
-            if g: hs.append({"n": g, "src": ""}); usedH.add(g)
+        for k0, g in enumerate(got):
+            if g: hs.append({"n": g, "src": "", "slot": k0}); usedH.add(g)
         for k, g in enumerate(got):
             if g: continue
             want = deck["heroes"][k].split("/")[0] if deck else None
@@ -2517,9 +2546,10 @@ def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", ba
             hs.append({"n": best, "src": f"{want} 대신" if want else "자유 편성"}); usedH.add(best)
         plan.append((deck, hs))
     sts = [unit_state(deck, hs, hd) for deck, hs in plan]
-    for st, (_d, _h) in zip(sts, plan): st["dname"] = (_d or {}).get("name", "")
+    for st, (_d, _h) in zip(sts, plan): st["dname"] = (_d or {}).get("name", ""); st["deck"] = _d; st["slots"] = {h["n"]: h["slot"] for h in _h if h.get("n") and "slot" in h}
     for st in sts:                                           # 추천 순위대로 부대마다 장수당 전법 2개씩(보유 전법이 모자라면 뒤 부대부터 비움)
         pin_tactics(st, own_s, usedS, hd, skd, skn)
+        if not (tpen or {}).get(st.get("dname")): deck_tactics(st, own_s, usedS, hd, skd, skn)      # 전법 👎를 받은 덱만 점수 방식으로 다시 고름
         pick_tactics(st, 2 * len(st["hs"]) - len(st["picks"]), own_s, usedS, hd, skd, skn, deal, (tpen or {}).get(st.get("dname")))
     res = []
     for (deck, hs), st in zip(plan, sts):
@@ -2807,6 +2837,7 @@ def _reco_page_core(did, season, token):
                            "img": imgs["HERO"].get(n, ""), "src": h.get("src", ""), "rank": rank.get(n), "tr": (e or {}).get("tr", 0), "add": (e or {}).get("add", [0, 0, 0, 0]),
                            "base": [b0[k] for k in ("atk", "intl", "lead", "init")] if b0 else None, "fin": [e[k] for k in ("atk", "intl", "lead", "init")] if e else None,
                            "tac": [{"n": t, "img": imgs["SKI"].get(t, ""), "kind": info(t)["kind"], "type": info(t)["type"], "trait": info(t)["trait"], "why": w} for t, w in tac],
+                           "ti": {kk: (tier_cells(deck, kk)[h["slot"]] if h.get("slot") is not None and h["slot"] < len(tier_cells(deck, kk)) else []) for kk in ("스탯", "병법", "장비")} if deck else {},
                            "eq": equipment.recommend(v.get("style", ""), [info(t)["type"] for t, _w in tac])})
         u = {"i": i, "heroes": heroes, "flow": {"start": fl["start"], "turn": [[a, b2, c, d2] for a, b2, c, d2 in fl["turn"]]}, "status": {"g": ss[0], "miss": ss[1]}}
         if deck:
