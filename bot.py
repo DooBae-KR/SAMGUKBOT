@@ -2616,9 +2616,27 @@ def reco_page_data(did, season, token):
                   "hv": vt(vote_key(season, deck["name"])), "tv": vt(tvote_key(season, deck["name"], tset))}
         units.append(u)
     pins = set(reco_pins(did, season)); decks = tier_data()["S1" if season == 1 else "S2"]; score = reco_scores(season)
+    skn_ = {_nk(k): k for k in skd}
+
+    def deck_cards(d):
+        """랭킹용 덱 카드: 장수 슬롯마다 추천 전법 2개(전법 행의 칸마다 첫 번째 = 우선 추천, 나머지는 대체)를 항상 채운다."""
+        rows = {r[0]: r[1] for r in d.get("rows", []) if r[0] in ("전법", "대체 전법")}
+        cards = []
+        for k, slot in enumerate(d["heroes"]):
+            alts = slot.split("/"); n = alts[0]; v = hd.get(n) or {}
+            cells = list((rows.get("전법") or [[]] * 3)[k] if k < len(rows.get("전법") or []) else [])
+            extra = list((rows.get("대체 전법") or [[]] * 3)[k] if k < len(rows.get("대체 전법") or []) else [])
+            tac = []
+            for c in cells + extra:
+                toks = [t.strip() for t in re.split(r"[/>+,]", c) if t.strip()]
+                if not toks or len(tac) >= 2: continue
+                nm = skn_.get(_nk(toks[0])) or toks[0]; ti = tact_info(nm, skd) if nm in skd else {"kind": "", "type": "", "trait": ""}
+                tac.append({"n": nm, "img": imgs["SKI"].get(nm, ""), "kind": ti["kind"], "type": ti["type"], "trait": ti["trait"], "alt": [skn_.get(_nk(t)) or t for t in toks[1:4]]})
+            cards.append({"n": n, "alts": alts[1:], "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "sk": v.get("sk", ""), "sktype": v.get("sktype", ""), "img": imgs["HERO"].get(n, ""), "tac": tac})
+        return cards
     rk = [{"name": d["name"], "tier": d.get("tier", ""), "heroes": d["heroes"], "u": len(votes.get(vote_key(season, d["name"]), {}).get("u", [])), "d": len(votes.get(vote_key(season, d["name"]), {}).get("d", [])),
            "net": score.get(d["name"], 0), "pin": d["name"] in pins, "idx": k, "note": d.get("note", ""), "form": d.get("form", ""),
-           "rows": [{"label": r[0], "heroes": r[1]} for r in d.get("rows", []) if r[0] in ("전법", "대체 전법")]} for k, d in enumerate(decks)]
+           "cards": deck_cards(d)} for k, d in enumerate(decks)]
     rk.sort(key=lambda x: (-x["net"], -x["u"], x["idx"]))
     pre = f"T{season}|"; tacs = []
     for k, v in votes.items():
@@ -2641,7 +2659,7 @@ def reco_page_data(did, season, token):
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "ski": ski, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "stone": stone}, None
 
 
 async def web_reco(request):
