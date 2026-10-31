@@ -723,8 +723,35 @@ async def hr_notify(g, text):
     except Exception: log.warning("인사관리 알림 실패", exc_info=True)
 
 
+CMDSTAT_PATH = DB_PATH.with_name("cmdstat.json")
+_stat_lock = threading.Lock()
+
+
+def cmd_stat_add(did, name, cmd):
+    """누가 어떤 명령어를 몇 번 썼는지 서버별로 누적한다(관리 페이지 '명령어 통계')."""
+    with _stat_lock:
+        d = store_get("cmdstat", CMDSTAT_PATH, {}) or {}
+        u = d.setdefault("u", {}).setdefault(str(did), {"c": {}})
+        u["n"] = name[:40]; u["c"][cmd] = u["c"].get(cmd, 0) + 1
+        u["t"] = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
+        store_set("cmdstat", CMDSTAT_PATH, d)
+
+
+def cmd_stats_view():
+    d = store_get("cmdstat", CMDSTAT_PATH, {}) or {}; users = []; tot = {}
+    for did, u in (d.get("u") or {}).items():
+        c = u.get("c") or {}; n = sum(c.values())
+        for k, v in c.items(): tot[k] = tot.get(k, 0) + v
+        users.append({"id": did, "n": u.get("n", ""), "total": n, "last": u.get("t", ""), "c": sorted(c.items(), key=lambda kv: -kv[1])})
+    users.sort(key=lambda x: -x["total"])
+    return {"total": sum(tot.values()), "cmds": sorted(tot.items(), key=lambda kv: -kv[1]), "users": users[:500]}
+
+
 async def cmd_log(it: discord.Interaction):
     """명령어 사용 기록을 #명령어로그에 남긴다. 실패해도 명령 실행에는 영향 없음."""
+    try:
+        if it.command is not None: await asyncio.to_thread(cmd_stat_add, it.user.id, getattr(it.user, "display_name", str(it.user.id)), it.command.qualified_name)
+    except Exception: log.warning("명령어 통계 기록 실패", exc_info=True)
     try:
         ch = await log_channel(it.guild)
         if ch is None or it.command is None: return
@@ -1997,7 +2024,7 @@ def adm_state(gid):
         r["dn"] = str(m) if m else ""; r["ok"] = bool(r["d"])
     reserve = sorted(rsv.values(), key=lambda x: (x["ok"], x["n"]))
     blk = sorted(({"c": c, "n": v.get("name", ""), "memo": v.get("memo", ""), "t": v.get("t", ""), "ok": bool(did_of.get(c))} for c, v in (db.get("bl") or {}).items()), key=lambda x: x["c"])
-    return {"blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
+    return {"blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
