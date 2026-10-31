@@ -786,7 +786,11 @@ class Bot(discord.Client):
         if not donate_loop.is_running(): donate_loop.start()
         if not idle_loop.is_running(): idle_loop.start()
         hg = self.get_guild(GUILD_ID)
-        if hg: await verify_channel(hg); await log_channel(hg); await inquiry_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
+        if hg:
+            if not discord.utils.get(hg.roles, name=RESERVE_ROLE):
+                try: await hg.create_role(name=RESERVE_ROLE, reason="예비 역할 자동 생성")
+                except Exception: log.exception("예비 역할 생성 실패(봇에 '역할 관리' 권한 필요)")
+            await verify_channel(hg); await log_channel(hg); await inquiry_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
 
