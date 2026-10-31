@@ -2991,17 +2991,125 @@ def mk_clean(raw, hd, skd, season):
     return out, None
 
 
+ADOPT_BONUS = 5
+
+
+def mk_scores(d):
+    """지략가 점수 = 내 편성 글이 받은 👍 + 의뢰 답변이 받은 👍 + 채택된 답변 × ADOPT_BONUS. → {cid: {by, likes, posts, adopt, score}}"""
+    lk = d.get("likes") or {}; tot = {}
+    def add(cid, by, likes=0, posts=0, adopt=0):
+        t = tot.setdefault(cid, {"by": by, "likes": 0, "posts": 0, "adopt": 0}); t["by"] = by or t["by"]; t["likes"] += likes; t["posts"] += posts; t["adopt"] += adopt
+    for pid, p in (d.get("posts") or {}).items(): add(p["cid"], p.get("by", ""), len(lk.get(pid, [])), 1)
+    ad = {r.get("adopted") for r in (d.get("reqs") or {}).values() if r.get("adopted")}
+    for aid, a in (d.get("ans") or {}).items(): add(a["cid"], a.get("by", ""), len(lk.get(aid, [])), 0, 1 if aid in ad else 0)
+    for t in tot.values(): t["score"] = t["likes"] + ADOPT_BONUS * t["adopt"]
+    return tot
+
+
+def mk_top3(d):
+    tot = mk_scores(d)
+    return [c for c, v in sorted(tot.items(), key=lambda kv: (-kv[1]["score"], -kv[1]["posts"], kv[0]))[:3] if v["score"] > 0]
+
+
 def mk_data(cid):
-    """마켓 글 목록 + 지략가 랭킹(받은 좋아요 합계). 글마다 내가 눌렀는지·내 글인지 표시."""
+    """마켓 글(완성 편성) + 편성 의뢰(답변 포함) + 지략가 랭킹."""
     d = _mk_get(); posts, likes = d.get("posts") or {}, d.get("likes") or {}
-    tot = {}
-    for pid, p in posts.items(): tot.setdefault(p["cid"], {"by": p.get("by", ""), "likes": 0, "posts": 0}); tot[p["cid"]]["likes"] += len(likes.get(pid, [])); tot[p["cid"]]["posts"] += 1; tot[p["cid"]]["by"] = p.get("by", tot[p["cid"]]["by"])
-    rk = sorted(tot.items(), key=lambda kv: (-kv[1]["likes"], -kv[1]["posts"], kv[0]))
-    top3 = {c for c, v in rk[:3] if v["likes"] > 0}
+    tot = mk_scores(d); top3 = set(mk_top3(d))
+    rk = sorted(tot.items(), key=lambda kv: (-kv[1]["score"], -kv[1]["posts"], kv[0]))
     out = [{"id": pid, "by": p.get("by", ""), "title": p.get("title", ""), "note": p.get("note", ""), "season": p.get("season", 1), "ts": p.get("ts", 0), "units": p.get("units", []),
             "likes": len(likes.get(pid, [])), "liked": cid in likes.get(pid, []), "mine": p["cid"] == cid, "strat": p["cid"] in top3} for pid, p in posts.items()]
     out.sort(key=lambda x: (-x["likes"], -x["ts"]))
-    return {"posts": out[:300], "rank": [{"by": v["by"], "likes": v["likes"], "posts": v["posts"], "strat": c in top3, "me": c == cid} for c, v in rk[:20]], "max": MK_MAX_POSTS}
+    ans = d.get("ans") or {}; reqs = []
+    for rid, r in (d.get("reqs") or {}).items():
+        al = [{"id": aid, "by": a.get("by", ""), "note": a.get("note", ""), "units": a.get("units", []), "ts": a.get("ts", 0), "likes": len(likes.get(aid, [])), "liked": cid in likes.get(aid, []),
+               "mine": a["cid"] == cid, "adopted": r.get("adopted") == aid, "strat": a["cid"] in top3} for aid, a in ans.items() if a.get("rid") == rid]
+        al.sort(key=lambda x: (not x["adopted"], -x["likes"], -x["ts"]))
+        reqs.append({"id": rid, "by": r.get("by", ""), "title": r.get("title", ""), "note": r.get("note", ""), "season": r.get("season", 1), "ts": r.get("ts", 0), "own": r.get("own", {}),
+                     "done": bool(r.get("adopted")), "mine": r["cid"] == cid, "strat": r["cid"] in top3, "ans": al})
+    reqs.sort(key=lambda x: (x["done"], -x["ts"]))
+    return {"posts": out[:300], "reqs": reqs[:200], "rank": [{"by": v["by"], "likes": v["likes"], "posts": v["posts"], "adopt": v["adopt"], "score": v["score"], "strat": c in top3, "me": c == cid} for c, v in rk[:20]], "max": MK_MAX_POSTS, "adopt_bonus": ADOPT_BONUS}
+
+
+def rq_post(did, b, hd, skd):
+    """편성 의뢰: 내 보유 장수·전법(+초월)을 첨부해 다른 사람이 5부대를 짜 주게 한다."""
+    cid = _my_cid(did)
+    if not cid: return "인증된 CID가 없습니다"
+    season = 2 if b.get("season") == 2 else 1
+    dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
+    oh = [h for h in (dex.get("own") or []) if h in hd and h not in NOT_USED and hd[h].get("season", 1) <= season]
+    os_ = [t for t in (dex.get("ownsk") or []) if t in skd and skd[t].get("season", 1) <= season]
+    if len(oh) < 3: return "보유 장수가 3명 미만입니다. 먼저 '내 장수·전법' 탭에서 보유를 체크해 주세요"
+    title = re.sub(r"\s+", " ", str(b.get("title", ""))).strip()[:24] or "5부대 편성 부탁드려요"
+    tr = {k: int((v or {}).get("n", 0)) for k, v in (dex.get("tr") or {}).items() if k in oh and isinstance(v, dict) and int((v or {}).get("n", 0)) > 0}
+    with _mk_lock:
+        d = _mk_get(); reqs = dict(d.get("reqs") or {})
+        if sum(1 for r in reqs.values() if r["cid"] == cid and not r.get("adopted")) >= 3: return "진행 중인 의뢰는 최대 3개입니다. 하나를 삭제하거나 채택해 주세요"
+        rid = "r" + uuid.uuid4().hex[:7]
+        reqs[rid] = {"cid": cid, "by": (roster.by_uid.get(cid) or {}).get("name") or "익명", "gid": cur_gid(), "season": season, "title": title, "note": str(b.get("note", ""))[:160],
+                     "own": {"h": sorted(oh), "s": sorted(os_), "tr": tr}, "ts": int(time.time()), "adopted": None}
+        d["reqs"] = reqs; _mk_set(d)
+    return None
+
+
+def rq_del(did, rid):
+    cid = _my_cid(did)
+    with _mk_lock:
+        d = _mk_get(); reqs = dict(d.get("reqs") or {}); r = reqs.get(rid)
+        if not r or r["cid"] != cid: return "내 의뢰만 삭제할 수 있습니다"
+        reqs.pop(rid); ans = {k: a for k, a in (d.get("ans") or {}).items() if a.get("rid") != rid}
+        lk = {k: v for k, v in (d.get("likes") or {}).items() if k in ans or k in (d.get("posts") or {})}
+        d["reqs"], d["ans"], d["likes"] = reqs, ans, lk; _mk_set(d)
+    return None
+
+
+def ans_post(did, b, hd, skd):
+    """의뢰에 대한 답변: 의뢰자가 가진 장수·전법으로만 5부대를 짜야 한다(중복 사용 불가). 한 의뢰에 답변은 1개(다시 올리면 교체)."""
+    cid = _my_cid(did)
+    if not cid: return "인증된 CID가 없습니다"
+    rid = str(b.get("rid", ""))
+    with _mk_lock:
+        d = _mk_get(); r = (d.get("reqs") or {}).get(rid)
+        if not r: return "없는 의뢰입니다"
+        if r["cid"] == cid: return "내 의뢰에는 답변할 수 없습니다"
+        if r.get("adopted"): return "이미 채택된 의뢰입니다"
+        units, err = mk_clean(b.get("units"), hd, skd, r.get("season", 1))
+        if err: return err
+        oh, os_ = set(r["own"]["h"]), set(r["own"]["s"])
+        for u in units:
+            for h in u["h"]:
+                if h and h not in oh: return f"의뢰자가 보유하지 않은 장수: {h}"
+            for tl in u["t"]:
+                for t in tl:
+                    if t not in os_: return f"의뢰자가 보유하지 않은 전법: {t}"
+        ans = dict(d.get("ans") or {}); old = next((k for k, a in ans.items() if a.get("rid") == rid and a["cid"] == cid), None)
+        aid = old or "a" + uuid.uuid4().hex[:7]
+        ans[aid] = {"rid": rid, "cid": cid, "by": (roster.by_uid.get(cid) or {}).get("name") or "익명", "note": str(b.get("note", ""))[:120], "units": units, "ts": int(time.time())}
+        d["ans"] = ans
+        if old: lk = dict(d.get("likes") or {}); lk.pop(old, None); d["likes"] = lk              # 답변을 고치면 이전 추천은 초기화
+        _mk_set(d)
+    return None
+
+
+def ans_del(did, aid):
+    cid = _my_cid(did)
+    with _mk_lock:
+        d = _mk_get(); ans = dict(d.get("ans") or {}); a = ans.get(aid)
+        if not a or a["cid"] != cid: return "내 답변만 삭제할 수 있습니다"
+        r = (d.get("reqs") or {}).get(a["rid"])
+        if r and r.get("adopted") == aid: return "채택된 답변은 삭제할 수 없습니다"
+        ans.pop(aid); lk = dict(d.get("likes") or {}); lk.pop(aid, None); d["ans"], d["likes"] = ans, lk; _mk_set(d)
+    return None
+
+
+def rq_adopt(did, rid, aid):
+    cid = _my_cid(did)
+    with _mk_lock:
+        d = _mk_get(); reqs = dict(d.get("reqs") or {}); r = reqs.get(rid)
+        if not r or r["cid"] != cid: return "내 의뢰만 채택할 수 있습니다"
+        a = (d.get("ans") or {}).get(aid)
+        if not a or a.get("rid") != rid: return "없는 답변입니다"
+        r = dict(r); r["adopted"] = None if r.get("adopted") == aid else aid; reqs[rid] = r; d["reqs"] = reqs; _mk_set(d)      # 같은 답변을 다시 누르면 채택 취소
+    return None
 
 
 def mk_post(did, b, hd, skd):
@@ -3035,7 +3143,7 @@ def mk_like(did, pid):
     cid = _my_cid(did)
     if not cid: return "인증된 CID가 없습니다"
     with _mk_lock:
-        d = _mk_get(); p = (d.get("posts") or {}).get(pid)
+        d = _mk_get(); p = (d.get("posts") or {}).get(pid) or (d.get("ans") or {}).get(pid)
         if not p: return "없는 글입니다"
         if p["cid"] == cid: return "내 글에는 추천할 수 없습니다"
         lk = dict(d.get("likes") or {}); cur = list(lk.get(pid, []))
@@ -3050,10 +3158,7 @@ async def strat_sync():
     """지략가(TOP3) 역할을 모든 서버에서 맞춘다: TOP3에게 부여, 그 외에게서 회수."""
     if _strat_busy.locked(): return
     async with _strat_busy:
-        d = await asyncio.to_thread(_mk_get); posts, likes = d.get("posts") or {}, d.get("likes") or {}
-        tot = {}
-        for pid, p in posts.items(): tot[p["cid"]] = tot.get(p["cid"], 0) + len(likes.get(pid, []))
-        top = [c for c, n in sorted(tot.items(), key=lambda kv: (-kv[1], kv[0]))[:3] if n > 0]
+        d = await asyncio.to_thread(_mk_get); top = mk_top3(d)
         for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):
             g = bot.get_guild(gid)
             if g is None: continue
@@ -3127,17 +3232,22 @@ async def web_reco_api(request):
         if err: return web.json_response({"ok": False, "error": err}, status=400)
         if any("없는" in l and "이름" in l for l in lines): return web.json_response({"ok": False, "error": "없는 이름입니다"}, status=400)
         return web.json_response({"ok": True})
-    elif op in ("mk_post", "mk_del", "mk_like", "mk_list", "draft"):
+    elif op in ("mk_post", "mk_del", "mk_like", "mk_list", "draft", "rq_post", "rq_del", "ans_post", "ans_del", "rq_adopt"):
         hd, skd = reco_defs()
         if op == "mk_post": err = await asyncio.to_thread(mk_post, did, b, hd, skd)
         elif op == "mk_del": err = await asyncio.to_thread(mk_del, did, str(b.get("id", "")))
         elif op == "mk_like": err = await asyncio.to_thread(mk_like, did, str(b.get("id", "")))
+        elif op == "rq_post": err = await asyncio.to_thread(rq_post, did, b, hd, skd)
+        elif op == "rq_del": err = await asyncio.to_thread(rq_del, did, str(b.get("id", "")))
+        elif op == "ans_post": err = await asyncio.to_thread(ans_post, did, b, hd, skd)
+        elif op == "ans_del": err = await asyncio.to_thread(ans_del, did, str(b.get("id", "")))
+        elif op == "rq_adopt": err = await asyncio.to_thread(rq_adopt, did, str(b.get("rid", "")), str(b.get("aid", "")))
         elif op == "draft":
             units, err = mk_clean(b.get("units"), hd, skd, season) if b.get("units") else ([], None)
             if not err: await asyncio.to_thread(pref_set, did, draft={str(season): units})
         else: err = None
         if err: return web.json_response({"ok": False, "error": err}, status=400)
-        if op in ("mk_post", "mk_like", "mk_del"): asyncio.create_task(strat_sync())
+        if op in ("mk_post", "mk_like", "mk_del", "ans_post", "ans_del", "rq_adopt", "rq_del"): asyncio.create_task(strat_sync())
         return web.json_response({"ok": True, "mk": await asyncio.to_thread(mk_data, _my_cid(did))})
     elif op == "pin":
         name = str(b.get("deck", "")); names = {d["name"] for d in tier_data()["S1" if season == 1 else "S2"]}
