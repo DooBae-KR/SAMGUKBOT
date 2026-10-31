@@ -175,3 +175,20 @@ def render(res, season, who, deal, hd, skd, info, order, per_image=3, flows=None
         d.text((W - PAD, H - 22), "티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웠습니다", font=_f(11), fill=MUTE, anchor="ra")
         b = io.BytesIO(); im.save(b, "PNG", optimize=True); out.append(b.getvalue())
     return out
+
+
+_TH = {}
+
+
+def thumb(kind, name, w=44, h=56):
+    """내 장수·전법 탭용 작은 썸네일(JPEG base64). 없으면 빈 문자열."""
+    k = (kind, name)
+    if k not in _TH:
+        b = _imgs()[kind].get(name); out = ""
+        if b:
+            try:
+                im = Image.open(io.BytesIO(base64.b64decode(b))).convert("RGB").resize((w, h), Image.LANCZOS)
+                o = io.BytesIO(); im.save(o, "JPEG", quality=72); out = base64.b64encode(o.getvalue()).decode("ascii")
+            except Exception: out = ""
+        _TH[k] = out
+    return _TH[k]

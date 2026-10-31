@@ -2744,8 +2744,8 @@ def reco_page_data(did, season, token):
             name, _, ts = k[len(pre):].partition("|"); net = len(v.get("u", [])) - len(v.get("d", []))
             if v.get("u") or v.get("d"): tacs.append({"deck": name, "tset": [skn_name for skn_name in ts.split(",") if skn_name], "u": len(v.get("u", [])), "d": len(v.get("d", [])), "net": net})
     tacs.sort(key=lambda x: (-x["net"], -x["u"]))
-    allx = {"h": [{"n": n, "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "season": v.get("season", 1)} for n, v in hd.items()],
-            "s": [{"n": n, "type": v.get("type", ""), "trait": v.get("trait", ""), "grade": v.get("grade", ""), "season": v.get("season", 1)} for n, v in skd.items()]}
+    allx = {"h": [{"n": n, "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "season": v.get("season", 1), "img": imgs["HERO"] and reco_img.thumb("HERO", n, 44, 56)} for n, v in hd.items()],
+            "s": [{"n": n, "type": v.get("type", ""), "trait": v.get("trait", ""), "grade": v.get("grade", ""), "season": v.get("season", 1), "img": reco_img.thumb("SKI", n, 40, 40)} for n, v in skd.items()]}
     cid_ = (db_load()["uid"] or {}); cid2 = next((c for c, dd in cid_.items() if str(dd) == str(did)), None)
     dx = (store_get(f"dex_{cid2}", dex_path(cid2), {}) or {}) if cid2 else {}
     skn_ = {_nk(k): k for k in skd}; ski = {}
@@ -2761,7 +2761,7 @@ def reco_page_data(did, season, token):
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or [])}, "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}}, "stone": stone}, None
 
 
 async def web_reco(request):
@@ -2801,6 +2801,23 @@ async def web_reco_api(request):
                 for i2 in range(len(hs)):
                     for j2 in range(i2 + 1, len(hs)): synergy_add("hh", hs[i2], hs[j2], 0.2 * delta)
         await asyncio.to_thread(vv)
+    elif op == "tr":
+        name = str(b.get("name", ""))[:30]
+        try: n = max(0, min(5, int(b.get("n", 0))))
+        except Exception: return web.json_response({"ok": False, "error": "잘못된 요청"}, status=400)
+        def sv():
+            cid = _my_cid(did)
+            if not cid: return "인증된 CID가 없습니다"
+            dex = dict(store_get(f"dex_{cid}", dex_path(cid), {}) or {}); tr = dict(dex.get("tr") or {})
+            if name not in (dex.get("own") or []): return "먼저 보유 장수로 등록해 주세요"
+            cur = dict(tr.get(name) or {}); a = [max(0, int(t)) for t in (cur.get("a") or [])][:4]; a += [0] * (4 - len(a)); cap = LV_POINTS + TR_BONUS * n
+            for q in range(4): a[q] = min(a[q], cap); cap -= a[q]
+            if n > 0 or sum(a) > 0: tr[name] = {"n": n, "a": a}
+            else: tr.pop(name, None)
+            dex["tr"] = tr; store_set(f"dex_{cid}", dex_path(cid), dex)
+        err = await asyncio.to_thread(sv)
+        if err: return web.json_response({"ok": False, "error": err}, status=400)
+        return web.json_response({"ok": True})
     elif op == "own":
         name, kind, on = str(b.get("name", ""))[:30], b.get("kind"), bool(b.get("on"))
         if kind not in ("h", "s"): return web.json_response({"ok": False, "error": "잘못된 요청"}, status=400)
