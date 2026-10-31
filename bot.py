@@ -767,7 +767,7 @@ GUIDE_PATH = Path(os.environ.get("GUIDE_PATH", "guide.json"))
 GUIDE_DIR = Path(__file__).parent / "guides"
 
 
-async def _guide_channel(g, name, public, prefix, topic, text, force=False, key=None):
+async def _guide_channel(g, name, public, prefix, topic, text, force=False, key=None, cat=None):
     """가이드 채널을 만들고(없으면) 가이드 이미지를 올린다. 이미지 내용이 바뀌면 이전 글을 지우고 새로 올린다. 만들 수 없으면 None."""
     me = g.me
     files = sorted(GUIDE_DIR.glob(prefix + "*.png"))[:10]
@@ -776,10 +776,10 @@ async def _guide_channel(g, name, public, prefix, topic, text, force=False, key=
     if ch is None and time.time() - _log_fail.get((name, g.id), 0) > 3600:
         mine = discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True)
         ow = {g.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False, add_reactions=True) if public else discord.PermissionOverwrite(view_channel=False), g.me: mine}
-        try: ch = await g.create_text_channel(name, overwrites=ow, topic=topic, position=0, reason="가이드 채널")
+        try: ch = await g.create_text_channel(name, overwrites=ow, topic=topic, **({"category": cat} if cat else {"position": 0}), reason="가이드 채널")
         except Exception as e1:
             try:
-                ch = await g.create_text_channel(name, topic=topic, position=0, reason="가이드 채널")
+                ch = await g.create_text_channel(name, topic=topic, **({"category": cat} if cat else {"position": 0}), reason="가이드 채널")
                 try: await ch.set_permissions(g.default_role, **({"send_messages": False} if public else {"view_channel": False}))
                 except Exception as e3: log.warning("가이드 채널 권한 설정 실패 %s/%s: %r", g.id, name, e3)
             except Exception as e2:
@@ -820,15 +820,56 @@ async def guide_post(g, force=False):
     return ach, uch
 
 
-START_CH = "봇시작하기"
+START_CH, START_CAT = "필독사항!!", "시작하기"
+
+
+async def start_cat(g):
+    """맨 위의 '시작하기' 카테고리(없으면 만든다)."""
+    cat = discord.utils.get(g.categories, name=START_CAT)
+    if cat is None:
+        ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)}
+        try: cat = await g.create_category(START_CAT, overwrites=ow, position=0, reason="봇 시작 안내")
+        except Exception:
+            try: cat = await g.create_category(START_CAT, position=0, reason="봇 시작 안내")
+            except Exception as e: log.warning("'시작하기' 카테고리 생성 실패 %s: %r", g.id, e); return None
+    return cat
 
 
 async def start_post(g, force=False):
-    """봇을 초대하면 #봇시작하기(서버 관리자만 보임)에 등록 방법·인사파일 받는 법/넣는 법 가이드를 올린다."""
+    """봇을 초대하면 [시작하기] 카테고리의 #필독사항!!(서버 관리자만 보임)에 등록 방법·인사파일 받는 법/넣는 법 가이드를 올린다. 동맹 등록이 끝나면 start_finish가 지운다."""
+    if g.id == GUILD_ID or licensed(g.id): return None
+    old = discord.utils.get(g.text_channels, name="봇시작하기")                       # 예전 이름 정리
+    if old is not None:
+        try: await old.delete(reason="시작 안내 채널 이름 변경")
+        except Exception: pass
     text = ("👋 **초대해 주셔서 감사합니다!** 아래 순서대로 한 번만 세팅하면 나머지는 봇이 알아서 굴러갑니다.\n"
             "① `/동맹등록` — 서버 번호·동맹명 등록 (서버 관리자)\n② 게임에서 인사파일(MemberWeek.xlsx) 받기\n③ `/명단업데이트` — 인사파일 첨부 (서버 관리자)\n"
-            "📌 **PS. 인사파일은 PC에서만 다운로드가 가능합니다.**")
-    return await _guide_channel(g, START_CH, False, "start_guide", "봇 등록 방법과 인사파일 넣는 방법 (서버 관리자만 볼 수 있습니다)", text, force, key="start")
+            "📌 **PS. 인사파일은 PC에서만 다운로드가 가능합니다.**\n(동맹 등록이 끝나면 이 채널은 자동으로 사라지고 이용자 가이드가 나옵니다)")
+    cat = await start_cat(g)
+    return await _guide_channel(g, START_CH, False, "start_guide", "봇 등록 방법과 인사파일 넣는 방법 (서버 관리자만 볼 수 있습니다)", text, force, key="start", cat=cat)
+
+
+async def start_finish(g):
+    """동맹 등록이 끝나면 [시작하기] 카테고리와 #필독사항!!을 지우고 이용자·관리자 가이드를 올린다."""
+    if g is None: return
+    try:
+        for ch in [c for c in g.text_channels if c.name in (START_CH, "봇시작하기")]:
+            try: await ch.delete(reason="동맹 등록 완료")
+            except Exception as e: log.warning("시작 채널 삭제 실패 %s: %r", g.id, e)
+        cat = discord.utils.get(g.categories, name=START_CAT)
+        if cat is not None and not [c for c in cat.channels if c.name not in (START_CH, "봇시작하기")]:
+            try: await cat.delete(reason="동맹 등록 완료")
+            except Exception as e: log.warning("시작 카테고리 삭제 실패 %s: %r", g.id, e)
+
+        def clr():
+            tok = _CTX.set(g.id)
+            try:
+                d = dict(store_get("guide", GUIDE_PATH, {}) or {})
+                if d.pop("start", None) is not None: store_set("guide", GUIDE_PATH, d)
+            finally: _CTX.reset(tok)
+        await asyncio.to_thread(clr)
+        await guide_post(g, force=True)
+    except Exception: log.exception("시작 가이드 정리 실패 %s", g.id)
 
 
 class GuildTree(app_commands.CommandTree):
@@ -1116,6 +1157,7 @@ async def pm_decide(it: discord.Interaction, cid):
         PERM.add((gid, uid)); LICENSED.add(gid)
         if row.get("ally_name") and row.get("game_server"): await asyncio.to_thread(ally_set, gid, row["ally_name"], row["game_server"])
         extra = await pm_setup_guild(gid)
+        asyncio.create_task(start_finish(bot.get_guild(gid)))
     else:
         PERM.discard((gid, uid))
         if not any(g == gid for g, _ in PERM): LICENSED.discard(gid)
@@ -1147,6 +1189,7 @@ class AllyApplyModal(CtxModal, title="동맹 등록"):
                "ally_name": nm, "game_server": sv, "status": "approved", "requested_at": now, "decided_at": now, "decided_by": uid}
         await asyncio.to_thread(_sb_req, "POST", "sam_perm?on_conflict=guild_id,discord_id", [row], "resolution=merge-duplicates,return=minimal")
         PERM.add((gid, uid)); LICENSED.add(gid); await asyncio.to_thread(ally_set, gid, nm, sv); extra = await pm_setup_guild(gid)
+        asyncio.create_task(start_finish(it.guild))
         try: await lv_send(it.guild, f"🏷️ **동맹 등록** — {it.user.mention} ({it.user}) · {sv}서버 · {nm}")
         except Exception: log.exception("동맹 등록 로그 실패")
         log.info("동맹 등록: guild=%s user=%s(%s) %s서버 %s", gid, it.user, uid, sv, nm)
