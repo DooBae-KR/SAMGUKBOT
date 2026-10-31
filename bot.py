@@ -1274,11 +1274,19 @@ async def inquiry_channel(g):
     if me is None: return None
     ch = discord.utils.get(g.text_channels, name=INQ_CH)
     if ch is None:
-        try:
-            ow = {g.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False, add_reactions=False, send_messages_in_threads=True),
-                  g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, create_public_threads=True, send_messages_in_threads=True, manage_threads=True)}
-            ch = await g.create_text_channel(INQ_CH, overwrites=ow, topic="불편한 점·건의사항은 아래 [문의하기] 버튼으로 남겨 주세요", category=await bot_cat(g), reason="문의함 채널")
-        except Exception: log.warning("문의함 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요): %s", g.id); return None
+        topic = "불편한 점·건의사항은 아래 [문의하기] 버튼으로 남겨 주세요"; cat = await bot_cat(g)
+        ow_full = {g.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False, add_reactions=False, send_messages_in_threads=True),
+                   g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, create_public_threads=True, send_messages_in_threads=True, manage_threads=True)}
+        ow_min = {g.default_role: discord.PermissionOverwrite(send_messages=False, add_reactions=False)}      # 봇이 갖지 못한 권한을 덮어쓰기에 넣으면 거부되므로 최소 설정으로 재시도
+        for ow in (ow_full, ow_min):
+            try: ch = await g.create_text_channel(INQ_CH, overwrites=ow, topic=topic, category=cat, reason="문의함 채널"); break
+            except Exception as e: log.warning("문의함 채널 생성 실패 서버=%s: %r", g.id, e)
+        if ch is None:
+            try:
+                ch = await g.create_text_channel(INQ_CH, topic=topic, category=cat, reason="문의함 채널")
+                try: await ch.set_permissions(g.default_role, send_messages=False, add_reactions=False)
+                except Exception as e: log.warning("문의함 쓰기 제한 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e)
+            except Exception as e: log.warning("문의함 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요) 서버=%s: %r", g.id, e); return None
     if not ch.permissions_for(me).send_messages: return None
     tok = _CTX.set(g.id)
     try: st = dict(store_get("inq", INQ_PATH, {"n": 0}) or {"n": 0})
@@ -1333,6 +1341,11 @@ async def idle_sweep(g):
 
 @tasks.loop(minutes=60)
 async def idle_loop():
+    for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):                 # 문의함 채널이 없으면 매시간 다시 만들어 본다(권한을 나중에 준 경우 대비)
+        g = bot.get_guild(gid)
+        if g is None: continue
+        try: await inquiry_channel(g)
+        except Exception: log.exception("문의함 점검 실패 %s", gid)
     if IDLE_KICK_DAYS <= 0: return
     for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):
         g = bot.get_guild(gid)
