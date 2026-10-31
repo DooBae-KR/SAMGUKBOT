@@ -2617,7 +2617,8 @@ def reco_page_data(did, season, token):
         units.append(u)
     pins = set(reco_pins(did, season)); decks = tier_data()["S1" if season == 1 else "S2"]; score = reco_scores(season)
     rk = [{"name": d["name"], "tier": d.get("tier", ""), "heroes": d["heroes"], "u": len(votes.get(vote_key(season, d["name"]), {}).get("u", [])), "d": len(votes.get(vote_key(season, d["name"]), {}).get("d", [])),
-           "net": score.get(d["name"], 0), "pin": d["name"] in pins, "idx": k} for k, d in enumerate(decks)]
+           "net": score.get(d["name"], 0), "pin": d["name"] in pins, "idx": k, "note": d.get("note", ""), "form": d.get("form", ""),
+           "rows": [{"label": r[0], "heroes": r[1]} for r in d.get("rows", []) if r[0] in ("전법", "대체 전법")]} for k, d in enumerate(decks)]
     rk.sort(key=lambda x: (-x["net"], -x["u"], x["idx"]))
     pre = f"T{season}|"; tacs = []
     for k, v in votes.items():
@@ -2625,11 +2626,22 @@ def reco_page_data(did, season, token):
             name, _, ts = k[len(pre):].partition("|"); net = len(v.get("u", [])) - len(v.get("d", []))
             if v.get("u") or v.get("d"): tacs.append({"deck": name, "tset": [skn_name for skn_name in ts.split(",") if skn_name], "u": len(v.get("u", [])), "d": len(v.get("d", [])), "net": net})
     tacs.sort(key=lambda x: (-x["net"], -x["u"]))
+    cid_ = (db_load()["uid"] or {}); cid2 = next((c for c, dd in cid_.items() if str(dd) == str(did)), None)
+    dx = (store_get(f"dex_{cid2}", dex_path(cid2), {}) or {}) if cid2 else {}
+    skn_ = {_nk(k): k for k in skd}; ski = {}
+    for d in decks:
+        for r in d.get("rows", []):
+            if r[0] in ("전법", "대체 전법"):
+                for cells in r[1]:
+                    for cell in cells:
+                        for tk in re.split(r"[/>+,]", cell):
+                            nm = skn_.get(_nk(tk))
+                            if nm and nm not in ski and imgs["SKI"].get(nm): ski[nm] = imgs["SKI"][nm]
     sy = sorted(({"kind": r["kind"], "a": r["a"], "b": r["b"], "score": float(r["score"]), "note": r.get("note", ""), "src": r.get("src", "")} for r in synergy_rows()), key=lambda r: -r["score"])[:30]
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "ski": ski, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "stone": stone}, None
 
 
 async def web_reco(request):
