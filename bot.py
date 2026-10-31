@@ -782,6 +782,7 @@ class Bot(discord.Client):
         if SYNC_MINUTES and not sync_loop.is_running(): sync_loop.start()
         if not jc_loop.is_running(): jc_loop.start()
         if not donate_loop.is_running(): donate_loop.start()
+        if not idle_loop.is_running(): idle_loop.start()
         hg = self.get_guild(GUILD_ID)
         if hg: await verify_channel(hg); await log_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
@@ -1075,6 +1076,57 @@ async def donate_channel(g):
     if ch and ok(ch): return ch
     if g.system_channel and ok(g.system_channel): return g.system_channel
     return next((c for c in g.text_channels if ok(c)), None)
+
+
+# ---------- 역할 없는 사람 자동 추방 ----------
+IDLE_KICK_DAYS = float(os.environ.get("IDLE_KICK_DAYS", "3"))     # 아무 역할이 없는 채로 이만큼 지나면 추방(0이면 끔)
+IDLE_KICK_MAX = int(os.environ.get("IDLE_KICK_MAX", "20"))        # 한 번(1시간)에 서버당 최대 추방 수(실수로 대량 추방되는 것을 막는 안전장치)
+IDLE_PATH = Path(os.environ.get("IDLE_PATH", "idle_members.json"))
+
+
+def idle_state(gid, new=None):
+    tok = _CTX.set(gid)
+    try:
+        if new is None: return dict(store_get("idle", IDLE_PATH, {}) or {})
+        store_set("idle", IDLE_PATH, new)
+    finally: _CTX.reset(tok)
+
+
+async def idle_sweep(g):
+    """역할이 하나도 없는 멤버(@everyone만)를 처음 본 시각부터 IDLE_KICK_DAYS일이 지나면 추방한다. 역할을 받으면 기록이 지워진다.
+    → (추방한 이름 목록, 실패 수). 봇·서버 주인·관리자 권한 보유자는 제외."""
+    me = g.me
+    if me is None or not me.guild_permissions.kick_members: return [], 0
+    now = time.time(); st = await asyncio.to_thread(idle_state, g.id); seen = {k: v for k, v in (st.get("seen") or {}).items()}
+    cur, kicked, fail = {}, [], 0
+    for m in list(g.members):
+        if m.bot or m.id == g.owner_id or m.guild_permissions.administrator: continue
+        if len(m.roles) > 1: continue                                   # 역할이 하나라도 있으면 대상 아님
+        t = float(seen.get(str(m.id)) or now); cur[str(m.id)] = t
+        if now - t < IDLE_KICK_DAYS * 86400: continue
+        if len(kicked) >= IDLE_KICK_MAX: continue
+        if m.top_role >= me.top_role: fail += 1; continue
+        try:
+            await m.kick(reason=f"역할 없이 {IDLE_KICK_DAYS:g}일 경과(자동 추방)"); kicked.append(str(m)); cur.pop(str(m.id), None)
+        except Exception as e: fail += 1; log.warning("자동 추방 실패 서버=%s 멤버=%s: %r", g.id, m.id, e)
+    await asyncio.to_thread(idle_state, g.id, {"seen": cur})
+    return kicked, fail
+
+
+@tasks.loop(minutes=60)
+async def idle_loop():
+    if IDLE_KICK_DAYS <= 0: return
+    for gid in [GUILD_ID] + sorted(LICENSED - {GUILD_ID}):
+        g = bot.get_guild(gid)
+        if g is None: continue
+        try: kicked, fail = await idle_sweep(g)
+        except Exception: log.exception("자동 추방 점검 실패 %s", gid); continue
+        if kicked or fail:
+            log.info("자동 추방 서버=%s 추방=%d 실패=%d", gid, len(kicked), fail)
+            ch = await log_channel(g, create=False)
+            if ch and kicked:
+                try: await ch.send(f"🚪 **자동 추방** — 역할 없이 {IDLE_KICK_DAYS:g}일이 지난 {len(kicked)}명: " + ", ".join(kicked)[:1500], allowed_mentions=discord.AllowedMentions.none())
+                except Exception: pass
 
 
 @tasks.loop(seconds=60)
