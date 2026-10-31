@@ -2689,18 +2689,14 @@ def reco_images(did, season):
 
 
 async def reco_deliver(it, did, season, first_edit=False, note=""):
-    """추천덱을 HTML 페이지 링크로 보낸다(나에게만 보임). 부대별 덱 이름·장수를 요약해서 함께 보여준다."""
+    """추천덱 페이지 링크만 보낸다(나에게만 보임). 덱 내용은 글자로 보내지 않는다."""
     cid = await asyncio.to_thread(_my_cid, did)
-    err, res = (None, None)
-    if cid: err, res = (lambda r: (r[0], r[1]))(await asyncio.to_thread(reco_run, did, season))
-    else: err = "먼저 `/인증`으로 CID 인증을 해 주세요."
-    if err:
-        text = (note + "\n" if note else "") + err
+    if not cid:
+        text = (note + "\n" if note else "") + "먼저 `/인증`으로 CID 인증을 해 주세요."
         if first_edit: return await it.edit_original_response(content=text, view=None, attachments=[])
         return await it.followup.send(text, ephemeral=True)
     url = f"{PUBLIC_URL}/reco?t={tier_token(cid, cur_gid())}&s={season}"
-    lines = [f"**{n}부대** {(d or {}).get('name', '자유 편성')} — " + ", ".join((h["n"] or "-") for h, _t in unit) for n, (d, unit, _s) in enumerate(res, 1)]
-    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}** 준비됐어요. 아래 버튼에서 장수 카드·전법·초월 반영 턴 순서, 👍/👎 평가, 추천덱 랭킹을 볼 수 있어요. (링크는 공유하지 마세요)\n" + "\n".join(lines)
+    head = (note + "\n" if note else "") + f"🃏 **추천덱 — 시즌{season}** 링크입니다. 다른 사람에게 공유하지 마세요."
     view = discord.ui.View(); view.add_item(discord.ui.Button(label="🃏 추천덱 보기", style=discord.ButtonStyle.link, url=url))
     if first_edit: await it.edit_original_response(content=head[:1990], attachments=[], view=view)
     else: await it.followup.send(head[:1990], view=view, ephemeral=True)
