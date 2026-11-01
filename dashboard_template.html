@@ -153,7 +153,7 @@ function tabSummary(){
 }
 // ---------- 명부 ----------
 const COLS=[
- {h:'닉네임',s:d=>d.n,f:d=>`<b>${d.n}</b>`},{h:'직위',s:d=>d.r,f:d=>d.r},{h:'직업',s:d=>d.j,f:d=>d.j},{h:'조',s:d=>d.g,f:d=>d.g},
+ {h:'닉네임',s:d=>d.n,f:d=>`<b>${d.n}</b>${d.alts?` <span class="lead" style="margin:0">부 ${d.alts.join(', ')}</span>`:''}`},{h:'직위',s:d=>d.r,f:d=>d.r},{h:'직업',s:d=>d.j,f:d=>d.j},{h:'조',s:d=>d.g,f:d=>d.g},
  {h:'액티브 판정',s:d=>d.ac,f:d=>acTag(d.ac)},{h:'등급',s:d=>d.score,f:d=>`<span class="grade">${d.grade}</span>`},
  {h:'점수',n:1,s:d=>d.score,f:d=>d.score.toFixed(1)},{h:'최근 일 무훈',n:1,s:d=>lastM(d)==null?-1:lastM(d),f:d=>lastM(d)==null?'':f(lastM(d))},
  {h:'주간 무훈',n:1,s:d=>d.m,f:d=>f(d.m)},{h:'주간 공헌',n:1,s:d=>d.c,f:d=>f(d.c)},{h:'번영',n:1,s:d=>d.p,f:d=>f(d.p)},
@@ -203,12 +203,12 @@ function tabAct(){
   $('t3').innerHTML=`<h2>액티브 이력</h2><p class="lead">주간 누적 인사파일의 날짜별 차이로 일 무훈을 구합니다. 주가 바뀌어 값이 줄면 새 값을 그날 증가분으로 봅니다. 판정일 ${A.n}일${A.quiet.length?`, 상대 없음 제외일 ${A.quiet.join(', ')}`:''}.</p>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">${['액티브','저조','경고','쟁 미참여'].map(k=>`<div class="blk" style="padding:10px 16px">${acTag(k)}<div style="font-size:22px;font-weight:700">${cnt(k)}명</div></div>`).join('')}
    <div class="blk" style="padding:10px 16px">톡방 참여 ${tk.length}명 · 평균 점수 ${avg(tk)}<br>톡방 비참여 ${nt.length}명 · 평균 점수 ${avg(nt)}</div></div>
-  <div class="tw"><table><thead><tr><th>닉네임</th><th>판정</th><th class="n">점수</th><th>톡방</th>${ds.map(x=>`<th class="n">${x}</th>`).join('')}</tr></thead><tbody>${rows.map(d=>{const m=Object.fromEntries(d.a.days.map(x=>[x.d,x]));return `<tr><td><b>${d.n}</b></td><td>${acTag(d.ac)}</td><td class="n">${d.score.toFixed(1)}</td><td>${d.t?'참여':'비참여'}</td>${ds.map(x=>cell(m[x])).join('')}</tr>`}).join('')}</tbody></table></div>`;
+  <div class="tw"><table><thead><tr><th>닉네임</th><th>판정</th><th class="n">점수</th><th>톡방</th>${ds.map(x=>`<th class="n">${x}</th>`).join('')}</tr></thead><tbody>${rows.map(d=>{const m=Object.fromEntries(d.a.days.map(x=>[x.d,x]));return `<tr><td><b>${d.n}</b>${d.alts?` <span class="lead" style="margin:0">부 ${d.alts.join(', ')}</span>`:''}</td><td>${acTag(d.ac)}</td><td class="n">${d.score.toFixed(1)}</td><td>${d.t?'참여':'비참여'}</td>${ds.map(x=>cell(m[x])).join('')}</tr>`}).join('')}</tbody></table></div>`;
 }
 // ---------- 기준표 ----------
 function tabRules(){
   const A=CFG.act||{warn:50000,need:30};
-  document.getElementById('t4').innerHTML=`<h2>기준표</h2><p class="lead">판정 기준을 숨기지 않고 그대로 적었습니다. 공성 횟수는 자동 집결이라 어디에도 쓰지 않습니다.</p>
+  document.getElementById('t4').innerHTML=`<h2>기준표</h2><p class="lead">판정 기준을 숨기지 않고 그대로 적었습니다. 공성 횟수는 자동 집결이라 어디에도 쓰지 않습니다. 부계정(/부캐로 연결)은 인원·평균·표준편차에서 빼고, 본계 줄에 이름만 붙여 본계 판정을 따라갑니다.</p>
   <section class="blk"><h2 style="font-size:17px">액티브 판정</h2><div class="tw"><table class="rules"><tbody>
    <tr><td>${acTag('쟁 미참여')}</td><td>판정일 연속 2일 일 무훈 ${f(A.warn)} 이하</td></tr>
    <tr><td>${acTag('경고')}</td><td>가장 최근 판정일 일 무훈 ${f(A.warn)} 이하</td></tr>

@@ -1848,7 +1848,7 @@ def _med(a):
     return 0 if not n else (a[n // 2] if n % 2 else (a[n // 2 - 1] + a[n // 2]) / 2)
 
 
-def activity_calc(gid, members, tset):
+def activity_calc(gid, members, tset, skip=()):
     """sam_emp_stat 날짜별 주간 누적값 → 일 증가분(주 리셋 시 값 자체) → 제외일/경고/쟁 미참여/점수. members 순서대로 dict 목록(없으면 None)."""
     if not SB_ON: return None
     since = (datetime.datetime.utcnow() + datetime.timedelta(hours=9) - datetime.timedelta(days=ACT_DAYS + 7)).strftime("%Y-%m-%d")
@@ -1866,7 +1866,7 @@ def activity_calc(gid, members, tset):
             delta.setdefault(b["snap_date"], {})[cid] = (dm / gap, dc / gap, gap)
     dates = sorted(delta)[-ACT_DAYS:]
     if not dates: return {"dates": [], "rows": [None] * len(members), "quiet": [], "n": 0}
-    meds = {d: _med([v[0] for v in delta[d].values()]) for d in dates}
+    meds = {d: _med([v[0] for c, v in delta[d].items() if c not in skip]) for d in dates}
     quiet = []
     for i, d in enumerate(dates):                          # 직전 최대 14일 중앙값들의 평균과 비교(기준이 없으면 제외 안 함)
         base = [meds[x] for x in dates[:i] if x not in quiet][-14:]
@@ -1875,7 +1875,7 @@ def activity_calc(gid, members, tset):
     stat = {}                                              # date -> (mu, sd) 상위 3명 제외 / 상위 3명은 z 상한 처리 위해 같은 값 사용
     for kind in (0, 1):
         for d in valid:
-            xs = sorted((v[kind] for v in delta[d].values()), reverse=True)
+            xs = sorted((v[kind] for c, v in delta[d].items() if c not in skip), reverse=True)
             core = xs[3:] if len(xs) > 6 else xs
             mu = sum(core) / len(core) if core else 0
             sd = (sum((x - mu) ** 2 for x in core) / len(core)) ** .5 if core else 0
@@ -1912,12 +1912,21 @@ def render_html(tok=None):
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
     names, tdate, managed = talk_get(); tset = set(names)
     D = [{**d, "t": 1 if d["n"] in tset else 0} for d in roster.members]
+    gid = cur_gid(); alts = {}
+    if SB_ON:
+        try: alts = {r["alt_cid"]: r["main_cid"] for r in (_sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,main_cid&limit=100000") or [])}
+        except Exception: log.exception("부계정 목록 조회 실패")
     act = None
-    try: act = activity_calc(cur_gid(), D, tset)
+    try: act = activity_calc(gid, D, tset, set(alts))
     except Exception: log.exception("액티브 계산 실패")
+    cn = {d.get("_c"): d for d in D}
     for i, d in enumerate(D):
         if act and act["rows"][i]: d["a"] = act["rows"][i]
-        d.pop("_c", None)
+    for d in D:                                             # 부계정은 통계에서 빼고, 본계 줄에 이름만 붙여 본계 판정을 따라간다
+        m = cn.get(alts.get(d.get("_c")))
+        if m is not None and m is not d: m.setdefault("alts", []).append(d["n"])
+    D = [d for d in D if not (d.get("_c") in alts and alts[d["_c"]] in cn and alts[d["_c"]] != d["_c"])]
+    for d in D: d.pop("_c", None)
     cfg = {"rosterFile": roster.src or "명단", "rosterDate": today,
            "talkFile": ("대시보드 톡방 관리" if managed else "구글 시트 톡방참여자 탭") if names else "없음", "talkDate": tdate or today, "graceEnd": GRACE_END,
            "act": ({"dates": act["dates"], "quiet": act["quiet"], "n": act["n"], "warn": ACT_WARN, "need": ACT_ACTIVE} if act and act["n"] else None)}
