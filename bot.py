@@ -442,7 +442,11 @@ class AllyModal(CtxModal, title="동맹 등록"):
         sv, nm = self.server.value.strip(), self.name.value.strip()
         if not (sv.isascii() and sv.isdigit()): return await it.response.send_message("❌ 서버 번호는 숫자만 입력할 수 있습니다. (예: 41)", ephemeral=True)
         if not nm: return await it.response.send_message("❌ 동맹명을 입력해 주세요.", ephemeral=True)
+        dup = await asyncio.to_thread(ally_dup, it.guild_id, sv, nm)
+        if dup: return await it.response.send_message(f"❌ 이미 등록된 동맹입니다. ({int(sv)}서버 · {nm} — 다른 디스코드 서버 **{dup}**에서 사용 중)", ephemeral=True)
         store_set("alliance", ALLY_PATH, {"name": nm, "server": str(int(sv))})
+        try: await asyncio.to_thread(_sb_req, "PATCH", f"sam_perm?guild_id=eq.{it.guild_id}", {"ally_name": nm, "game_server": str(int(sv))}, "return=minimal")      # 중복 검사용 기록도 함께 갱신
+        except Exception: log.warning("sam_perm 동맹 정보 갱신 실패 %s", it.guild_id)
         await it.response.send_message(f"✅ 동맹 등록 완료 — **{int(sv)}서버 · {nm}**", ephemeral=True)
 
 
@@ -1122,6 +1126,25 @@ def perm_view(gid, uid):
     return v
 
 
+def _anorm(x): return re.sub(r"\s+", "", str(x or "")).lower()
+
+
+def ally_dup(gid, server, name):
+    """같은 서버 번호 + 같은 동맹명이 다른 디스코드 서버에 이미 등록되어 있으면 그 서버 이름을, 아니면 None. 스레드에서 호출."""
+    sv = str(int(server)); nm = _anorm(name)
+    try:
+        rows = _sb_req("GET", f"sam_perm?game_server=eq.{sv}&status=eq.approved&select=guild_id,guild_name,ally_name&limit=1000") or []
+    except Exception: rows = []
+    for r in rows:
+        if int(r.get("guild_id") or 0) != int(gid) and _anorm(r.get("ally_name")) == nm: return r.get("guild_name") or str(r.get("guild_id"))
+    if int(gid) != GUILD_ID:                                              # 홈 서버는 sam_perm 행이 없을 수 있어 저장된 동맹 정보로도 대조
+        tok = _CTX.set(GUILD_ID)
+        try: h = store_get("alliance", ALLY_PATH, {}) or {}
+        finally: _CTX.reset(tok)
+        if str(h.get("server") or "") == sv and _anorm(h.get("name")) == nm: return "홈 서버"
+    return None
+
+
 def ally_set(gid, name, server):
     """그 서버의 동맹 정보 저장(sam_store + sam_alli). 스레드에서 호출."""
     tok = _CTX.set(int(gid))
@@ -1185,6 +1208,8 @@ class AllyApplyModal(CtxModal, title="동맹 등록"):
         if not (pm.administrator or pm.manage_guild or it.user.id == it.guild.owner_id):
             return await it.followup.send("❌ 서버 관리 권한이 있는 분만 등록할 수 있습니다.", ephemeral=True)
         now = datetime.datetime.now(datetime.timezone.utc).isoformat(); sv = str(int(sv))
+        dup = await asyncio.to_thread(ally_dup, gid, sv, nm)
+        if dup: return await it.followup.send(f"❌ 이미 등록된 동맹입니다. ({sv}서버 · {nm} — 다른 디스코드 서버 **{dup}**에서 사용 중)\n같은 동맹이 이미 쓰고 있다면 그 서버 관리자에게 문의하고, 이름이 다르다면 동맹명을 정확히 입력해 주세요.", ephemeral=True)
         row = {"guild_id": gid, "discord_id": uid, "guild_name": it.guild.name, "user_name": str(it.user), "reason": self.reason.value[:200],
                "ally_name": nm, "game_server": sv, "status": "approved", "requested_at": now, "decided_at": now, "decided_by": uid}
         await asyncio.to_thread(_sb_req, "POST", "sam_perm?on_conflict=guild_id,discord_id", [row], "resolution=merge-duplicates,return=minimal")
