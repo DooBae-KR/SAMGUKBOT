@@ -1893,7 +1893,7 @@ def activity_calc(gid, members, tset, skip=()):
             if not ex:
                 for kind, L in ((0, zm), (1, zc)):
                     mu, sd = stat[(kind, d)]; L.append(zs((v[kind] - mu) / sd) if sd else 50)
-        pl = [r["prosperity"] or 0 for r in by.get(cid, [])]
+        pl = [r.get("prosperity") or 0 for r in by.get(cid, [])]
         pg = (pl[-1] - pl[0]) if len(pl) >= 2 else None
         vd = [x for x in days if not x["x"]]
         if not vd: out.append({"days": days, "st": "집계 중", "sc": None, "b": None, "warn": 0, "pg": pg}); continue
