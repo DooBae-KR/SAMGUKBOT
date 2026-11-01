@@ -1893,15 +1893,15 @@ def activity_calc(gid, members, tset):
                 for kind, L in ((0, zm), (1, zc)):
                     mu, sd = stat[(kind, d)]; L.append(zs((v[kind] - mu) / sd) if sd else 50)
         vd = [x for x in days if not x["x"]]
-        if not vd: out.append({"days": days, "st": "집계 중", "sc": None, "warn": 0}); continue
+        if not vd: out.append({"days": days, "st": "집계 중", "sc": None, "b": None, "warn": 0}); continue
         streak = 0
         for x in reversed(vd):
             if x["m"] <= ACT_WARN: streak += 1
             else: break
         k = lambda L: sum(L[-7:]) / len(L[-7:])
-        sc = round(k(zm) * .55 + k(zc) * .35 + (10 if m["n"] in tset else 0), 1)
+        base = round(k(zm) * .55 + k(zc) * .35, 1); sc = round(base + (10 if m["n"] in tset else 0), 1)
         st = "쟁 미참여" if streak >= 2 else "경고" if streak == 1 else "액티브" if sc >= ACT_ACTIVE else "저조"
-        out.append({"days": days, "st": st, "sc": sc, "warn": streak})
+        out.append({"days": days, "st": st, "sc": sc, "b": base, "warn": streak})
     return {"dates": [d[5:] for d in dates], "quiet": [d[5:] for d in quiet], "rows": out, "n": len(valid)}
 
 
