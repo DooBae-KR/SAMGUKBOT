@@ -1097,7 +1097,7 @@ async def panel(it: discord.Interaction):
 
 
 # ---------- 제작자 허가(관리자 인증) ----------
-OPEN_SERVERS = os.environ.get("OPEN_SERVERS", "0").strip() == "1"   # 1이면 다른 서버에서도 봇 명령 표시(제작자 승인 필요)
+OPEN_SERVERS = os.environ.get("OPEN_SERVERS", "1").strip() == "1"   # 1이면 다른 서버에서도 봇 명령 표시(제작자 승인 필요)
 OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)      # 제작자 디스코드 ID(비우면 봇 소유자)
 PERM = set()                                               # 승인된 (서버 ID, 사용자 ID)
 

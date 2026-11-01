@@ -18,7 +18,7 @@ services:
       - key: WEB_KEY
         sync: false
       - key: OPEN_SERVERS
-        value: "0"
+        value: "1"
       - key: OWNER_ID
         sync: false
       - key: SUPABASE_URL
