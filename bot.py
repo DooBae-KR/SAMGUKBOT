@@ -1852,7 +1852,7 @@ def activity_calc(gid, members, tset, skip=()):
     """sam_emp_stat 날짜별 주간 누적값 → 일 증가분(주 리셋 시 값 자체) → 제외일/경고/쟁 미참여/점수. members 순서대로 dict 목록(없으면 None)."""
     if not SB_ON: return None
     since = (datetime.datetime.utcnow() + datetime.timedelta(hours=9) - datetime.timedelta(days=ACT_DAYS + 7)).strftime("%Y-%m-%d")
-    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}&select=cid,snap_date,war_merit,contribution&order=snap_date.asc&limit=100000") or []
+    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}&select=cid,snap_date,war_merit,contribution,prosperity&order=snap_date.asc&limit=100000") or []
     by = {}
     for r in rows: by.setdefault(r["cid"], []).append(r)
     D = datetime.date.fromisoformat
@@ -1861,8 +1861,9 @@ def activity_calc(gid, members, tset, skip=()):
         for a, b in zip(L, L[1:]):
             gap = max(1, (D(b["snap_date"]) - D(a["snap_date"])).days)
             dm, dc = (b["war_merit"] or 0) - (a["war_merit"] or 0), (b["contribution"] or 0) - (a["contribution"] or 0)
-            if dm < 0: dm = b["war_merit"] or 0          # 주간 리셋: 새 값이 곧 증가분
-            if dc < 0: dc = b["contribution"] or 0
+            mon = D(b["snap_date"]).weekday() == 0           # 월요일 = 주간 리셋일: 그날 값 자체가 증가분
+            if dm < 0 or mon: dm = b["war_merit"] or 0; gap = 1 if mon else gap
+            if dc < 0 or mon: dc = b["contribution"] or 0
             delta.setdefault(b["snap_date"], {})[cid] = (dm / gap, dc / gap, gap)
     dates = sorted(delta)[-ACT_DAYS:]
     if not dates: return {"dates": [], "rows": [None] * len(members), "quiet": [], "n": 0}
@@ -1892,8 +1893,10 @@ def activity_calc(gid, members, tset, skip=()):
             if not ex:
                 for kind, L in ((0, zm), (1, zc)):
                     mu, sd = stat[(kind, d)]; L.append(zs((v[kind] - mu) / sd) if sd else 50)
+        pl = [r["prosperity"] or 0 for r in by.get(cid, [])]
+        pg = (pl[-1] - pl[0]) if len(pl) >= 2 else None
         vd = [x for x in days if not x["x"]]
-        if not vd: out.append({"days": days, "st": "집계 중", "sc": None, "b": None, "warn": 0}); continue
+        if not vd: out.append({"days": days, "st": "집계 중", "sc": None, "b": None, "warn": 0, "pg": pg}); continue
         streak = 0
         for x in reversed(vd):
             if x["m"] <= ACT_WARN: streak += 1
@@ -1901,7 +1904,7 @@ def activity_calc(gid, members, tset, skip=()):
         k = lambda L: sum(L[-7:]) / len(L[-7:])
         base = round(k(zm) * .55 + k(zc) * .35, 1); sc = round(base + (10 if m["n"] in tset else 0), 1)
         st = "쟁 미참여" if streak >= 2 else "경고" if streak == 1 else "액티브" if sc >= ACT_ACTIVE else "저조"
-        out.append({"days": days, "st": st, "sc": sc, "b": base, "warn": streak})
+        out.append({"days": days, "st": st, "sc": sc, "b": base, "warn": streak, "pg": pg})
     return {"dates": [d[5:] for d in dates], "quiet": [d[5:] for d in quiet], "rows": out, "n": len(valid)}
 
 
