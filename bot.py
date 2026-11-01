@@ -278,7 +278,7 @@ def roster_load_db(gid):
         x = st.get(e["cid"], {}); job = e.get("job") or ""
         by[e["cid"]] = {"job": job, "title": x.get("title") or "", "name": e.get("name") or ""}
         if job and job not in jobs: jobs.append(job)
-        members.append({"n": e.get("name") or "", "j": job, "g": (e.get("extra") or {}).get("조별", ""), "r": x.get("title") or "",
+        members.append({"_c": e["cid"], "n": e.get("name") or "", "j": job, "g": (e.get("extra") or {}).get("조별", ""), "r": x.get("title") or "",
                         "p": x.get("prosperity") or 0, "m": x.get("war_merit") or 0, "c": x.get("contribution") or 0, "s": x.get("siege_count") or 0,
                         "reg": x.get("camp") or "", "x": x.get("camp_x") or 0, "y": x.get("camp_y") or 0, "t": 0})
     tok = _CTX.set(gid)
@@ -1837,6 +1837,74 @@ def talk_apply(body):
         return sorted(cur), date
 
 
+ACT_WARN = 50000          # 일 무훈 이 값 이하 = 경고, 연속 2판정일 = 쟁 미참여
+ACT_QUIET = 0.3           # 그날 동맹원 무훈 중앙값이 최근 평균 중앙값의 30% 미만이면 '상대 없음' 제외일
+ACT_ACTIVE = 30           # 점수 이 값 이상 = 액티브
+ACT_DAYS = 14
+
+
+def _med(a):
+    a = sorted(a); n = len(a)
+    return 0 if not n else (a[n // 2] if n % 2 else (a[n // 2 - 1] + a[n // 2]) / 2)
+
+
+def activity_calc(gid, members, tset):
+    """sam_emp_stat 날짜별 주간 누적값 → 일 증가분(주 리셋 시 값 자체) → 제외일/경고/쟁 미참여/점수. members 순서대로 dict 목록(없으면 None)."""
+    if not SB_ON: return None
+    since = (datetime.datetime.utcnow() + datetime.timedelta(hours=9) - datetime.timedelta(days=ACT_DAYS + 7)).strftime("%Y-%m-%d")
+    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}&select=cid,snap_date,war_merit,contribution&order=snap_date.asc&limit=100000") or []
+    by = {}
+    for r in rows: by.setdefault(r["cid"], []).append(r)
+    D = datetime.date.fromisoformat
+    delta = {}                                   # date -> {cid: (무훈, 공헌, 간격일)}
+    for cid, L in by.items():
+        for a, b in zip(L, L[1:]):
+            gap = max(1, (D(b["snap_date"]) - D(a["snap_date"])).days)
+            dm, dc = (b["war_merit"] or 0) - (a["war_merit"] or 0), (b["contribution"] or 0) - (a["contribution"] or 0)
+            if dm < 0: dm = b["war_merit"] or 0          # 주간 리셋: 새 값이 곧 증가분
+            if dc < 0: dc = b["contribution"] or 0
+            delta.setdefault(b["snap_date"], {})[cid] = (dm / gap, dc / gap, gap)
+    dates = sorted(delta)[-ACT_DAYS:]
+    if not dates: return {"dates": [], "rows": [None] * len(members), "quiet": [], "n": 0}
+    meds = {d: _med([v[0] for v in delta[d].values()]) for d in dates}
+    quiet = []
+    for i, d in enumerate(dates):                          # 직전 최대 14일 중앙값들의 평균과 비교(기준이 없으면 제외 안 함)
+        base = [meds[x] for x in dates[:i] if x not in quiet][-14:]
+        if len(base) >= 3 and meds[d] < ACT_QUIET * (sum(base) / len(base)): quiet.append(d)
+    valid = [d for d in dates if d not in quiet]
+    stat = {}                                              # date -> (mu, sd) 상위 3명 제외 / 상위 3명은 z 상한 처리 위해 같은 값 사용
+    for kind in (0, 1):
+        for d in valid:
+            xs = sorted((v[kind] for v in delta[d].values()), reverse=True)
+            core = xs[3:] if len(xs) > 6 else xs
+            mu = sum(core) / len(core) if core else 0
+            sd = (sum((x - mu) ** 2 for x in core) / len(core)) ** .5 if core else 0
+            stat[(kind, d)] = (mu, sd)
+    def zs(z): return max(0, min(100, (max(-2, min(2.5, z)) + 2) / 4.5 * 100))
+    out = []
+    for m in members:
+        cid = m.get("_c"); days = []; zm = []; zc = []
+        for d in dates:
+            v = delta[d].get(cid)
+            if v is None: continue
+            ex = d in quiet
+            days.append({"d": d[5:], "m": round(v[0]), "c": round(v[1]), "x": 1 if ex else 0, "g": v[2]})
+            if not ex:
+                for kind, L in ((0, zm), (1, zc)):
+                    mu, sd = stat[(kind, d)]; L.append(zs((v[kind] - mu) / sd) if sd else 50)
+        vd = [x for x in days if not x["x"]]
+        if not vd: out.append({"days": days, "st": "집계 중", "sc": None, "warn": 0}); continue
+        streak = 0
+        for x in reversed(vd):
+            if x["m"] <= ACT_WARN: streak += 1
+            else: break
+        k = lambda L: sum(L[-7:]) / len(L[-7:])
+        sc = round(k(zm) * .55 + k(zc) * .35 + (10 if m["n"] in tset else 0), 1)
+        st = "쟁 미참여" if streak >= 2 else "경고" if streak == 1 else "액티브" if sc >= ACT_ACTIVE else "저조"
+        out.append({"days": days, "st": st, "sc": sc, "warn": streak})
+    return {"dates": [d[5:] for d in dates], "quiet": [d[5:] for d in quiet], "rows": out, "n": len(valid)}
+
+
 def render_html(tok=None):
     """현재 명단/톡방 데이터로 상황판 HTML 문자열을 만든다. 데이터가 없으면 None. tok이 있으면(간부 링크) 톡방 관리 탭이 켜진다."""
     if not roster.members: return None
@@ -1844,8 +1912,15 @@ def render_html(tok=None):
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
     names, tdate, managed = talk_get(); tset = set(names)
     D = [{**d, "t": 1 if d["n"] in tset else 0} for d in roster.members]
+    act = None
+    try: act = activity_calc(cur_gid(), D, tset)
+    except Exception: log.exception("액티브 계산 실패")
+    for i, d in enumerate(D):
+        if act and act["rows"][i]: d["a"] = act["rows"][i]
+        d.pop("_c", None)
     cfg = {"rosterFile": roster.src or "명단", "rosterDate": today,
-           "talkFile": ("대시보드 톡방 관리" if managed else "구글 시트 톡방참여자 탭") if names else "없음", "talkDate": tdate or today, "graceEnd": GRACE_END}
+           "talkFile": ("대시보드 톡방 관리" if managed else "구글 시트 톡방참여자 탭") if names else "없음", "talkDate": tdate or today, "graceEnd": GRACE_END,
+           "act": ({"dates": act["dates"], "quiet": act["quiet"], "n": act["n"], "warn": ACT_WARN, "need": ACT_ACTIVE} if act and act["n"] else None)}
     if tok: cfg.update(edit=True, tok=tok, talkNames=sorted(names))
     body = tpl.replace("__D__", json.dumps(D, ensure_ascii=False)).replace("__CFG__", json.dumps(cfg, ensure_ascii=False))
     return '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + body + "</html>"
