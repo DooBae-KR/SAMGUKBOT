@@ -201,3 +201,40 @@ def thumb(kind, name, w=44, h=56):
             except Exception: out = ""
         _TH[k] = out
     return _TH[k]
+
+
+# ---------- 이미지를 HTML에 넣지 않고 주소로 내려보내기(페이지 용량·서버 부하 감소) ----------
+_RAW = {}
+_IMGV = str(int((HERE / "tier_template.html").stat().st_mtime))
+
+
+def url(kind, name, w=0, h=0):
+    """장수(HERO)·전법(SKI) 이미지 주소. 이미지가 없으면 빈 문자열. w,h를 주면 썸네일."""
+    from urllib.parse import quote
+    if not name or not _imgs()[kind].get(name): return ""
+    return f"/img/{'H' if kind == 'HERO' else 'S'}/{w}x{h}/{quote(name, safe='')}?v={_IMGV}"
+
+
+def img_bytes(k, size, name):
+    """/img 주소가 가리키는 JPEG 바이트. 없으면 None."""
+    kind = "HERO" if k == "H" else "SKI" if k == "S" else None
+    if not kind: return None
+    key = (kind, size, name)
+    if key not in _RAW:
+        try:
+            w, h = (int(x) for x in size.split("x")) if size and size != "0x0" else (0, 0)
+        except ValueError: return None
+        b64 = thumb(kind, name, w, h) if w and h else _imgs()[kind].get(name)
+        _RAW[key] = base64.b64decode(b64) if b64 else None
+    return _RAW[key]
+
+
+def tier_html():
+    """도감 템플릿. 이미지는 base64 대신 /img 주소로 바꿔 용량을 줄인다. 처음 한 번만 만든다."""
+    if not _TPL:
+        t = (HERE / "tier_template.html").read_text("utf-8"); dec = json.JSONDecoder(); im = _imgs()
+        for k in ("HERO", "SKI"):
+            s = t.index(f"const {k}=") + len(f"const {k}="); _, e = dec.raw_decode(t[s:])
+            t = t[:s] + json.dumps({n: url(k, n) for n in im[k]}, ensure_ascii=False) + t[s + e:]
+        _TPL.append(t)
+    return _TPL[0]

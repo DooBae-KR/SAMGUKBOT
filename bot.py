@@ -2364,7 +2364,8 @@ async def web_admin_api(request):
 
 async def start_web():
     if not WEB_PORT: return
-    app = web.Application(); app.router.add_get("/", web_index)
+    app = web.Application(middlewares=[gzip_mw]); app.router.add_get("/", web_index)
+    app.router.add_get("/img/{k}/{size}/{name}", web_img)
     app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
     app.router.add_get("/admin", web_admin); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
     app.router.add_get("/invite", web_invite); app.router.add_get("/bimg/{iid}", web_bimg)
@@ -3317,9 +3318,9 @@ def _reco_page_core(did, season, token, with_units=True):
             if not n: heroes.append({"n": None, "src": h.get("src", "")}); continue
             v = hd.get(n) or {}; e = eff.get(n); b0 = hs0.get(n)
             heroes.append({"n": n, "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "sk": v.get("sk", ""), "sktype": v.get("sktype", ""),
-                           "img": imgs["HERO"].get(n, ""), "src": h.get("src", ""), "rank": rank.get(n), "tr": (e or {}).get("tr", 0), "add": (e or {}).get("add", [0, 0, 0, 0]),
+                           "img": reco_img.url("HERO", n), "src": h.get("src", ""), "rank": rank.get(n), "tr": (e or {}).get("tr", 0), "add": (e or {}).get("add", [0, 0, 0, 0]),
                            "base": [b0[k] for k in ("atk", "intl", "lead", "init")] if b0 else None, "fin": [e[k] for k in ("atk", "intl", "lead", "init")] if e else None,
-                           "tac": [{"n": t, "img": imgs["SKI"].get(t, ""), "kind": info(t)["kind"], "type": info(t)["type"], "trait": info(t)["trait"], "why": w} for t, w in tac],
+                           "tac": [{"n": t, "img": reco_img.url("SKI", t), "kind": info(t)["kind"], "type": info(t)["type"], "trait": info(t)["trait"], "why": w} for t, w in tac],
                            "ti": {kk: (tier_cells(deck, kk)[h["slot"]] if h.get("slot") is not None and h["slot"] < len(tier_cells(deck, kk)) else []) for kk in ("스탯", "병법", "장비")} if deck else {},
                            "eq": equipment.recommend(v.get("style", ""), [info(t)["type"] for t, _w in tac])})
         u = {"i": i, "heroes": heroes, "flow": {"start": fl["start"], "turn": [[a, b2, c, d2] for a, b2, c, d2 in fl["turn"]]}, "status": {"g": ss[0], "miss": ss[1]}}
@@ -3343,8 +3344,8 @@ def _reco_page_core(did, season, token, with_units=True):
                 toks = [t.strip() for t in re.split(r"[/>+,]", c) if t.strip()]
                 if not toks or len(tac) >= 2: continue
                 nm = skn_.get(_nk(toks[0])) or toks[0]; ti = tact_info(nm, skd) if nm in skd else {"kind": "", "type": "", "trait": ""}
-                tac.append({"n": nm, "img": imgs["SKI"].get(nm, ""), "kind": ti["kind"], "type": ti["type"], "trait": ti["trait"], "alt": [skn_.get(_nk(t)) or t for t in toks[1:4]]})
-            cards.append({"n": n, "alts": alts[1:], "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "sk": v.get("sk", ""), "sktype": v.get("sktype", ""), "img": imgs["HERO"].get(n, ""), "tac": tac})
+                tac.append({"n": nm, "img": reco_img.url("SKI", nm), "kind": ti["kind"], "type": ti["type"], "trait": ti["trait"], "alt": [skn_.get(_nk(t)) or t for t in toks[1:4]]})
+            cards.append({"n": n, "alts": alts[1:], "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "sk": v.get("sk", ""), "sktype": v.get("sktype", ""), "img": reco_img.url("HERO", n), "tac": tac})
         return cards
     rk = [{"name": d["name"], "tier": d.get("tier", ""), "heroes": d["heroes"], "u": len(votes.get(vote_key(season, d["name"]), {}).get("u", [])), "d": len(votes.get(vote_key(season, d["name"]), {}).get("d", [])),
            "net": score.get(d["name"], 0), "pin": d["name"] in pins, "idx": k, "note": d.get("note", ""), "form": d.get("form", ""), "slots": d["heroes"], "tc": next((r[1] for r in d.get("rows", []) if r[0] == "전법"), []), "ts": tier_cells(d, "스탯"),
@@ -3357,8 +3358,8 @@ def _reco_page_core(did, season, token, with_units=True):
             if v.get("u") or v.get("d"): tacs.append({"deck": name, "tset": [skn_name for skn_name in ts.split(",") if skn_name], "u": len(v.get("u", [])), "d": len(v.get("d", [])), "net": net})
     tacs.sort(key=lambda x: (-x["net"], -x["u"]))
     _hs0 = hero_stats()
-    allx = {"h": [{"n": n, "bs": [round(_hs0[n][k]) for k in ("atk", "intl", "lead", "init")] if n in _hs0 else None, "style": v.get("style", ""), "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "season": v.get("season", 1), "img": imgs["HERO"] and reco_img.thumb("HERO", n, 44, 56), "img2": reco_img.thumb("HERO", n, 96, 122)} for n, v in hd.items()],
-            "s": [{"n": n, "type": v.get("type", ""), "trait": v.get("trait", ""), "grade": v.get("grade", ""), "season": v.get("season", 1), "kw": sorted(status_of(v.get("desc"))[0] | status_of(v.get("desc"))[1] | ({"치유", "회복"} if tact_info(n, skd)["heal"] or tact_info(n, skd)["kind"] == "회복" else set())), "desc": re.sub(r"\s+", " ", v.get("desc") or "")[:400], "img": reco_img.thumb("SKI", n, 40, 40), "img2": reco_img.thumb("SKI", n, 72, 72)} for n, v in skd.items()]}
+    allx = {"h": [{"n": n, "bs": [round(_hs0[n][k]) for k in ("atk", "intl", "lead", "init")] if n in _hs0 else None, "style": v.get("style", ""), "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "season": v.get("season", 1), "img": imgs["HERO"] and reco_img.url("HERO", n, 44, 56), "img2": reco_img.url("HERO", n, 96, 122)} for n, v in hd.items()],
+            "s": [{"n": n, "type": v.get("type", ""), "trait": v.get("trait", ""), "grade": v.get("grade", ""), "season": v.get("season", 1), "kw": sorted(status_of(v.get("desc"))[0] | status_of(v.get("desc"))[1] | ({"치유", "회복"} if tact_info(n, skd)["heal"] or tact_info(n, skd)["kind"] == "회복" else set())), "desc": re.sub(r"\s+", " ", v.get("desc") or "")[:400], "img": reco_img.url("SKI", n, 40, 40), "img2": reco_img.url("SKI", n, 72, 72)} for n, v in skd.items()]}
     cid_ = (db_load()["uid"] or {}); cid2 = next((c for c, dd in cid_.items() if str(dd) == str(did)), None)
     dx = (store_get(f"dex_{cid2}", dex_path(cid2), {}) or {}) if cid2 else {}
     skn_ = {_nk(k): k for k in skd}; ski = {}
@@ -3369,7 +3370,7 @@ def _reco_page_core(did, season, token, with_units=True):
                     for cell in cells:
                         for tk in re.split(r"[/>+,]", cell):
                             nm = skn_.get(_nk(tk))
-                            if nm and nm not in ski and imgs["SKI"].get(nm): ski[nm] = imgs["SKI"][nm]
+                            if nm and nm not in ski and reco_img.url("SKI", nm): ski[nm] = reco_img.url("SKI", nm)
     sy = sorted(({"kind": r["kind"], "a": r["a"], "b": r["b"], "score": float(r["score"]), "note": r.get("note", ""), "src": r.get("src", "")} for r in synergy_rows()), key=lambda r: -r["score"])[:30]
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
@@ -3387,6 +3388,25 @@ def reco_page_data(did, season, token, units=True):
     finally: RECO_MODE.reset(tok)
     if isinstance(d[0], dict): r[0]["dev"] = {"units": d[0]["units"]}
     return r
+
+
+@web.middleware
+async def gzip_mw(request, handler):
+    """큰 HTML·JSON 응답은 gzip으로 압축해 전송량을 줄인다."""
+    resp = await handler(request)
+    try:
+        if (isinstance(resp, web.Response) and not resp.prepared and resp.content_type in ("text/html", "application/json", "text/css", "application/javascript")
+                and resp.body is not None and len(resp.body) > 1024 and "gzip" in request.headers.get("Accept-Encoding", "")): resp.enable_compression()
+    except Exception: pass
+    return resp
+
+
+async def web_img(request):
+    """장수·전법 이미지(워터마크 적용본). 내용이 바뀌지 않으므로 브라우저가 오래 캐시한다."""
+    import reco_img
+    bts = await asyncio.to_thread(reco_img.img_bytes, request.match_info["k"], request.match_info["size"], request.match_info["name"])
+    if not bts: return web.Response(status=404)
+    return web.Response(body=bts, content_type="image/jpeg", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 async def web_reco(request):
