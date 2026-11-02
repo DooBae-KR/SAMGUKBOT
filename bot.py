@@ -1236,7 +1236,7 @@ async def hrinfo_channel(g, force=False):
                 try: await ch.set_permissions(g.default_role, view_channel=False)
                 except Exception as e3: log.warning("인사정보 채널 비공개 설정 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e3)
             except Exception as e2: log.warning("인사정보 채널 생성 실패 서버=%s 1차=%r 2차=%r", g.id, e1, e2); return None
-        try: await ch.send(f"📋 **인사정보** — `{OFFICER_ROLE}` 역할을 가진 분만 볼 수 있는 채널입니다.\n여기서 `/인사` 를 입력하면 **나에게만 보이는** 인사데이터 링크가 나옵니다. (다른 채널에서는 `/인사`가 열리지 않습니다)")
+        try: await ch.send(f"📋 **인사정보**\n이 채널은 `{OFFICER_ROLE}` 역할을 가진 분만 볼 수 있습니다.\n\n이 채널에서는 `/인사` 명령어로 **동맹원의 상태를 체크**할 수 있습니다.\n결과는 **나에게만 보이는** 링크로 나오며, 다른 채널에서는 `/인사`가 열리지 않습니다.\n\n🛠️ 서버 관리자는 `/관리` 명령어에서 **`/인사`를 사용할 수 있는 간부를 설정**할 수 있습니다!")
         except Exception: log.warning("인사정보 안내 글 실패 %s", g.id, exc_info=True)
         def sv():
             t = _CTX.set(g.id)
