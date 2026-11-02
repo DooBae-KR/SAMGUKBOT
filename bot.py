@@ -945,7 +945,7 @@ class Bot(discord.Client):
             if not discord.utils.get(hg.roles, name=RESERVE_ROLE):
                 try: await hg.create_role(name=RESERVE_ROLE, reason="예비 역할 자동 생성")
                 except Exception: log.exception("예비 역할 생성 실패(봇에 '역할 관리' 권한 필요)")
-            await verify_channel(hg); await log_channel(hg); await inquiry_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
+            await verify_channel(hg); await log_channel(hg); await inquiry_channel(hg); await hrinfo_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
         asyncio.create_task(setting_backfill())
@@ -1211,6 +1211,41 @@ async def setting_channel(g, uid=None, force=False):
     return ch
 
 
+HRINFO_CH = "인사정보"
+HRINFO_PATH = DB_PATH.with_name("hrinfo.json")
+
+
+async def hrinfo_channel(g, force=False):
+    """#인사정보 — 간부 역할을 가진 사람과 관리자·봇만 볼 수 있는 채널. /인사는 여기서만 쓰게 한다. 관리자가 지우면 force 없이는 다시 만들지 않는다."""
+    me = g.me
+    if me is None: return None
+    tok = _CTX.set(g.id)
+    try: rec = dict(store_get("hrinfo", HRINFO_PATH, {}) or {})
+    finally: _CTX.reset(tok)
+    ch = discord.utils.get(g.text_channels, name=HRINFO_CH)
+    if ch is None and rec.get("ch") and not force: return None
+    if ch is None:
+        topic = "간부 전용 — 여기서 /인사 를 입력하면 나에게만 보이는 인사데이터 링크가 나옵니다"; cat = await bot_cat(g)
+        role = discord.utils.get(g.roles, name=OFFICER_ROLE)
+        ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
+        if role is not None: ow[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        try: ch = await g.create_text_channel(HRINFO_CH, overwrites=ow, topic=topic, category=cat, reason="간부 전용 인사정보 채널")
+        except Exception as e1:
+            try:
+                ch = await g.create_text_channel(HRINFO_CH, topic=topic, category=cat, reason="간부 전용 인사정보 채널")
+                try: await ch.set_permissions(g.default_role, view_channel=False)
+                except Exception as e3: log.warning("인사정보 채널 비공개 설정 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e3)
+            except Exception as e2: log.warning("인사정보 채널 생성 실패 서버=%s 1차=%r 2차=%r", g.id, e1, e2); return None
+        try: await ch.send(f"📋 **인사정보** — `{OFFICER_ROLE}` 역할을 가진 분만 볼 수 있는 채널입니다.\n여기서 `/인사` 를 입력하면 **나에게만 보이는** 인사데이터 링크가 나옵니다. (다른 채널에서는 `/인사`가 열리지 않습니다)")
+        except Exception: log.warning("인사정보 안내 글 실패 %s", g.id, exc_info=True)
+        def sv():
+            t = _CTX.set(g.id)
+            try: store_set("hrinfo", HRINFO_PATH, {"ch": ch.id})
+            finally: _CTX.reset(t)
+        await asyncio.to_thread(sv)
+    return ch
+
+
 async def setting_backfill():
     """이미 등록된 서버 중 #setting 채널을 아직 만든 적 없는 곳에 한 번씩 만들어 준다(등록자를 설정자로)."""
     for gid in sorted(LICENSED - {GUILD_ID}):
@@ -1218,7 +1253,7 @@ async def setting_backfill():
         if g is None: continue
         try:
             rows = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?guild_id=eq.{gid}&status=eq.approved&select=discord_id&order=requested_at.asc&limit=1") or []
-            await setting_channel(g, rows[0]["discord_id"] if rows else None)
+            await setting_channel(g, rows[0]["discord_id"] if rows else None); await hrinfo_channel(g)
         except Exception: log.warning("setting 채널 보충 실패 %s", gid, exc_info=True)
 
 
@@ -1231,8 +1266,8 @@ async def pm_setup_guild(gid, uid=None):
         if discord.utils.get(g.roles, name=nm): continue
         try: await g.create_role(name=nm, reason="동맹 등록 — 기본 역할 생성"); made.append(nm)
         except Exception: fail.append(nm)
-    vc = await verify_channel(g); await log_channel(g); await inquiry_channel(g); sc = await setting_channel(g, uid, force=True)
-    out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)") + (f" / 실험 채널: #{sc.name}" if sc else "")
+    vc = await verify_channel(g); await log_channel(g); await inquiry_channel(g); sc = await setting_channel(g, uid, force=True); hc = await hrinfo_channel(g, force=True)
+    out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)") + (f" / 실험 채널: #{sc.name}" if sc else "") + (f" / 간부 전용 인사 채널: #{hc.name}" if hc else "")
     return out + (f" / 생성 실패(봇에 '역할 관리' 권한 필요): {', '.join(fail)}" if fail else "")
 
 
@@ -4173,6 +4208,8 @@ async def cmd_admin_page(it: discord.Interaction):
 @bot.tree.command(name="인사", description="[간부] 인사데이터(상황판) 링크를 받습니다")
 async def hr_link(it: discord.Interaction):
     if not staff_ok(it, "/인사"): return await it.response.send_message("권한이 없습니다.", ephemeral=True)
+    hc = discord.utils.get(it.guild.text_channels, name=HRINFO_CH) if it.guild else None
+    if hc is not None and it.channel_id != hc.id: return await it.response.send_message(f"`/인사`는 간부 전용 {hc.mention} 채널에서 사용해 주세요.", ephemeral=True)
     if not roster.members: return await it.response.send_message("명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", ephemeral=True)
     exp = int(time.time()) + HR_HOURS * 3600
     await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp, cur_gid())}\n멤버 {len(roster.members)}명 기준", ephemeral=True)
