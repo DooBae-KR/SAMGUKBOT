@@ -1335,8 +1335,34 @@ async def reco_channel(g, force=False):
 
 
 async def channels_setup(g, force=False):
-    """분류된 안내 채널(관리: 인사정보·공성정보 / 공략: 시즌추천덱)을 준비한다."""
+    """분류된 안내 채널(관리: 인사정보·공성정보 / 공략: 시즌추천덱)을 준비하고 채널 목록 순서를 맞춘다."""
     await hrinfo_channel(g, force=force); await siege_info_channel(g); await reco_channel(g, force=force)
+    await layout_order(g)
+
+
+def _is_voice_cat(c):
+    if re.sub(r"\s+", "", c.name).lower() in ("음성채널", "voicechannels", "voice"): return True
+    return bool(c.channels) and all(isinstance(x, (discord.VoiceChannel, discord.StageChannel)) for x in c.channels)
+
+
+async def layout_order(g):
+    """채널 목록 순서: [인증 · 이용자가이드 · 관리자가이드 · 후원]을 맨 위(카테고리 밖)에, 카테고리는 공략 → 관리 → (기타) → 음성채널 → 봇 순. 이미 맞으면 건드리지 않는다."""
+    try:
+        tops = [c for c in (discord.utils.get(g.text_channels, name=n) for n in (VERIFY_CH, USER_GUIDE_CH, GUIDE_CH, DONATE_CH)) if c is not None]
+        for c in tops:
+            if c.category is not None: await c.edit(category=None, sync_permissions=False, reason="채널 목록 정리"); await asyncio.sleep(0.4)
+        flat = sorted((c for c in g.text_channels if c.category is None), key=lambda c: c.position)
+        if [c.id for c in flat[:len(tops)]] != [c.id for c in tops]:
+            for i, c in enumerate(tops): await c.edit(position=i, reason="채널 목록 정리"); await asyncio.sleep(0.4)
+        cats = list(g.categories)
+        pick = lambda n: discord.utils.get(cats, name=n)
+        head = [c for c in (pick(GUIDE_CAT), pick(MGMT_CAT)) if c is not None]; tail = pick(BOT_CAT)
+        voice = [c for c in cats if c not in head and c is not tail and _is_voice_cat(c)]
+        mid = [c for c in cats if c not in head and c not in voice and c is not tail]
+        want = head + mid + voice + ([tail] if tail else [])
+        if [c.id for c in cats] != [c.id for c in want]:
+            for i, c in enumerate(want): await c.edit(position=i, reason="카테고리 순서 정리"); await asyncio.sleep(0.4)
+    except Exception as e: log.warning("채널 순서 정리 실패 서버=%s: %r", g.id, e)
 
 
 HRINFO_CH = "인사정보"
