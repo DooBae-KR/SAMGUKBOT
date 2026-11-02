@@ -3382,9 +3382,13 @@ async def web_reco(request):
     set_gid(pr[0]); cid = pr[1]; did = (db_load()["uid"] or {}).get(cid)
     if not did: return web.Response(status=403, text="인증 정보를 찾지 못했습니다. 디스코드에서 /인증 후 다시 시도하세요.")
     sv = request.query.get("s"); season = int(sv) if sv in ("1", "2") else (pref_get(did).get("season") if pref_get(did).get("season") in (1, 2) else 1)
-    data, err = await asyncio.to_thread(reco_page_data, did, season, request.query["t"])
-    import reco_web
-    return web.Response(text=reco_web.render(data, err), content_type="text/html", headers={"Cache-Control": "no-store"})
+    try:
+        data, err = await asyncio.to_thread(reco_page_data, did, season, request.query["t"])
+        import reco_web
+        return web.Response(text=reco_web.render(data, err), content_type="text/html", headers={"Cache-Control": "no-store"})
+    except Exception:
+        log.exception("/reco 처리 실패 (gid=%s cid=%s)", pr[0], cid)
+        return web.Response(status=500, text="추천 페이지를 만드는 중 오류가 났습니다. 잠시 후 새로고침하거나 디스코드에서 /추천 으로 새 링크를 받아 주세요.")
 
 
 # ---------- 편성대요청(편성 의뢰·완성 편성 공유) · 지략가 ----------
