@@ -225,6 +225,11 @@ function deckStat(d,uh,us){uh=uh||new Set();us=us||new Set();const oh=ownH(),os=
     if(own){hh++;((d.tc||[])[k]||[]).slice(0,2).forEach(c=>{const names=cellNames(c);if(!names.length)return;tt++;if(names.some(x=>os.has(x)&&!us.has(x)))ht++;else mt.push({hero:own,want:names[0],sub:subT(names[0],us).slice(0,3).map(a=>a[1].n)})})}
     else mh.push({want:alts[0],sub:subH(alts[0],uh).slice(0,3).map(a=>a[1].n)})});
   return{hh,th,ht,tt,mh,mt,full:hh===th&&ht===tt}}
+async function askReq(){
+  const n=[...ownH()].filter(h=>HM[h]&&(HM[h].season||1)<=D.season).length;
+  if(n<3){alert('보유 장수가 3명 미만이라 추천할 수 없습니다.\n먼저 \'장수 도감\' 탭에서 보유 장수와 전법을 체크해 주세요.');return}
+  if(!confirm('추천덱 정보가 부족하여 추천할 수 없습니다.\n편성대를 의뢰하시겠습니까?'))return;
+  if(await mpost({op:'rq_post',title:'편성 부탁드려요(추천 정보 부족)',note:'자동 편성으로 추천할 수 없어 의뢰합니다'})){alert('편성대요청에 올렸습니다. 다른 동맹원들이 내 보유 장수·전법으로 5부대를 짜 줍니다');setTab('market')}}
 function autoCompose(){const ds=D.rank.decks.slice().sort((a,b)=>tierNum(a.tier)-tierNum(b.tier)||a.idx-b.idx),uh=new Set(),us=new Set(),oh=ownH(),os=ownS(),res=[],used=new Set();
   for(const minc of [3,2,1])for(const d of ds){if(res.length>=5)break;if(used.has(d.name))continue;
     const have=d.slots.filter(sl=>sl.split('/').some(x=>oh.has(x)&&!uh.has(x)&&!NUSE().has(x)&&HM[x]&&(HM[x].season||1)<=D.season)).length;
@@ -233,6 +238,7 @@ function autoCompose(){const ds=D.rank.decks.slice().sort((a,b)=>tierNum(a.tier)
     d.slots.forEach((slot,k)=>{if(u.h[k])return;const c=subH(slot.split('/')[0],uh)[0];if(c){u.h[k]=c[1].n;uh.add(c[1].n)}});
     d.slots.forEach((slot,k)=>{if(!u.h[k])return;const own=slot.split('/').includes(u.h[k]);((d.tc||[])[k]||[]).slice(0,2).forEach((cell,j)=>{const names=cellNames(cell);let t=own?names.find(x=>os.has(x)&&!us.has(x)&&(SM[x].season||1)<=D.season):null;if(!t&&names.length){const c=subT(names[0],us)[0];if(c)t=c[1].n}if(t){u.t[k][j]=t;us.add(t)}})});
     u.src=d.name;res.push(u)}
+  if(res.filter(u=>u.src).length===0||res.filter(u=>u.h.some(Boolean)).length<3){askReq();return}
   while(res.length<5)res.push(T0());BLD=res.slice(0,5);BLD.forEach((u,i)=>{if(u.src)recA(i,true)});BLD.forEach(fixA);saveDraft();draw()}
 
 const SL=['무력','지력','통솔','선공'];

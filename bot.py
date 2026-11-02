@@ -3222,6 +3222,15 @@ def reco_flow(unit, eff, hd, info):
 def reco_pins(did, season): return (pref_get(did).get("pins") or {}).get(str(season), [])
 
 
+def reco_env(did):
+    """추천 계산 없이 페이지에 필요한 값만(이름·장수/전법 데이터·돌). 추천 자체는 화면의 버튼을 눌렀을 때 클라이언트가 계산한다."""
+    cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
+    dex = (store_get(f"dex_{cid}", dex_path(cid), {}) or {}) if cid else {}
+    sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
+    hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
+    return (roster.by_uid.get(cid) or {}).get("name") or "내", hd, skd, dex.get("tr") or {}
+
+
 def reco_run(did, season):
     """내 도감(보유 장수·전법) 기준 추천 계산. → (오류 안내문 또는 None, 결과, 이름, 딜 방식, 장수 데이터, 전법 데이터)"""
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
@@ -3287,10 +3296,13 @@ async def reco_deliver(it, did, season, first_edit=False, note=""):
     else: auto_delete(it, await it.followup.send(head[:1990], view=view, ephemeral=True))
 
 
-def _reco_page_core(did, season, token):
+def _reco_page_core(did, season, token, with_units=True):
     """추천덱 HTML 페이지에 쓸 데이터(장수 카드·전법·돌·턴 순서·평가 수·랭킹)."""
-    err, res, who, deal, hd, skd, tr = reco_run(did, season)
-    if err: return None, err
+    if with_units:
+        err, res, who, deal, hd, skd, tr = reco_run(did, season)
+        if err: return None, err
+    else:                                                      # 페이지 열 때는 서버 추천 계산을 하지 않는다(과부하 방지) — 자동 편성 버튼은 브라우저에서 계산
+        who, hd, skd, tr = reco_env(did); res = []
     import reco_img
     imgs = reco_img._imgs(); info = lambda t: tact_info(t, skd)
     eff = hero_eff([h["n"] for _d, unit, _s in res for h, _t in unit if h["n"]], tr); hs0 = hero_stats(); votes = reco_votes(); mine = str(did)
@@ -3365,9 +3377,10 @@ def _reco_page_core(did, season, token):
     return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "ally": ally_label(cur_gid()), "don": _don_page(), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}, "trs": {k: int(v) for k, v in (dx.get("trs") or {}).items() if str(v).isdigit() and int(v) > 0}}, "stone": stone}, None
 
 
-def reco_page_data(did, season, token):
-    """PvP(티어덱) 추천 + 개척덱 추천을 함께 계산해 한 페이지 데이터로 만든다. → (데이터, 오류 안내문)"""
-    r = _reco_page_core(did, season, token)
+def reco_page_data(did, season, token, units=True):
+    """PvP(티어덱) 추천 + 개척덱 추천을 함께 계산해 한 페이지 데이터로 만든다. → (데이터, 오류 안내문). units=False면 추천 계산 없이 페이지 데이터만."""
+    r = _reco_page_core(did, season, token, with_units=units)
+    if not units: return r
     if not isinstance(r[0], dict): return r
     tok = RECO_MODE.set("dev")
     try: d = _reco_page_core(did, season, token)
@@ -3383,7 +3396,7 @@ async def web_reco(request):
     if not did: return web.Response(status=403, text="인증 정보를 찾지 못했습니다. 디스코드에서 /인증 후 다시 시도하세요.")
     sv = request.query.get("s"); season = int(sv) if sv in ("1", "2") else (pref_get(did).get("season") if pref_get(did).get("season") in (1, 2) else 1)
     try:
-        data, err = await asyncio.to_thread(reco_page_data, did, season, request.query["t"])
+        data, err = await asyncio.to_thread(reco_page_data, did, season, request.query["t"], False)
         import reco_web
         return web.Response(text=reco_web.render(data, err), content_type="text/html", headers={"Cache-Control": "no-store"})
     except Exception:
