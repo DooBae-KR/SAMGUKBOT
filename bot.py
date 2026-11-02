@@ -1196,19 +1196,46 @@ async def setting_channel(g, uid=None, force=False):
                 try: await ch.set_permissions(g.default_role, view_channel=False)
                 except Exception as e3: log.warning("setting 채널 비공개 설정 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e3)
             except Exception as e2: log.warning("setting 채널 생성 실패 서버=%s 1차=%r 2차=%r", g.id, e1, e2); return None
-        try:
-            who = f"{m.mention} 님, " if m is not None else ""
-            await ch.send(f"🧪 **서버 설정자 실험실 (#{SETTING_CH})**\n{who}여기서 봇 기능을 먼저 써 보며 서버를 설정해 보세요. 이 채널은 서버 관리자와 설정자만 볼 수 있습니다.\n"
-                          "• `/명령어` — 쓸 수 있는 명령어 목록\n• `/명단업데이트` — 인사 파일 올리기\n• `/인증패널`, `/공성`, `/정철설정` 등을 여기서 먼저 시험해 보세요.\n"
-                          "⚠️ 명단·인증·정철처럼 데이터를 바꾸는 명령은 **실제 서버에 그대로 반영**됩니다. (이 채널에서 쓴 공개 답변만 다른 사람에게 안 보이는 것입니다)",
-                          allowed_mentions=discord.AllowedMentions(users=True))
-        except Exception: log.warning("setting 채널 안내 글 실패 %s", g.id, exc_info=True)
         def sv():
             t = _CTX.set(g.id)
             try: store_set("setting", SETTING_PATH, {"ch": ch.id})
             finally: _CTX.reset(t)
         await asyncio.to_thread(sv)
+    try: await setting_post(g, ch, uid, force)
+    except Exception: log.warning("setting 가이드 게시 실패 %s", g.id, exc_info=True)
     return ch
+
+
+async def setting_post(g, ch, uid=None, force=False):
+    """#setting 채널에 관리 페이지 화면별 사용법 이미지(guides/setting_guide-*.png)를 올린다. 이미지가 바뀌면 이전 글을 지우고 새로 올린다."""
+    me = g.me; files = sorted(GUIDE_DIR.glob("setting_guide*.png"))[:10]
+    if me is None or ch is None or not files or not ch.permissions_for(me).send_messages: return
+    ver = hashlib.sha1(b"".join(f.read_bytes() for f in files)).hexdigest()[:10]
+
+    def st():
+        tok = _CTX.set(g.id)
+        try: return dict(store_get("guide", GUIDE_PATH, {}) or {})
+        finally: _CTX.reset(tok)
+    cur = (await asyncio.to_thread(st)).get("setting") or {}
+    if not force and cur.get("ver") == ver and cur.get("ch") == ch.id: return
+    for mid in cur.get("ids", []):
+        try: await (await ch.fetch_message(mid)).delete()
+        except Exception: pass
+    try: await ch.purge(limit=50, check=lambda x: x.author == me)
+    except Exception: pass
+    mem = g.get_member(int(uid)) if uid else None
+    text = (f"🧪 **서버 설정자 실험실 (#{SETTING_CH})**\n" + (f"{mem.mention} 님, " if mem else "") +
+            "여기서 봇 기능을 먼저 써 보며 서버를 설정해 보세요. 이 채널은 서버 관리자와 설정자만 볼 수 있습니다.\n"
+            "📖 아래 이미지는 **관리 페이지(`/관리`) 화면별 사용법**입니다. (톡방 참여자 · 동맹원 추가 · 부캐 · 관리자 권한 · 명령어 권한 · 예비 · 블랙리스트 · 명령어 통계 · 인증 횟수 제한)\n"
+            "⚠️ 명단·인증·정철처럼 데이터를 바꾸는 명령은 **실제 서버에 그대로 반영**됩니다.")
+    m = await ch.send(text, files=[discord.File(f, filename=f"setting_{i}.png") for i, f in enumerate(files, 1)], allowed_mentions=discord.AllowedMentions(users=True))
+
+    def sv2():
+        tok = _CTX.set(g.id)
+        try:
+            d = dict(store_get("guide", GUIDE_PATH, {}) or {}); d["setting"] = {"ver": ver, "ch": ch.id, "ids": [m.id]}; store_set("guide", GUIDE_PATH, d)
+        finally: _CTX.reset(tok)
+    await asyncio.to_thread(sv2)
 
 
 HRINFO_CH = "인사정보"
@@ -4190,7 +4217,9 @@ async def cmd_manual_update(it: discord.Interaction, 강제: bool = False):
     ok, bad = [], []
     for g in list(bot.guilds):
         if g.id != GUILD_ID and g.id not in LICENSED: continue
-        try: a, u = await guide_post(g, force=강제); await start_post(g, force=강제)
+        try:
+            a, u = await guide_post(g, force=강제); await start_post(g, force=강제)
+            if g.id != GUILD_ID: await setting_channel(g, None)
         except Exception: log.exception("메뉴얼 업데이트 실패 %s", g.id); a = u = None
         (ok if (a or u) else bad).append(g.name)
     await it.followup.send(f"📚 메뉴얼 업데이트 완료 — 성공 {len(ok)}개 서버" + (f"\n⚠️ 실패(봇에 채널 관리 권한 필요): {', '.join(bad)}" if bad else "") + "\n(내용이 바뀐 서버만 새로 올립니다)" if not 강제 else f"📚 메뉴얼 강제 업데이트 — 성공 {len(ok)}개 서버" + (f"\n⚠️ 실패: {', '.join(bad)}" if bad else ""), ephemeral=True)
