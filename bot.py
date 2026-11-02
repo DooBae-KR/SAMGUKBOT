@@ -4484,7 +4484,24 @@ async def siege_cancel(it: discord.Interaction, 번호: int = 0, 전체: bool = 
 
 # ---------- 공성 예약(공성 시각 지정) ----------
 DECLARE_SEC = int(os.environ.get("DECLARE_MIN", "60")) * 60        # 선전포고 후 공성까지 최소 소요(분)
-SIEGE_ALERT_MIN = int(os.environ.get("SIEGE_ALERT_MIN", "30"))     # 공성 N분 전에 간부 호출
+SIEGE_ALERT_MIN = int(os.environ.get("SIEGE_ALERT_MIN", "30"))     # 공성 N분 전에 간부 호출(가장 이른 단계)
+SIEGE_STEPS = sorted({SIEGE_ALERT_MIN, 10}, reverse=True)           # 공성 30분 전·10분 전에 #공성정보 채널로 알림
+SIEGEINFO_CH = "공성정보"
+
+
+async def siege_info_channel(g):
+    """#공성정보 — 공성 예약 알림이 올라가는 채널. 없으면 만든다(동맹원·간부·예비 역할이 읽기만 가능). 만들 수 없으면 None."""
+    me = g.me
+    ch = discord.utils.get(g.text_channels, name=SIEGEINFO_CH)
+    if ch is not None or me is None: return ch
+    if time.time() - _log_fail.get((g.id, SIEGEINFO_CH), 0) < 3600: return None
+    ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
+    for nm in (MEMBER_ROLE, OFFICER_ROLE, RESERVE_ROLE):
+        r = discord.utils.get(g.roles, name=nm)
+        if r is not None: ow[r] = discord.PermissionOverwrite(view_channel=True, send_messages=False, read_message_history=True)
+    try: return await g.create_text_channel(SIEGEINFO_CH, overwrites=ow, topic="공성 예약 알림(공성 30분 전·10분 전)", category=await bot_cat(g), reason="공성 예약 알림 채널")
+    except Exception as e:
+        _log_fail[(g.id, SIEGEINFO_CH)] = time.time(); log.warning("공성정보 채널 생성 실패 서버=%s: %r", g.id, e); return None
 
 
 def parse_when(s, now=None):
@@ -4516,10 +4533,10 @@ def siege_check(st, cost, now=None):
     return eta, fund, end, end + DECLARE_SEC
 
 
-@bot.tree.command(name="공성예약", description="[간부] 공성 시각을 정하면 그 시각에 주둔지 건설이 가능한지 알려 주고, 가능하면 예약합니다(30분 전 간부 호출)")
-@app_commands.describe(레벨="건설할 성지(관문) 레벨", 시각="공성하고 싶은 시각 예) 21:00 / 내일 21시 30분 / 10.29 21:00", 연결안됨="아군 성지/관문과 관로로 연결되지 않음(추가 소모)", 타진영="타 진영 시작 지역 성지(총량 +50%)", 확인만="예약하지 않고 가능 여부만 확인")
+@bot.tree.command(name="공성예약", description="[간부] 공성 시각을 정하면 그 시각에 주둔지 건설이 가능한지 알려 주고, 가능하면 예약합니다(30분·10분 전 #공성정보 알림)")
+@app_commands.describe(레벨="건설할 성지(관문) 레벨", 시각="공성하고 싶은 시각 예) 21:00 / 내일 21시 30분 / 10.29 21:00", 연결안됨="아군 성지/관문과 관로로 연결되지 않음(추가 소모)", 타진영="타 진영 시작 지역 성지(총량 +50%)", 확인만="예약하지 않고 가능 여부만 확인", 성지명="공격할 성지 이름(알림에 표시, 선택)")
 @app_commands.choices(레벨=[app_commands.Choice(name=jc_label(k), value=k) for k in sorted(COST)])
-async def siege_reserve(it: discord.Interaction, 레벨: app_commands.Choice[int], 시각: str, 연결안됨: bool = False, 타진영: bool = False, 확인만: bool = False):
+async def siege_reserve(it: discord.Interaction, 레벨: app_commands.Choice[int], 시각: str, 연결안됨: bool = False, 타진영: bool = False, 확인만: bool = False, 성지명: str = ""):
     if not staff_ok(it, "/공성예약"): return await it.response.send_message(noperm_text(it), ephemeral=True)
     now = time.time(); T = parse_when(시각, now)
     if T is None: return await it.response.send_message("시각을 읽지 못했습니다. 예) `21:00`, `내일 21시 30분`, `10.29 21:00`", ephemeral=True)
@@ -4539,12 +4556,12 @@ async def siege_reserve(it: discord.Interaction, 레벨: app_commands.Choice[int
         return await it.response.send_message(f"✅ **{fmt_t(T)}** 공성 가능합니다 (여유 {fmt_dur(slack / 3600)}).\n{tl}\n예약하려면 `확인만` 없이 다시 입력하세요.", ephemeral=True)
     ent = {"user": it.user.id, "name": it.user.display_name, "channel": it.channel_id, "level": lv, "cost": cost, "tags": tags, "soon": False, "reg": now}
     st.setdefault("sieges", []).append(ent); st.pop("timers", None)
-    st.setdefault("reserve", []).append({"user": it.user.id, "name": it.user.display_name, "channel": it.channel_id, "level": lv, "tags": tags, "t": T, "alerted": False, "reg": now})
+    st.setdefault("reserve", []).append({"user": it.user.id, "name": it.user.display_name, "channel": it.channel_id, "level": lv, "tags": tags, "t": T, "alerted": False, "al": [], "sg": re.sub(r"\s+", " ", 성지명).strip()[:20], "reg": now})
     started = jc_settle(st, now); jc_save(st)
     extra = "정철이 충분해 바로 차감하고 건축을 시작했습니다." if started else "정철이 모이면 자동으로 차감하고 건축을 시작합니다."
     await it.response.send_message(
         f"✅ **{fmt_t(T)}** 공성 예약 완료 — {siege_name(ent)} (여유 {fmt_dur(slack / 3600)})\n{tl}\n{extra}\n"
-        f"공성 **{SIEGE_ALERT_MIN}분 전({fmt_t(T - SIEGE_ALERT_MIN * 60)})**에 `{OFFICER_ROLE}` 역할을 이 채널에서 호출합니다. 전체 일정은 `/공성`으로 확인하세요.", ephemeral=True)
+        f"공성 **{"·".join(f"{m}분" for m in SIEGE_STEPS)} 전**에 `#{SIEGEINFO_CH}` 채널로 시각·성지 레벨·성지명을 알리고 `{OFFICER_ROLE}` 역할을 호출합니다(정철 정보는 올리지 않습니다). 전체 일정은 `/공성`으로 확인하세요.", ephemeral=True)
 
 
 @bot.tree.command(name="공성예약취소", description="[간부] 공성 예약을 취소합니다(번호 생략 시 마지막 예약)")
@@ -4609,6 +4626,15 @@ def jc_settle(st, now, quiet_id=None):
     return started
 
 
+async def siege_notice(r, m):
+    """공성 m분 전 알림: 시각 · 성지 레벨 · 성지명만 #공성정보에 올린다(정철 정보는 올리지 않음)."""
+    src = bot.get_channel(r["channel"]); g = getattr(src, "guild", None)
+    target = (await siege_info_channel(g) if g is not None else None) or src
+    if target is None: return
+    left = max(0, r["t"] - time.time())
+    await officer_call(target.id, f"⚔️ **공성 {max(1, round(left / 60))}분 전!**\n• 시각: **{fmt_t(r['t'])}** (<t:{int(r['t'])}:R>)\n• 성지 레벨: **{jc_label(r['level'])}**\n• 성지명: **{r.get('sg') or '미정'}**\n모두 준비해 주세요.")
+
+
 async def jc_tick():
     try:
         st = jc_load(); sg = st.setdefault("sieges", []); bl = st.setdefault("building", [])
@@ -4630,9 +4656,11 @@ async def jc_tick():
                 await _say(e["channel"], f"⏰ <@{e['user']}> **{siege_name(e)}** {'**1분 전!** ' if m <= 1 else ''}약 {m}분 뒤 건설 가능합니다. 정철 {int(e['cost']):,}개가 모이는 시각 <t:{int(eta)}:t> (<t:{int(eta)}:R>)")
         for r in list(rv):                                             # 공성 N분 전 간부 호출
             if r["t"] + 600 < now: rv.remove(r); changed = True; continue
-            if not r.get("alerted") and r["t"] - now <= SIEGE_ALERT_MIN * 60:
-                r["alerted"] = True; changed = True
-                await officer_call(r["channel"], f"⚔️ **공성 {fmt_dur(max(0, r['t'] - now) / 3600)} 전!** {siege_name(r)} 공성이 **{fmt_t(r['t'])}** (<t:{int(r['t'])}:R>)에 예정되어 있습니다. 모두 준비해 주세요. (예약: {r.get('name', '-')})")
+            sent = set(r.get("al") or ([SIEGE_ALERT_MIN] if r.get("alerted") else [])); left_m = (r["t"] - now) / 60
+            due = [m for m in SIEGE_STEPS if left_m <= m and m not in sent]
+            if due:                                                      # 이미 지난 단계는 건너뛰고 가장 가까운 단계 하나만 알림
+                m = min(due); r["al"] = sorted(sent | set(due), reverse=True); r["alerted"] = True; changed = True
+                await siege_notice(r, m)
         if changed: jc_save(st)
     except Exception: log.exception("정철 타이머 오류")
 
