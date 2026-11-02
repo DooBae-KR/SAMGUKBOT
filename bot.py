@@ -921,7 +921,7 @@ class Bot(discord.Client):
             refresh_talk()
         await asyncio.to_thread(lambda: (db_load(), jc_load()))      # 시트에 저장된 인증·정철 상태를 미리 불러옴
         await start_web()
-        self.add_view(VerifyView()); self.add_view(DipView()); self.add_view(InqView()); self.add_view(InqEscView())
+        self.add_view(VerifyView()); self.add_view(DipView()); self.add_view(InqView()); self.add_view(InqEscView()); self.add_view(InqResolveView()); self.add_view(InqRateView())
         g = discord.Object(GUILD_ID)
         if OPEN_SERVERS:                                   # 다른 서버에서도 명령이 보이게 전역 등록(허가 안 된 서버는 /동맹등록만 가능)
             self.tree.clear_commands(guild=g); await self.tree.sync(guild=g); await self.tree.sync()
@@ -1423,6 +1423,7 @@ class InqModal(CtxModal, title="문의하기"):
         th = None
         try: th = await m.create_thread(name=f"문의 #{n} {title}"[:90], auto_archive_duration=4320)
         except Exception: log.warning("문의 스레드 생성 실패 서버=%s", it.guild_id)
+        if th: await asyncio.to_thread(inq_rec, th.id, n=n, uid=it.user.id, title=title, at=int(time.time()))
         await it.followup.send(f"✅ 문의 #{n}이 접수되었습니다. 답변은 스레드에 올라옵니다.", ephemeral=True)
         asyncio.create_task(inq_process(it.guild, th, str(it.user), title, content))
 
@@ -1431,20 +1432,83 @@ async def inq_process(g, th, who, title, content):
     try:
         ai = await asyncio.to_thread(cs_ai, title, content)
         if ai and ai["type"] == "faq" and ai["confident"]:
-            if th: await th.send("🤖 **자동 답변**\n" + ai["answer"] + "\n\n해결되지 않았다면 아래 버튼을 눌러 주세요. 관리자가 확인합니다.", view=InqEscView(), allowed_mentions=discord.AllowedMentions.none())
+            if th: await th.send("🤖 **자동 답변**\n" + ai["answer"] + "\n\n해결됐다면 **✅ 해결됐어요**, 해결되지 않았다면 **해결 안 됨**을 눌러 주세요. 관리자가 확인합니다.", view=InqEscView(), allowed_mentions=discord.AllowedMentions.none())
             ch = await log_channel(g, create=False)
             if ch:
                 try: await ch.send(f"📨 문의(자동 답변됨) — {who} · {title[:60]} · {th.jump_url if th else ''}", allowed_mentions=discord.AllowedMentions.none())
                 except Exception: pass
             return
         kind = ai["type"] if ai else "other"
-        if th: await th.send("🙏 문의가 접수되었습니다. 관리자가 확인하고 답변드릴게요." if ai or not ANTHROPIC_API_KEY else "🙏 접수되었습니다. 관리자가 확인합니다.")
+        if th: await th.send("🙏 문의가 접수되었습니다. 관리자가 확인하고 답변드릴게요." if ai or not ANTHROPIC_API_KEY else "🙏 접수되었습니다. 관리자가 확인합니다.", view=InqResolveView())
         await inq_notify(g, th, who, title, kind, (ai or {}).get("summary", ""), "AI 판단: 직접 확인 필요" if ai else "AI 미사용/실패")
     except Exception: log.exception("문의 처리 실패")
 
 
+_inq_lock = threading.Lock()
+
+
+def inq_rec(tid, **kw):
+    """문의 스레드별 기록(작성자·해결·만족도). 같은 서버의 문의 저장소에 합쳐 저장한다."""
+    with _inq_lock:
+        st = dict(store_get("inq", INQ_PATH, {"n": 0}) or {"n": 0}); th = dict(st.get("th") or {})
+        r = dict(th.get(str(tid)) or {}); r.update(kw); th[str(tid)] = r; st["th"] = th
+        store_set("inq", INQ_PATH, st); return r
+
+
+def inq_get(tid): return dict(((store_get("inq", INQ_PATH, {}) or {}).get("th") or {}).get(str(tid)) or {})
+
+
+async def inq_resolve(it, allow_author):
+    """문의를 해결 처리하고 문의자에게 만족도(좋아요/싫어요)를 묻는다. 관리자, 또는(allow_author) 문의 작성자만 누를 수 있다."""
+    th = it.channel if isinstance(it.channel, discord.Thread) else None
+    rec = await asyncio.to_thread(inq_get, th.id) if th else {}
+    if not rec: return await it.response.send_message("이 문의의 기록을 찾지 못했습니다. (이전 방식으로 접수된 문의일 수 있어요)", ephemeral=True)
+    if not (is_admin(it) or it.user.id == OWNER_ID or (allow_author and it.user.id == rec.get("uid"))):
+        return await it.response.send_message("관리자만 해결 처리할 수 있습니다." if not allow_author else "문의하신 분 또는 관리자만 누를 수 있습니다.", ephemeral=True)
+    if rec.get("resolved"): return await it.response.send_message("이미 해결 처리된 문의입니다.", ephemeral=True)
+    await asyncio.to_thread(inq_rec, th.id, resolved=int(time.time()), resolved_by=it.user.id)
+    try: await it.response.edit_message(view=None)
+    except Exception: await it.response.defer()
+    await th.send(f"✅ **문의 #{rec.get('n', '?')}이 해결 처리되었습니다.**\n<@{rec['uid']}> 도움이 되셨나요? 만족도를 남겨 주세요.", view=InqRateView(),
+                  allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=int(rec["uid"]))]))
+
+
+class InqResolveView(CtxView):
+    def __init__(self): super().__init__(timeout=None)
+
+    @discord.ui.button(label="해결 완료 (관리자)", style=discord.ButtonStyle.success, emoji="✅", custom_id="inq_done")
+    async def done(self, it: discord.Interaction, _): await inq_resolve(it, allow_author=False)
+
+
+class InqRateView(CtxView):
+    def __init__(self): super().__init__(timeout=None)
+
+    async def _rate(self, it, up):
+        th = it.channel if isinstance(it.channel, discord.Thread) else None
+        rec = await asyncio.to_thread(inq_get, th.id) if th else {}
+        if not rec: return await it.response.send_message("문의 기록을 찾지 못했습니다.", ephemeral=True)
+        if it.user.id != rec.get("uid"): return await it.response.send_message("문의하신 분만 평가할 수 있습니다.", ephemeral=True)
+        if rec.get("rating") is not None: return await it.response.send_message("이미 평가해 주셨습니다. 감사합니다!", ephemeral=True)
+        await asyncio.to_thread(inq_rec, th.id, rating="up" if up else "down", rated=int(time.time()))
+        await it.response.edit_message(content=f"✅ **문의 #{rec.get('n', '?')} 해결** · 만족도: {'👍 좋아요' if up else '👎 싫어요'} — 의견 감사합니다!", view=None)
+        ch = await log_channel(it.guild, create=False)
+        if ch:
+            try: await ch.send(f"📊 문의 #{rec.get('n', '?')} 만족도 {'👍 좋아요' if up else '👎 싫어요'} — {discord.utils.escape_markdown(rec.get('title', ''))[:60]} · {th.jump_url}", allowed_mentions=discord.AllowedMentions.none())
+            except Exception: pass
+        if not up: await inq_notify(it.guild, th, str(it.user), rec.get("title", "문의"), "other", "해결 후 싫어요 평가", "해결 안 됨(싫어요 평가)")
+
+    @discord.ui.button(label="좋아요", style=discord.ButtonStyle.success, emoji="👍", custom_id="inq_up")
+    async def up(self, it: discord.Interaction, _): await self._rate(it, True)
+
+    @discord.ui.button(label="싫어요", style=discord.ButtonStyle.danger, emoji="👎", custom_id="inq_down")
+    async def down(self, it: discord.Interaction, _): await self._rate(it, False)
+
+
 class InqEscView(CtxView):
     def __init__(self): super().__init__(timeout=None)
+
+    @discord.ui.button(label="해결됐어요", style=discord.ButtonStyle.success, emoji="✅", custom_id="inq_ok")
+    async def ok(self, it: discord.Interaction, _): await inq_resolve(it, allow_author=True)
 
     @discord.ui.button(label="해결 안 됨 → 관리자 호출", style=discord.ButtonStyle.danger, custom_id="inq_esc")
     async def esc(self, it: discord.Interaction, _):
