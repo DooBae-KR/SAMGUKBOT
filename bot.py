@@ -1226,9 +1226,11 @@ async def setting_post(g, ch, uid=None, force=False):
     mem = g.get_member(int(uid)) if uid else None
     text = (f"🧪 **서버 설정자 실험실 (#{SETTING_CH})**\n" + (f"{mem.mention} 님, " if mem else "") +
             "여기서 봇 기능을 먼저 써 보며 서버를 설정해 보세요. 이 채널은 서버 관리자와 설정자만 볼 수 있습니다.\n"
-            "📖 아래 이미지는 **관리 페이지(`/관리`) 화면별 사용법**입니다. (톡방 참여자 · 동맹원 추가 · 부캐 · 관리자 권한 · 명령어 권한 · 예비 · 블랙리스트 · 명령어 통계 · 인증 횟수 제한)\n"
+            "📖 아래 링크는 **관리 페이지(`/관리`) 화면별 사용법 이미지**입니다.\n"
             "⚠️ 명단·인증·정철처럼 데이터를 바꾸는 명령은 **실제 서버에 그대로 반영**됩니다.")
-    m = await ch.send(text, files=[discord.File(f, filename=f"setting_{i}.png") for i, f in enumerate(files, 1)], allowed_mentions=discord.AllowedMentions(users=True))
+    LB = ["톡방 참여자", "동맹원 추가", "부캐", "관리자 권한", "명령어 권한", "예비", "블랙리스트", "명령어 통계", "인증 횟수 제한"]
+    lines = [f"{i}. [{LB[i - 1] if i <= len(LB) else f'화면 {i}'}](<{PUBLIC_URL}/guide/{f.name}?v={ver}>)" for i, f in enumerate(files, 1)]
+    m = await ch.send(text + "\n\n🔗 **화면별 사용법 (눌러서 보기)**\n" + "\n".join(lines), allowed_mentions=discord.AllowedMentions(users=True))
 
     def sv2():
         tok = _CTX.set(g.id)
@@ -2561,7 +2563,7 @@ async def web_admin_api(request):
 async def start_web():
     if not WEB_PORT: return
     app = web.Application(middlewares=[gzip_mw]); app.router.add_get("/", web_index)
-    app.router.add_get("/img/{k}/{size}/{name}", web_img)
+    app.router.add_get("/img/{k}/{size}/{name}", web_img); app.router.add_get("/guide/{name}", web_guide)
     app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
     app.router.add_get("/admin", web_admin); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
     app.router.add_get("/invite", web_invite); app.router.add_get("/bimg/{iid}", web_bimg)
@@ -3603,6 +3605,15 @@ async def web_img(request):
     bts = await asyncio.to_thread(reco_img.img_bytes, request.match_info["k"], request.match_info["size"], request.match_info["name"])
     if not bts: return web.Response(status=404)
     return web.Response(body=bts, content_type="image/jpeg", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+async def web_guide(request):
+    """#setting 채널에 링크로 거는 관리 페이지 사용법 이미지."""
+    nm = request.match_info["name"]
+    if not re.fullmatch(r"setting_guide-\d{1,2}\.png", nm): return web.Response(status=404)
+    f = GUIDE_DIR / nm
+    if not f.is_file(): return web.Response(status=404)
+    return web.Response(body=f.read_bytes(), content_type="image/png", headers={"Cache-Control": "public, max-age=86400", "X-Robots-Tag": "noindex"})
 
 
 async def web_reco(request):
