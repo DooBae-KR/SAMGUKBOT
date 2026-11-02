@@ -945,7 +945,7 @@ class Bot(discord.Client):
             if not discord.utils.get(hg.roles, name=RESERVE_ROLE):
                 try: await hg.create_role(name=RESERVE_ROLE, reason="예비 역할 자동 생성")
                 except Exception: log.exception("예비 역할 생성 실패(봇에 '역할 관리' 권한 필요)")
-            await verify_channel(hg); await log_channel(hg); await inquiry_channel(hg); await hrinfo_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
+            await verify_channel(hg); await log_channel(hg); await inquiry_channel(hg); await channels_setup(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
         asyncio.create_task(setting_backfill())
@@ -1240,6 +1240,65 @@ async def setting_post(g, ch, uid=None, force=False):
     await asyncio.to_thread(sv2)
 
 
+MGMT_CAT = "관리"
+GUIDE_CAT = "공략"
+RECOCH = "시즌추천덱"
+RECOCH_PATH = DB_PATH.with_name("recoch.json")
+VERIFIED_ROLES = (MEMBER_ROLE, OFFICER_ROLE, RESERVE_ROLE)        # CID 인증을 마치면 받는 역할 — 이 역할이 있는 사람만 일반 채널을 본다
+
+
+async def named_cat(g, name):
+    """이름으로 카테고리를 찾고 없으면 만든다(기본은 숨김). 만들 수 없으면 '봇' 카테고리로 대신한다."""
+    cat = discord.utils.get(g.categories, name=name)
+    if cat is not None: return cat
+    try: return await g.create_category(name, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False)}, reason="채널 분류")
+    except Exception as e: log.warning("'%s' 카테고리 생성 실패 서버=%s: %r", name, g.id, e); return await bot_cat(g)
+
+
+def verified_overwrites(g, send=False):
+    """인증을 마친 사람(동맹원·간부·예비 역할)만 볼 수 있는 채널 권한. 관리자는 항상 볼 수 있다."""
+    ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
+    for nm in VERIFIED_ROLES:
+        r = discord.utils.get(g.roles, name=nm)
+        if r is not None: ow[r] = discord.PermissionOverwrite(view_channel=True, send_messages=send, read_message_history=True)
+    return ow
+
+
+async def move_to(g, ch, cat):
+    try:
+        if ch is not None and cat is not None and getattr(ch, "category_id", None) != cat.id: await ch.edit(category=cat, sync_permissions=False, reason="채널 분류")
+    except Exception as e: log.warning("채널 이동 실패 서버=%s 채널=%s: %r", g.id, getattr(ch, "id", None), e)
+
+
+async def reco_channel(g, force=False):
+    """#시즌추천덱 — 공략 카테고리. 인증한 사람만 보고, /추천 안내 글을 올린다. 지우면 force 없이는 다시 만들지 않는다."""
+    me = g.me
+    if me is None: return None
+    tok = _CTX.set(g.id)
+    try: rec = dict(store_get("recoch", RECOCH_PATH, {}) or {})
+    finally: _CTX.reset(tok)
+    ch = discord.utils.get(g.text_channels, name=RECOCH); cat = await named_cat(g, GUIDE_CAT)
+    if ch is None and rec.get("ch") and not force: return None
+    if ch is not None: await move_to(g, ch, cat); return ch
+    try: ch = await g.create_text_channel(RECOCH, overwrites=verified_overwrites(g), topic="내 보유 장수에 맞는 시즌 추천 덱 — /추천", category=cat, reason="시즌 추천덱 채널")
+    except Exception as e: log.warning("시즌추천덱 채널 생성 실패 서버=%s: %r", g.id, e); return None
+    try: await ch.send("🏆 **시즌 추천덱**\n내 보유 장수에 맞는 **시즌 추천 덱**을 받아 가는 곳입니다. 명령어는 `/추천` 하나로 시즌1·시즌2를 모두 볼 수 있습니다.\n\n"
+                       "1. `/인증`으로 CID 인증을 먼저 해 주세요. (한 번만)\n2. `/추천`을 입력하면 **나에게만 보이는 추천 페이지 링크**가 나옵니다. (처음에는 시즌을 물어봅니다)\n"
+                       "3. 페이지 위쪽 **시즌1 / 시즌2** 버튼으로 시즌을 바꾸고, 보유 장수를 체크한 뒤 **[자동 편성]** 버튼을 누르면 추천 덱이 나옵니다.\n4. 정보가 부족하면 **편성대 의뢰**로 올릴 수 있습니다.\n\n"
+                       "🔗 링크는 본인 전용이고 시간이 지나면 만료됩니다. 다른 사람에게 공유하지 마세요.")
+    except Exception: log.warning("시즌추천덱 안내 글 실패 %s", g.id, exc_info=True)
+    def sv():
+        t = _CTX.set(g.id)
+        try: store_set("recoch", RECOCH_PATH, {"ch": ch.id})
+        finally: _CTX.reset(t)
+    await asyncio.to_thread(sv); return ch
+
+
+async def channels_setup(g, force=False):
+    """분류된 안내 채널(관리: 인사정보·공성정보 / 공략: 시즌추천덱)을 준비한다."""
+    await hrinfo_channel(g, force=force); await siege_info_channel(g); await reco_channel(g, force=force)
+
+
 HRINFO_CH = "인사정보"
 HRINFO_PATH = DB_PATH.with_name("hrinfo.json")
 
@@ -1253,8 +1312,9 @@ async def hrinfo_channel(g, force=False):
     finally: _CTX.reset(tok)
     ch = discord.utils.get(g.text_channels, name=HRINFO_CH)
     if ch is None and rec.get("ch") and not force: return None
+    if ch is not None: await move_to(g, ch, await named_cat(g, MGMT_CAT)); return ch
     if ch is None:
-        topic = "간부 전용 — 여기서 /인사 를 입력하면 나에게만 보이는 인사데이터 링크가 나옵니다"; cat = await bot_cat(g)
+        topic = "간부 전용 — 여기서 /인사 를 입력하면 나에게만 보이는 인사데이터 링크가 나옵니다"; cat = await named_cat(g, MGMT_CAT)
         role = discord.utils.get(g.roles, name=OFFICER_ROLE)
         ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
         if role is not None: ow[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
@@ -1282,7 +1342,7 @@ async def setting_backfill():
         if g is None: continue
         try:
             rows = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?guild_id=eq.{gid}&status=eq.approved&select=discord_id&order=requested_at.asc&limit=1") or []
-            await setting_channel(g, rows[0]["discord_id"] if rows else None); await hrinfo_channel(g)
+            await setting_channel(g, rows[0]["discord_id"] if rows else None); await channels_setup(g)
         except Exception: log.warning("setting 채널 보충 실패 %s", gid, exc_info=True)
 
 
@@ -1295,7 +1355,7 @@ async def pm_setup_guild(gid, uid=None):
         if discord.utils.get(g.roles, name=nm): continue
         try: await g.create_role(name=nm, reason="동맹 등록 — 기본 역할 생성"); made.append(nm)
         except Exception: fail.append(nm)
-    vc = await verify_channel(g); await log_channel(g); await inquiry_channel(g); sc = await setting_channel(g, uid, force=True); hc = await hrinfo_channel(g, force=True)
+    vc = await verify_channel(g); await log_channel(g); await inquiry_channel(g); sc = await setting_channel(g, uid, force=True); hc = await hrinfo_channel(g, force=True); await siege_info_channel(g); await reco_channel(g, force=True)
     out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)") + (f" / 실험 채널: #{sc.name}" if sc else "") + (f" / 간부 전용 인사 채널: #{hc.name}" if hc else "")
     return out + (f" / 생성 실패(봇에 '역할 관리' 권한 필요): {', '.join(fail)}" if fail else "")
 
@@ -4490,18 +4550,20 @@ SIEGEINFO_CH = "공성정보"
 
 
 async def siege_info_channel(g):
-    """#공성정보 — 공성 예약 알림이 올라가는 채널. 없으면 만든다(동맹원·간부·예비 역할이 읽기만 가능). 만들 수 없으면 None."""
+    """#공성정보 — 관리 카테고리. 공성 예약 알림이 올라가는 채널로, 인증한 사람(동맹원·간부·예비)만 읽을 수 있다. 없으면 만든다."""
     me = g.me
+    if me is None: return None
     ch = discord.utils.get(g.text_channels, name=SIEGEINFO_CH)
-    if ch is not None or me is None: return ch
+    if ch is not None: await move_to(g, ch, await named_cat(g, MGMT_CAT)); return ch
     if time.time() - _log_fail.get((g.id, SIEGEINFO_CH), 0) < 3600: return None
-    ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
-    for nm in (MEMBER_ROLE, OFFICER_ROLE, RESERVE_ROLE):
-        r = discord.utils.get(g.roles, name=nm)
-        if r is not None: ow[r] = discord.PermissionOverwrite(view_channel=True, send_messages=False, read_message_history=True)
-    try: return await g.create_text_channel(SIEGEINFO_CH, overwrites=ow, topic="공성 예약 알림(공성 30분 전·10분 전)", category=await bot_cat(g), reason="공성 예약 알림 채널")
+    try: ch = await g.create_text_channel(SIEGEINFO_CH, overwrites=verified_overwrites(g), topic="공성 예약 알림(공성 30분 전·10분 전)", category=await named_cat(g, MGMT_CAT), reason="공성 예약 알림 채널")
     except Exception as e:
         _log_fail[(g.id, SIEGEINFO_CH)] = time.time(); log.warning("공성정보 채널 생성 실패 서버=%s: %r", g.id, e); return None
+    try: await ch.send("⚔️ **공성정보**\n공성 예약 알림이 올라오는 채널입니다.\n\n• 간부가 `/공성예약`으로 시각을 예약하면 **공성 30분 전·10분 전**에 이곳으로 알림이 갑니다.\n"
+                       "• 알림에는 **시각 · 성지 레벨 · 성지명**이 표시됩니다. (정철 정보는 올리지 않습니다)\n• `/공성예약` 입력 시 `성지명`을 적어 주세요. 비우면 \"미정\"으로 나옵니다.\n\n"
+                       "📌 간부 명령어: `/공성예약` `/공성예약취소` `/공성등록` `/공성` `/공성취소` `/정철설정`\n📖 명령어 전체는 `/명령어`로 확인하세요.")
+    except Exception: log.warning("공성정보 안내 글 실패 %s", g.id, exc_info=True)
+    return ch
 
 
 def parse_when(s, now=None):
