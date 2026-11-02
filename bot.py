@@ -2743,7 +2743,7 @@ def unit_state(deck, heroes, hd):
                 for hero_slots in r[1]:
                     for cell in hero_slots:
                         for x in re.split(r"[/>+,]", cell): names.add(_nk(x))
-    st = {"hs": hs, "G": G, "U": U, "deck": names, "picks": [], "healed": any("치유" in (hd.get(h) or {}).get("sktrait", "") or "회복" in ((hd.get(h) or {}).get("desc") or "") for h in hs),
+    st = {"hs": hs, "G": G, "U": U, "deck": names, "deckn": names, "picks": [], "healed": any("치유" in (hd.get(h) or {}).get("sktrait", "") or "회복" in ((hd.get(h) or {}).get("desc") or "") for h in hs),
           "styles": " ".join((hd.get(h) or {}).get("style", "") for h in hs)}
     st["trait"] = unit_trait(st, hd); return st
 
@@ -2900,7 +2900,7 @@ def pick_tactics(st, count, own_s, used, hd, skd, skn, deal="도트딜", pen=Non
             elif ti["kind"] in ("한방딜", "도트딜"): sc -= 1.5
             if (ti["heal"] or ti["kind"] == "회복") and not st["healed"]: sc += 3; why.append("회복")
             if ti["trait"] == trait and trait: sc += 2
-            if k in st["deck"]: sc += 3; why.append("티어덱")
+            if k in st["deckn"]: sc += 3; why.append("티어덱")
             if ti["type"] in ("지휘", "패시브") and g: sc += 1
             if pen: sc += pen.get(k, 0)
             sy = synergy_map()
