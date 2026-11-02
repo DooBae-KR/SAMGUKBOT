@@ -280,10 +280,11 @@ def fmt_snap(d):
     except Exception: return d or "알 수 없음"
 
 
-def roster_load_db(gid):
-    """sam_emp(사람) + sam_emp_stat(가장 최근 날짜 수치)로 그 서버의 명단을 메모리에 올린다."""
+def roster_build_db(gid, snap=None):
+    """sam_emp(사람) + sam_emp_stat(snap 날짜, 없으면 가장 최근 날짜 수치)로 명단을 만든다. → (by, members, jobs, 기준일)"""
     emp = _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid,name,job,extra&limit=5000") or []
-    last = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&select=snap_date&order=snap_date.desc&limit=1") or []
+    if snap: last = [{"snap_date": snap}]
+    else: last = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&select=snap_date&order=snap_date.desc&limit=1") or []
     st = {}
     if last:
         for r in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=eq.{last[0]['snap_date']}&select=*&limit=5000") or []: st[r["cid"]] = r
@@ -295,6 +296,26 @@ def roster_load_db(gid):
         members.append({"_c": e["cid"], "n": e.get("name") or "", "j": job, "g": (e.get("extra") or {}).get("조별", ""), "r": x.get("title") or "",
                         "p": x.get("prosperity") or 0, "m": x.get("war_merit") or 0, "c": x.get("contribution") or 0, "s": x.get("siege_count") or 0,
                         "reg": x.get("camp") or "", "x": x.get("camp_x") or 0, "y": x.get("camp_y") or 0, "t": 0})
+    return by, members, jobs, (str(last[0]["snap_date"]) if last else "")
+
+
+def roster_snap_dates(gid, n=6):
+    try: return sorted({str(r["snap_date"]) for r in (_sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&select=snap_date&order=snap_date.desc&limit=3000") or [])}, reverse=True)[:n]
+    except Exception: return []
+
+
+def parse_snap(v):
+    """'261102' · '20261102' · '2026-11-02' · '26.11.02' → 'YYYY-MM-DD'. 읽지 못하면 None."""
+    d = re.sub(r"\D", "", str(v or ""))
+    if len(d) == 6: d = "20" + d
+    if len(d) != 8: return None
+    try: return datetime.date(int(d[:4]), int(d[4:6]), int(d[6:])).isoformat()
+    except ValueError: return None
+
+
+def roster_load_db(gid):
+    """sam_emp(사람) + sam_emp_stat(가장 최근 날짜 수치)로 그 서버의 명단을 메모리에 올린다."""
+    by, members, jobs, _ = roster_build_db(gid)
     tok = _CTX.set(gid)
     try: rs = dict(db_load().get("res") or {})                      # 관리 페이지에서 등록한 예비 인원도 명단에 포함(직위 '예비')
     finally: _CTX.reset(tok)
@@ -2120,11 +2141,12 @@ def _med(a):
     return 0 if not n else (a[n // 2] if n % 2 else (a[n // 2 - 1] + a[n // 2]) / 2)
 
 
-def activity_calc(gid, members, tset, skip=()):
+def activity_calc(gid, members, tset, skip=(), upto=None):
     """sam_emp_stat 날짜별 주간 누적값 → 일 증가분(주 리셋 시 값 자체) → 제외일/경고/쟁 미참여/점수. members 순서대로 dict 목록(없으면 None)."""
     if not SB_ON: return None
-    since = (datetime.datetime.utcnow() + datetime.timedelta(hours=9) - datetime.timedelta(days=ACT_DAYS + 7)).strftime("%Y-%m-%d")
-    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}&select=cid,snap_date,war_merit,contribution,prosperity,total_merit,total_contribution&order=snap_date.asc&limit=100000") or []
+    base = datetime.date.fromisoformat(upto) if upto else (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+    since = (base - datetime.timedelta(days=ACT_DAYS + 7)).isoformat()
+    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}" + (f"&snap_date=lte.{upto}" if upto else "") + "&select=cid,snap_date,war_merit,contribution,prosperity,total_merit,total_contribution&order=snap_date.asc&limit=100000") or []
     by = {}
     for r in rows: by.setdefault(r["cid"], []).append(r)
     D = datetime.date.fromisoformat
@@ -2187,19 +2209,21 @@ def activity_calc(gid, members, tset, skip=()):
     return {"dates": [d[5:] for d in dates], "quiet": [d[5:] for d in quiet], "rows": out, "n": len(valid)}
 
 
-def render_html(tok=None):
+def render_html(tok=None, snap=None):
     """현재 명단/톡방 데이터로 상황판 HTML 문자열을 만든다. 데이터가 없으면 None. tok이 있으면(간부 링크) 톡방 관리 탭이 켜진다."""
     if not roster.members: return None
     tpl = (Path(__file__).parent / "dashboard_template.html").read_text("utf-8")
+    src_members = roster.members
+    if snap: src_members = roster_build_db(cur_gid(), snap)[1]
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
     names, tdate, managed = talk_get(); tset = set(names)
-    D = [{**d, "t": 1 if d["n"] in tset else 0} for d in roster.members]
+    D = [{**d, "t": 1 if d["n"] in tset else 0} for d in src_members]
     gid = cur_gid(); alts = {}
     if SB_ON:
         try: alts = {r["alt_cid"]: r["main_cid"] for r in (_sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,main_cid&limit=100000") or [])}
         except Exception: log.exception("부계정 목록 조회 실패")
     act = None
-    try: act = activity_calc(gid, D, tset, set(alts))
+    try: act = activity_calc(gid, D, tset, set(alts), upto=snap)
     except Exception: log.exception("액티브 계산 실패")
     cn = {d.get("_c"): d for d in D}
     for i, d in enumerate(D):
@@ -2209,7 +2233,7 @@ def render_html(tok=None):
         if m is not None and m is not d: m.setdefault("alts", []).append(d["n"])
     D = [d for d in D if not (d.get("_c") in alts and alts[d["_c"]] in cn and alts[d["_c"]] != d["_c"])]
     for d in D: d.pop("_c", None)
-    cfg = {"rosterFile": roster.src or "명단", "rosterDate": roster_snap_date(gid) or today,
+    cfg = {"rosterFile": roster.src or "명단", "rosterDate": snap or roster_snap_date(gid) or today,
            "talkFile": ("대시보드 톡방 관리" if managed else "구글 시트 톡방참여자 탭") if names else "없음", "talkDate": tdate or today, "graceEnd": GRACE_END,
            "act": ({"dates": act["dates"], "quiet": act["quiet"], "n": act["n"], "warn": ACT_WARN, "need": ACT_ACTIVE} if act and act["n"] else None)}
     if tok: cfg.update(edit=True, tok=tok, talkNames=sorted(names))
@@ -2274,7 +2298,8 @@ def hr_parse(t):
 async def web_hr(request):
     gid = hr_parse(request.query.get("t")); set_gid(gid)
     if gid is None: return web.Response(status=403, text="링크가 만료되었거나 올바르지 않습니다. 디스코드에서 /인사 를 다시 입력해 주세요.")
-    html = await asyncio.to_thread(lambda: (set_gid(gid), render_html(request.query.get("t")))[1])
+    snap = parse_snap(request.query.get("d")) if request.query.get("d") else None
+    html = await asyncio.to_thread(lambda: (set_gid(gid), render_html(request.query.get("t"), snap))[1])
     if html is None: return web.Response(status=503, text="명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
     return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
@@ -4319,14 +4344,24 @@ async def cmd_admin_page(it: discord.Interaction):
     await it.response.send_message(f"🛠️ 관리 페이지 (본인 전용 · {ADM_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/admin?t={adm_token(it.user.id, exp, it.guild_id)}", ephemeral=True)
 
 
-@bot.tree.command(name="인사", description="[간부] 인사데이터(상황판) 링크를 받습니다")
-async def hr_link(it: discord.Interaction):
+@bot.tree.command(name="인사", description="[간부] 인사데이터(상황판) 링크를 받습니다 (기준일을 넣으면 그날 데이터)")
+@app_commands.describe(기준일="보고 싶은 날짜 예) 261102 (비우면 가장 최근 데이터)")
+async def hr_link(it: discord.Interaction, 기준일: str = ""):
     if not staff_ok(it, "/인사"): return await it.response.send_message(noperm_text(it), ephemeral=True)
     hc = discord.utils.get(it.guild.text_channels, name=HRINFO_CH) if it.guild else None
     if hc is not None and it.channel_id != hc.id: return await it.response.send_message(f"`/인사`는 간부 전용 {hc.mention} 채널에서 사용해 주세요.", ephemeral=True)
     if not roster.members: return await it.response.send_message("명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", ephemeral=True)
-    exp = int(time.time()) + HR_HOURS * 3600; snap = await asyncio.to_thread(roster_snap_date, cur_gid())
-    await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp, cur_gid())}\n📅 **기준일 {fmt_snap(snap)}** · 멤버 {len(roster.members)}명 기준", ephemeral=True)
+    gid = cur_gid(); want = None
+    if 기준일.strip():
+        want = parse_snap(기준일)
+        if not want: return await it.response.send_message("날짜를 읽지 못했습니다. 예) `/인사 261102` (년월일 6자리)", ephemeral=True)
+        ex = await asyncio.to_thread(lambda: _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=eq.{want}&select=cid&limit=1") or [])
+        if not ex:
+            near = ", ".join(d[2:].replace("-", "") for d in await asyncio.to_thread(roster_snap_dates, gid, 6)) or "없음"
+            return await it.response.send_message(f"**{fmt_snap(want)}** 데이터가 없습니다. 있는 날짜(최근순): {near}", ephemeral=True)
+    exp = int(time.time()) + HR_HOURS * 3600; snap = want or await asyncio.to_thread(roster_snap_date, gid)
+    url = f"{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp, gid)}" + (f"&d={want}" if want else "")
+    await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{url}\n📅 **기준일 {fmt_snap(snap)}**" + (" (지정한 날짜)" if want else "") + f" · 멤버 {len(roster.members)}명 기준", ephemeral=True)
 
 
 @bot.tree.command(name="인증해제", description="[관리자] CID의 인증 기록을 지우고 실패 횟수를 초기화합니다(재인증 허용)")
