@@ -948,6 +948,7 @@ class Bot(discord.Client):
             await verify_channel(hg); await log_channel(hg); await inquiry_channel(hg)                                # 우리 서버도 다른 서버와 똑같이 #인증 채널 사용(없으면 생성)
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
+        asyncio.create_task(setting_backfill())
         for g in list(self.guilds):                                  # 아직 등록 전인 서버에는 시작 가이드(등록·인사파일 방법)를 올려 둔다
             if g.id != GUILD_ID and not licensed(g.id):
                 try: await start_post(g)
@@ -1170,7 +1171,58 @@ def ally_set(gid, name, server):
     finally: _CTX.reset(tok)
 
 
-async def pm_setup_guild(gid):
+SETTING_CH = "setting"                                           # 디스코드는 채널 이름을 소문자로 바꿔 저장한다(SETTING → setting)
+SETTING_PATH = DB_PATH.with_name("setting.json")
+
+
+async def setting_channel(g, uid=None, force=False):
+    """서버 설정자(등록자)와 관리자·봇만 볼 수 있는 실험용 #setting 채널. 한 번 만든 뒤 관리자가 지우면 force 없이는 다시 만들지 않는다."""
+    me = g.me
+    if me is None: return None
+    tok = _CTX.set(g.id)
+    try: rec = dict(store_get("setting", SETTING_PATH, {}) or {})
+    finally: _CTX.reset(tok)
+    ch = discord.utils.get(g.text_channels, name=SETTING_CH)
+    if ch is None and rec.get("ch") and not force: return None
+    if ch is None:
+        topic = "서버 설정자 전용 실험 채널 — 봇 명령을 마음껏 써 보세요 (서버 관리자만 볼 수 있습니다)"; cat = await bot_cat(g)
+        m = g.get_member(int(uid)) if uid else None
+        ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
+        if m is not None: ow[m] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        try: ch = await g.create_text_channel(SETTING_CH, overwrites=ow, topic=topic, category=cat, reason="서버 설정자 실험 채널")
+        except Exception as e1:
+            try:
+                ch = await g.create_text_channel(SETTING_CH, topic=topic, category=cat, reason="서버 설정자 실험 채널")
+                try: await ch.set_permissions(g.default_role, view_channel=False)
+                except Exception as e3: log.warning("setting 채널 비공개 설정 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e3)
+            except Exception as e2: log.warning("setting 채널 생성 실패 서버=%s 1차=%r 2차=%r", g.id, e1, e2); return None
+        try:
+            who = f"{m.mention} 님, " if m is not None else ""
+            await ch.send(f"🧪 **서버 설정자 실험실 (#{SETTING_CH})**\n{who}여기서 봇 기능을 먼저 써 보며 서버를 설정해 보세요. 이 채널은 서버 관리자와 설정자만 볼 수 있습니다.\n"
+                          "• `/명령어` — 쓸 수 있는 명령어 목록\n• `/명단업데이트` — 인사 파일 올리기\n• `/인증패널`, `/공성`, `/정철설정` 등을 여기서 먼저 시험해 보세요.\n"
+                          "⚠️ 명단·인증·정철처럼 데이터를 바꾸는 명령은 **실제 서버에 그대로 반영**됩니다. (이 채널에서 쓴 공개 답변만 다른 사람에게 안 보이는 것입니다)",
+                          allowed_mentions=discord.AllowedMentions(users=True))
+        except Exception: log.warning("setting 채널 안내 글 실패 %s", g.id, exc_info=True)
+        def sv():
+            t = _CTX.set(g.id)
+            try: store_set("setting", SETTING_PATH, {"ch": ch.id})
+            finally: _CTX.reset(t)
+        await asyncio.to_thread(sv)
+    return ch
+
+
+async def setting_backfill():
+    """이미 등록된 서버 중 #setting 채널을 아직 만든 적 없는 곳에 한 번씩 만들어 준다(등록자를 설정자로)."""
+    for gid in sorted(LICENSED - {GUILD_ID}):
+        g = bot.get_guild(gid)
+        if g is None: continue
+        try:
+            rows = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?guild_id=eq.{gid}&status=eq.approved&select=discord_id&order=requested_at.asc&limit=1") or []
+            await setting_channel(g, rows[0]["discord_id"] if rows else None)
+        except Exception: log.warning("setting 채널 보충 실패 %s", gid, exc_info=True)
+
+
+async def pm_setup_guild(gid, uid=None):
     """승인된 서버에 기본 역할(동맹원·간부·외교관)을 만든다. → 안내 문구"""
     g = bot.get_guild(gid)
     if g is None: return "봇이 서버에 없어 역할을 만들지 못했습니다."
@@ -1179,8 +1231,8 @@ async def pm_setup_guild(gid):
         if discord.utils.get(g.roles, name=nm): continue
         try: await g.create_role(name=nm, reason="동맹 등록 — 기본 역할 생성"); made.append(nm)
         except Exception: fail.append(nm)
-    vc = await verify_channel(g); await log_channel(g); await inquiry_channel(g)
-    out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)")
+    vc = await verify_channel(g); await log_channel(g); await inquiry_channel(g); sc = await setting_channel(g, uid, force=True)
+    out = (f"역할 생성: {', '.join(made)}" if made else "역할은 이미 있습니다.") + (f" / 인증 채널: #{vc.name}" if vc else " / 인증 채널을 만들지 못했습니다(봇에 '채널 관리' 권한 필요)") + (f" / 실험 채널: #{sc.name}" if sc else "")
     return out + (f" / 생성 실패(봇에 '역할 관리' 권한 필요): {', '.join(fail)}" if fail else "")
 
 
@@ -1197,7 +1249,7 @@ async def pm_decide(it: discord.Interaction, cid):
     if ok:
         PERM.add((gid, uid)); LICENSED.add(gid)
         if row.get("ally_name") and row.get("game_server"): await asyncio.to_thread(ally_set, gid, row["ally_name"], row["game_server"])
-        extra = await pm_setup_guild(gid)
+        extra = await pm_setup_guild(gid, uid)
         asyncio.create_task(start_finish(bot.get_guild(gid)))
     else:
         PERM.discard((gid, uid))
@@ -1231,7 +1283,7 @@ class AllyApplyModal(CtxModal, title="동맹 등록"):
         row = {"guild_id": gid, "discord_id": uid, "guild_name": it.guild.name, "user_name": str(it.user), "reason": self.reason.value[:200],
                "ally_name": nm, "game_server": sv, "status": "approved", "requested_at": now, "decided_at": now, "decided_by": uid}
         await asyncio.to_thread(_sb_req, "POST", "sam_perm?on_conflict=guild_id,discord_id", [row], "resolution=merge-duplicates,return=minimal")
-        PERM.add((gid, uid)); LICENSED.add(gid); await asyncio.to_thread(ally_set, gid, nm, sv); extra = await pm_setup_guild(gid)
+        PERM.add((gid, uid)); LICENSED.add(gid); await asyncio.to_thread(ally_set, gid, nm, sv); extra = await pm_setup_guild(gid, uid)
         asyncio.create_task(start_finish(it.guild))
         try: await lv_send(it.guild, f"🏷️ **동맹 등록** — {it.user.mention} ({it.user}) · {sv}서버 · {nm}")
         except Exception: log.exception("동맹 등록 로그 실패")
