@@ -413,6 +413,7 @@ class VerifyModal(CtxModal, title="연맹 인증"):
         if not uid.isdigit():                                              # 닉네임 등을 넣은 경우는 실패 횟수에 넣지 않고 안내만
             return await it.response.send_message("❌ CID는 **숫자**입니다. 닉네임이 아니라 게임 내 캐릭터 ID(숫자)를 입력해 주세요. (실패 횟수에는 포함되지 않았습니다)", ephemeral=True)
         if bl_get(uid, db):                                                 # 블랙리스트: 인증 차단(실패 횟수에는 넣지 않음) + 관리자 알림
+            asyncio.create_task(asyncio.to_thread(auth_log, it.guild_id, did, uid, False, "blacklist"))
             await it.response.send_message("❌ 인증할 수 없는 CID입니다. 관리자에게 문의해 주세요.", ephemeral=True)
             return await bl_alert(it.guild, it.user, uid, "인증하기")
         try: info = roster.get(uid)
@@ -427,6 +428,7 @@ class VerifyModal(CtxModal, title="연맹 인증"):
             if not job or not nick: err = "명단에 직업/닉네임이 없습니다. 직업과 닉네임을 직접 입력해 주세요."
             elif jobs and job not in jobs: err = f"직업은 다음 중 하나여야 합니다: {', '.join(jobs)}"
         if err:
+            asyncio.create_task(asyncio.to_thread(auth_log, it.guild_id, did, uid, False, err))
             db["tries"][did] = tries + 1; db.setdefault("tried", {})[did] = uid; db_save(db)     # 어떤 CID로 실패했는지 기록(관리자가 CID로 초기화할 수 있게)
             return await it.response.send_message(f"❌ {err} (남은 시도 {MAX_TRIES - tries - 1}회)", ephemeral=True)
         await it.response.defer(ephemeral=True)
@@ -435,6 +437,7 @@ class VerifyModal(CtxModal, title="연맹 인증"):
             log.exception("역할 부여 실패"); return await it.followup.send(f"처리 중 오류: {e}", ephemeral=True)
         db = db_load()                                                  # 역할 부여(await) 중에 다른 사람의 실패 기록이 바뀌었을 수 있으니 최신본에 반영(덮어쓰기 방지)
         db["uid"][uid] = did; db.setdefault("nick", {})[uid] = nick; db["tries"].pop(did, None); db.get("tried", {}).pop(did, None); db_save(db)
+        asyncio.create_task(asyncio.to_thread(auth_log, it.guild_id, did, uid, True, ""))
         await it.followup.send(f"✅ 인증 완료! 별명: **{make_nick(job, nick)}** · 역할: **{role}**" + "\n📌 인증이 완료되면 `/추천`의 **장수 도감·전법** 탭에서 **보유한 장수와 전법을 등록**해 주세요~" + ("\n" + "\n".join(notes) if notes else ""), ephemeral=True)
 
 
@@ -975,6 +978,7 @@ class Bot(discord.Client):
         if not jc_loop.is_running(): jc_loop.start()
         if not donate_loop.is_running(): donate_loop.start()
         if not idle_loop.is_running(): idle_loop.start()
+        if not purge_loop.is_running(): purge_loop.start()
         hg = self.get_guild(GUILD_ID)
         if hg:
             if not discord.utils.get(hg.roles, name=RESERVE_ROLE):
@@ -2205,8 +2209,134 @@ def activity_calc(gid, members, tset, skip=(), upto=None):
         k = lambda L: sum(L[-7:]) / len(L[-7:])
         base = round(k(zm) * .55 + k(zc) * .35, 1); sc = round(base + (10 if m["n"] in tset else 0), 1)
         st = "쟁 미참여" if streak >= 2 else "경고" if streak == 1 else "액티브" if sc >= ACT_ACTIVE else "저조"
-        out.append({"days": days, "st": st, "sc": sc, "b": base, "warn": streak, "pg": pg})
+        out.append({"days": days, "st": st, "sc": sc, "b": base, "warn": streak, "pg": pg, "zm": round(k(zm), 1), "zc": round(k(zc), 1)})
     return {"dates": [d[5:] for d in dates], "quiet": [d[5:] for d in quiet], "rows": out, "n": len(valid)}
+
+
+# ---------- 이탈 위험(R) · 간첩 의심(S) · 공성위탁설정 필요 ----------
+# 시즌은 약 1.5달. 무훈은 전쟁에 참여해야만 오르고, 공헌은 적 토지 뒤집기·보급품 운송처럼 동맹에 도움이 되는 활동을 해야 오른다.
+# 그래서 한쪽만 낮고 다른 쪽이 높으면(전투형/기여형) 위험으로 보지 않고, 둘 다 낮을 때(미활동형)만 크게 본다.
+RISK_W = {"core": 45, "trend": 15, "war": 20, "stall": 10, "talk": 10}
+SPY_W = {"new": 30, "auth": 35, "hist": 15}              # 주둔지 좌표 신호(20)는 성지 데이터가 끝나면 추가
+SPY_MIN, SPY_NEED = 60, 2                                 # '간첩 의심' 표시: 점수 60 이상 + 신호 2개 이상
+LOG_KEEP_DAYS = 30                                        # 인증 시도 로그·이력 보관 기간
+SGW_LOW = 0.3                                             # 주 공성 횟수가 동맹 중앙값의 30% 미만이면 빈도 낮음
+NEW_DAYS = 14
+SPYPERM_PATH = DB_PATH.with_name("spyperm.json")
+
+
+def spy_ids(gid):
+    tok = _CTX.set(gid)
+    try: return {int(x) for x in ((store_get("spyperm", SPYPERM_PATH, {}) or {}).get("ids") or []) if str(x).isdigit()}
+    finally: _CTX.reset(tok)
+
+
+def log_rows(table, rows):
+    """인증 시도 로그·이력 저장(실패해도 본 작업에는 영향 없음). 스레드에서 호출."""
+    if not (SB_ON and rows): return
+    try: _sb_req("POST", table, rows, prefer="return=minimal")
+    except Exception: log.warning("%s 저장 실패", table, exc_info=True)
+
+
+def auth_log(gid, did, cid, ok, reason=""):
+    log_rows("sam_auth_log", [{"guild_id": gid, "discord_id": int(did), "cid": str(cid or "")[:30], "ok": bool(ok), "reason": reason[:60]}])
+
+
+def purge_logs():
+    """보관 기간(30일)이 지난 인증 시도 로그·이력을 지운다."""
+    if not SB_ON: return 0
+    lim = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=LOG_KEEP_DAYS)).isoformat()
+    n = 0
+    for t in ("sam_auth_log", "sam_emp_event"):
+        try:
+            r = _sb_req("DELETE", f"{t}?at=lt.{urllib.parse.quote(lim)}", prefer="return=representation") or []; n += len(r)
+        except Exception: log.warning("%s 정리 실패", t, exc_info=True)
+    return n
+
+
+def _mean(a): return sum(a) / len(a) if a else 0
+
+
+def risk_calc(gid, D, act, tset, alts, snap=None):
+    """D(명단 dict 목록)와 activity_calc 결과로 구성원별 {r, rr, ty, sg, sgv, sp} 를 만든다. 계산이 안 되는 항목은 None."""
+    base = datetime.date.fromisoformat(snap) if snap else (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+    since = (base - datetime.timedelta(days=35)).isoformat(); upto = base.isoformat()
+    first, sg_rows = {}, []
+    try:
+        for r in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=lte.{upto}&select=cid,snap_date&order=snap_date.asc&limit=100000") or []:
+            first.setdefault(r["cid"], r["snap_date"])
+        sg_rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}&snap_date=lte.{upto}&select=cid,snap_date,siege_count&order=snap_date.asc&limit=100000") or []
+    except Exception: log.exception("위험도 기초 데이터 조회 실패")
+    gfirst = min(first.values()) if first else upto
+    hist_ok = (base - datetime.date.fromisoformat(gfirst)).days >= NEW_DAYS               # 이력이 14일 이상 쌓였을 때만 '신규' 판단
+    isnew = lambda c: hist_ok and first.get(c) and (base - datetime.date.fromisoformat(first[c])).days <= NEW_DAYS and first[c] > gfirst
+    # 공성위탁: 최근 완료된 두 주(월~일)의 마지막 값을 동맹 중앙값과 비교
+    mon = lambda d: datetime.date.fromisoformat(d) - datetime.timedelta(days=datetime.date.fromisoformat(d).weekday())
+    cur_mon = base - datetime.timedelta(days=base.weekday())
+    wk = {}
+    for r in sg_rows:
+        w = mon(r["snap_date"])
+        if w < cur_mon: wk.setdefault(w, {})[r["cid"]] = r.get("siege_count") or 0           # 같은 주 안에서는 뒤 날짜 값이 덮어씀
+    weeks = sorted(wk)[-2:]
+    wmed = {w: _med(list(wk[w].values())) for w in weeks}
+    # 인증 이상 · 가입/이탈 이력(30일)
+    lim = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=LOG_KEEP_DAYS)).isoformat(); flag, ev = set(), {}
+    try:
+        per = {}
+        for r in _sb_req("GET", f"sam_auth_log?guild_id=eq.{gid}&at=gte.{urllib.parse.quote(lim)}&select=discord_id,cid,ok,reason&limit=20000") or []:
+            q = per.setdefault(str(r["discord_id"]), {"f": 0, "c": set(), "bl": 0}); q["c"].add(r.get("cid") or "")
+            if not r.get("ok"): q["f"] += 1
+            if r.get("reason") == "blacklist": q["bl"] += 1
+        flag = {d for d, q in per.items() if q["f"] >= 3 or len(q["c"]) >= 3 or q["bl"]}
+        for r in _sb_req("GET", f"sam_emp_event?guild_id=eq.{gid}&at=gte.{urllib.parse.quote(lim)}&select=cid,kind&limit=20000") or []:
+            ev.setdefault(r["cid"], []).append(r["kind"])
+    except Exception: log.exception("로그 조회 실패")
+    did_of = (db_load().get("uid") or {})
+    ps = sorted(m.get("p") or 0 for m in D); pr = lambda v: sum(1 for x in ps if x <= v) / max(1, len(ps)) * 100
+    out = []
+    for i, m in enumerate(D):
+        cid = m.get("_c"); a = (act["rows"][i] if act else None); res = {"r": None, "rr": [], "ty": "", "sg": 0, "sgv": [], "sp": None}
+        vd = [x for x in (a or {}).get("days", []) if not x["x"]]
+        if a and a.get("sc") is not None and len(vd) >= 3:
+            zm, zc = a.get("zm", 50), a.get("zc", 50); rm, rc = (100 - zm) / 100, (100 - zc) / 100
+            res["ty"] = "복합형" if zm >= 50 and zc >= 50 else "전투형" if zm >= 50 else "기여형" if zc >= 50 else "미활동형"
+            W, S, why = {}, {}, []
+            W["core"] = RISK_W["core"]; S["core"] = .7 * min(rm, rc) + .3 * max(rm, rc)
+            if len(vd) >= 6:
+                v = [x["m"] + x["c"] for x in vd]; p3 = _mean(v[-6:-3])
+                if p3 > 0: W["trend"] = RISK_W["trend"]; S["trend"] = max(0, min(1, (0.8 - _mean(v[-3:]) / p3) / 0.6))
+            W["war"] = RISK_W["war"]; S["war"] = min(a.get("warn", 0), 3) / 3 * rc
+            if a.get("pg") is not None: W["stall"] = RISK_W["stall"]; S["stall"] = 1 if (a["pg"] <= 0 and all(x["m"] == 0 and x["c"] == 0 for x in vd[-3:])) else 0
+            if tset: W["talk"] = RISK_W["talk"]; S["talk"] = 0 if m.get("n") in tset else 1
+            res["r"] = round(100 * sum(W[k] * S[k] for k in W) / sum(W.values()))
+            if rm >= .7: why.append("무훈 하위(전쟁 참여 부족)")
+            if rc >= .7: why.append("공헌 하위(적 토지·보급 활동 부족)")
+            if S.get("trend", 0) >= .5: why.append("최근 3일 활동 하락")
+            if a.get("warn", 0) >= 2 and rc >= .5: why.append(f"일 무훈 {ACT_WARN:,} 이하 {a['warn']}일 연속")
+            if S.get("stall"): why.append("번영·무훈·공헌 모두 정체")
+            if S.get("talk"): why.append("톡방 미참여")
+            res["rr"] = why
+        # 공성위탁설정 필요(2주 연속 낮음=2, 지난주만 낮음=1)
+        excl = cid in alts or (m.get("r") or "").replace(" ", "") in RESERVE_TITLES or isnew(cid) or (first.get(cid) and first[cid] > upto)
+        if weeks and not excl:
+            vals = [wk[w].get(cid) for w in weeks]
+            low = [(v is not None and wmed[w] > 0 and v < SGW_LOW * wmed[w]) for w, v in zip(weeks, vals)]
+            if low and low[-1]: res["sg"] = 2 if (len(low) == 2 and low[0]) else 1
+            res["sgv"] = [v for v in vals]
+        # 간첩 의심
+        W2, S2, why2 = {}, {}, []
+        if hist_ok: W2["new"] = SPY_W["new"]; S2["new"] = 1 if (isnew(cid) and pr(m.get("p") or 0) >= 70 and res["ty"] == "미활동형" and (a or {}).get("zm", 100) <= 25 and (a or {}).get("zc", 100) <= 25) else 0
+        W2["auth"] = SPY_W["auth"]; S2["auth"] = 1 if str(did_of.get(cid, "")) in flag else 0
+        W2["hist"] = SPY_W["hist"]; e = ev.get(cid, []); S2["hist"] = 1 if (e.count("join") + e.count("rejoin") >= 2 or e.count("rename") >= 2 or ("rejoin" in e)) else 0
+        n = sum(S2.values())
+        if n:
+            if S2.get("new"): why2.append("가입 직후 번영 높고 무훈·공헌 하위")
+            if S2.get("auth"): why2.append("인증 이상(실패·여러 CID 시도·차단 CID)")
+            if S2.get("hist"): why2.append("가입·이탈 반복 또는 닉네임 변경")
+            sc = round(100 * sum(W2[k] * S2[k] for k in W2) / sum(W2.values()))
+            res["sp"] = {"s": sc, "n": n, "rs": why2, "lv": 3 if (sc >= SPY_MIN and n >= SPY_NEED) else 2 if sc >= 50 else 1 if sc >= 30 else 0}
+        out.append(res)
+    return out
 
 
 def render_html(tok=None, snap=None):
@@ -2225,15 +2355,27 @@ def render_html(tok=None, snap=None):
     act = None
     try: act = activity_calc(gid, D, tset, set(alts), upto=snap)
     except Exception: log.exception("액티브 계산 실패")
+    rk = None
+    try: rk = risk_calc(gid, D, act, tset, alts, snap)
+    except Exception: log.exception("이탈 위험·간첩 의심 계산 실패")
+    spy_ok = False
+    try:
+        vu = int(str(tok).split(".")[0]) if tok else 0
+        spy_ok = bool(vu) and (vu in spy_ids(gid) or adm_is_admin(vu, gid))
+    except Exception: spy_ok = False
     cn = {d.get("_c"): d for d in D}
     for i, d in enumerate(D):
         if act and act["rows"][i]: d["a"] = act["rows"][i]
+        if rk and rk[i]:
+            x = dict(rk[i])
+            if not spy_ok: x["sp"] = None
+            d["rk"] = x
     for d in D:                                             # 부계정은 통계에서 빼고, 본계 줄에 이름만 붙여 본계 판정을 따라간다
         m = cn.get(alts.get(d.get("_c")))
         if m is not None and m is not d: m.setdefault("alts", []).append(d["n"])
     D = [d for d in D if not (d.get("_c") in alts and alts[d["_c"]] in cn and alts[d["_c"]] != d["_c"])]
     for d in D: d.pop("_c", None)
-    cfg = {"rosterFile": roster.src or "명단", "rosterDate": snap or roster_snap_date(gid) or today,
+    cfg = {"spy": spy_ok, "rosterFile": roster.src or "명단", "rosterDate": snap or roster_snap_date(gid) or today,
            "talkFile": ("대시보드 톡방 관리" if managed else "구글 시트 톡방참여자 탭") if names else "없음", "talkDate": tdate or today, "graceEnd": GRACE_END,
            "act": ({"dates": act["dates"], "quiet": act["quiet"], "n": act["n"], "warn": ACT_WARN, "need": ACT_ACTIVE} if act and act["n"] else None)}
     if tok: cfg.update(edit=True, tok=tok, talkNames=sorted(names))
@@ -2502,7 +2644,7 @@ def adm_state(gid):
         r["dn"] = str(m) if m else ""; r["ok"] = bool(r["d"])
     reserve = sorted(rsv.values(), key=lambda x: (x["ok"], x["n"]))
     blk = sorted(({"c": c, "n": v.get("name", ""), "memo": v.get("memo", ""), "t": v.get("t", ""), "ok": bool(did_of.get(c))} for c, v in (db.get("bl") or {}).items()), key=lambda x: x["c"])
-    return {"blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "now": int(time.time())}
+    return {"blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "spy": [{"id": str(i), "name": (lambda m: str(m) if m else "")((bot.get_guild(gid).get_member(i) if bot.get_guild(gid) else None))} for i in sorted(spy_ids(gid))], "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
@@ -2559,6 +2701,25 @@ async def web_admin_api(request):
             d = str(body.get("id", "")).strip()
             if not (d.isascii() and d.isdigit() and 15 <= len(d) <= 20): raise ValueError("디스코드 사용자 ID(숫자 17~19자리)를 입력해 주세요.")
             msg = f"✅ {await adm_grant(gid, int(d), uid)} 님에게 관리자 권한을 부여했습니다."
+        elif op == "spy_add":
+            d = str(body.get("id", "")).strip()
+            if not (d.isascii() and d.isdigit() and 15 <= len(d) <= 20): raise ValueError("디스코드 사용자 ID(숫자 17~19자리)를 입력해 주세요.")
+            def sa():
+                tk = _CTX.set(gid)
+                try:
+                    cur = dict(store_get("spyperm", SPYPERM_PATH, {}) or {}); ids = [str(x) for x in (cur.get("ids") or [])]
+                    if d not in ids: ids.append(d)
+                    cur["ids"] = ids; store_set("spyperm", SPYPERM_PATH, cur)
+                finally: _CTX.reset(tk)
+            await asyncio.to_thread(sa); msg = "✅ 간첩 의심 열람 권한을 부여했습니다."
+        elif op == "spy_del":
+            d = str(body.get("id", "")).strip()
+            def sd():
+                tk = _CTX.set(gid)
+                try:
+                    cur = dict(store_get("spyperm", SPYPERM_PATH, {}) or {}); cur["ids"] = [str(x) for x in (cur.get("ids") or []) if str(x) != d]; store_set("spyperm", SPYPERM_PATH, cur)
+                finally: _CTX.reset(tk)
+            await asyncio.to_thread(sd); msg = "✅ 간첩 의심 열람 권한을 뺐습니다."
         elif op == "admin_remove":
             d = str(body.get("id", "")).strip()
             if not (d.isascii() and d.isdigit()): raise ValueError("사용자 ID가 올바르지 않습니다.")
@@ -2790,6 +2951,15 @@ def hr_import(now=None, rows=None, gid=GUILD_ID):
     back = [r["cid"] for r in (_sb_req("GET", f"sam_emp_left?guild_id=eq.{gid}&select=cid&limit=100000") or []) if r["cid"] in merged]
     for i in range(0, len(back), 100):                              # 다시 명단에 나타난 사람은 이탈자 표에서 뺀다
         _sb_req("DELETE", f"sam_emp_left?guild_id=eq.{gid}&cid=in.({','.join(back[i:i + 100])})", prefer="return=minimal")
+    if old:                                                          # 가입·이탈·복귀·닉네임 변경 이력(30일 보관). 첫 업로드(old 없음)는 전원이 신규라 기록하지 않는다
+        try:
+            oldn = {r["cid"]: (r.get("name") or "") for r in old}; evs = []
+            for cid, g in merged.items():
+                if cid not in oldn: evs.append({"guild_id": gid, "cid": cid, "kind": "rejoin" if cid in back else "join", "detail": {"name": g.get("멤버", "")}})
+                elif g.get("멤버") and oldn[cid] and g["멤버"] != oldn[cid]: evs.append({"guild_id": gid, "cid": cid, "kind": "rename", "detail": {"from": oldn[cid], "to": g["멤버"]}})
+            evs += [{"guild_id": gid, "cid": r["cid"], "kind": "leave", "detail": {"name": r.get("name") or ""}} for r in gone]
+            log_rows("sam_emp_event", evs)
+        except Exception: log.warning("이력 기록 실패", exc_info=True)
     out = [f"명단(sam_emp): 시트 {len(rows) - hi - 1}줄 → 중복 {dup}건 병합 → {len(ro)}명 (DB 총 {_sb_count('sam_emp', gid)}명)",
            f"인사 수치(sam_emp_stat): {snap} 기준 {len(st)}건 (DB 총 {_sb_count('sam_emp_stat', gid)}건)"]
     if moved: out.append(f"이탈자(sam_emp_left): {moved}명을 이탈 처리했습니다 — " + ", ".join(f"{r.get('name') or '-'}({r['cid']})" for r in gone[:8]) + (" 외" if moved > 8 else ""))
@@ -4774,6 +4944,14 @@ async def jc_tick():
                 await siege_notice(r, m)
         if changed: jc_save(st)
     except Exception: log.exception("정철 타이머 오류")
+
+
+@tasks.loop(hours=24)
+async def purge_loop():
+    try:
+        n = await asyncio.to_thread(purge_logs)
+        if n: log.info("보관 기간(%d일)이 지난 인증 로그·이력 %d건 삭제", LOG_KEEP_DAYS, n)
+    except Exception: log.exception("로그 정리 실패")
 
 
 @tasks.loop(seconds=30)

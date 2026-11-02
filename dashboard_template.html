@@ -118,11 +118,16 @@ const W_=a=>a.map(d=>d.i).join(',');
 const bar=(label,n,mx,color,who)=>`<div class="bar" data-w="${who}" data-t="${label}"><span>${label}</span><i style="width:${n/mx*100}%;background:${cv(color)}"></i><em>${n}</em></div>`;
 // ---------- 툴팁 ----------
 const tip=document.getElementById('tip');
+const rkTip=d=>{const k=d.rk;if(!k)return'';let h='';
+  if(k.r!=null)h+=`<div class="t" style="margin-top:6px">${k.ty} · 이탈 위험 ${k.r}${k.rr.length?' — '+k.rr.join(', '):''}</div>`;
+  if(k.sg)h+=`<div class="t">공성위탁설정 ${k.sg===2?'필요':'관찰'} · 지난 2주 공성 ${k.sgv.map(v=>v==null?'-':v).join(' / ')}회</div>`;
+  if(CFG.spy&&k.sp)h+=`<div class="t">${k.sp.lv===3?'간첩 의심':'간첩 의심 주의'} ${k.sp.s}점(신호 ${k.sp.n}개) — ${k.sp.rs.join(', ')}</div>`;
+  return h};
 function tipHTML(el){
   const ids=el.dataset.w?el.dataset.w.split(',').filter(x=>x!=='').map(Number):[];
   if(!ids.length)return el.dataset.t?`<b>${el.dataset.t}</b><div class="t">해당 유저 없음</div>`:'';
   if(ids.length===1){const d=D[ids[0]];
-    return `<b>${d.n}</b><div class="t">${d.ac||'집계 중'} · 등급 ${d.grade} · 점수 ${d.score.toFixed(1)}</div><div class="kv"><span>직업</span><span>${d.j}</span><span>직위 / 조</span><span>${d.r} / ${d.g}</span><span>번영</span><span>${f(d.p)}</span><span>주간 무훈</span><span>${f(d.m)}</span><span>주간 공헌</span><span>${f(d.c)}</span><span>최근 일 무훈</span><span>${lastM(d)==null?'-':f(lastM(d))}</span><span>지역</span><span>${d.reg||'재기'}</span><span>톡방</span><span>${d.t?'참여':'미참여'}</span></div>`;}
+    return `<b>${d.n}</b><div class="t">${d.ac||'집계 중'} · 등급 ${d.grade} · 점수 ${d.score.toFixed(1)}</div><div class="kv"><span>직업</span><span>${d.j}</span><span>직위 / 조</span><span>${d.r} / ${d.g}</span><span>번영</span><span>${f(d.p)}</span><span>주간 무훈</span><span>${f(d.m)}</span><span>주간 공헌</span><span>${f(d.c)}</span><span>최근 일 무훈</span><span>${lastM(d)==null?'-':f(lastM(d))}</span><span>지역</span><span>${d.reg||'재기'}</span><span>톡방</span><span>${d.t?'참여':'미참여'}</span></div>${rkTip(d)}`;}
   const L=ids.map(i=>D[i]).sort((a,b)=>b.score-a.score),MAX=36;
   return `${el.dataset.t?`<b>${el.dataset.t}</b>`:''}<div class="t">${ids.length}명 (점수 높은 순)</div><div class="nm">${L.slice(0,MAX).map(d=>`<span>${d.n}</span>`).join('')}</div>${L.length>MAX?`<div class="t" style="margin-top:4px">외 ${L.length-MAX}명</div>`:''}`;
 }
@@ -160,7 +165,9 @@ const COLS=[
  {h:'액티브 판정',s:d=>d.ac,f:d=>acTag(d.ac)},{h:'등급',s:d=>d.score,f:d=>`<span class="grade">${d.grade}</span>`},
  {h:'점수',n:1,s:d=>d.score,f:d=>d.score.toFixed(1)},{h:'최근 일 무훈',n:1,s:d=>lastM(d)==null?-1:lastM(d),f:d=>lastM(d)==null?'':f(lastM(d))},
  {h:'주간 무훈',n:1,s:d=>d.m,f:d=>f(d.m)},{h:'주간 공헌',n:1,s:d=>d.c,f:d=>f(d.c)},{h:'번영',n:1,s:d=>d.p,f:d=>f(d.p)},
- {h:'지역',s:d=>d.reg||'재기',f:d=>d.reg||'재기'},{h:'톡방',s:d=>d.t,f:d=>d.t?'참여':'비참여'},{h:'토돼지',s:d=>d.tok?1:0,f:d=>d.tok?acTag2('토돼지'):''}];
+ {h:'지역',s:d=>d.reg||'재기',f:d=>d.reg||'재기'},{h:'톡방',s:d=>d.t,f:d=>d.t?'참여':'비참여'},{h:'토돼지',s:d=>d.tok?1:0,f:d=>d.tok?acTag2('토돼지'):''},
+ {h:'활동유형',s:d=>d.rk?d.rk.ty:'',f:d=>d.rk?d.rk.ty:''},{h:'이탈 위험',n:1,s:d=>d.rk&&d.rk.r!=null?d.rk.r:-1,f:d=>d.rk&&d.rk.r!=null?d.rk.r:''},
+ {h:'공성위탁',s:d=>d.rk?d.rk.sg:0,f:d=>d.rk&&d.rk.sg?(d.rk.sg===2?'필요':'관찰'):''}].concat(CFG.spy?[{h:'간첩 의심',n:1,s:d=>d.rk&&d.rk.sp?d.rk.sp.s:-1,f:d=>d.rk&&d.rk.sp&&d.rk.sp.lv>=2?(d.rk.sp.lv===3?'간첩 의심 ':'주의 ')+d.rk.sp.s:''}]:[]);
 let M={ac:'',q:'',j:'',g:'',t:''};
 function tabRoster(){
   const opt=(l,a)=>`<option value="">${l}</option>`+a.map(x=>`<option>${x}</option>`).join('');
@@ -190,6 +197,9 @@ function tabIssues(){
   const A=CFG.act,I=[
    ...(A?[['쟁 미참여 인원',`판정일 연속 2일 일 무훈 ${f(A.warn)} 이하입니다. 상대가 없던 날은 뺐습니다.`,D.filter(d=>d.ac==='쟁 미참여')],['경고',`가장 최근 판정일 일 무훈이 ${f(A.warn)} 이하입니다. 하루 더 이어지면 쟁 미참여입니다.`,D.filter(d=>d.ac==='경고')]]:[]),
    ['토돼지',`번영 ${f(TOK_P)} 이상이고 번영은 계속 오르는데 주간 무훈·공헌이 하위 ${TOK_Q}%인 인원입니다.`,D.filter(d=>d.tok)],
+   ...(D.some(d=>d.rk&&d.rk.r!=null)?[['이탈 위험 높음','이탈 위험 점수 70 이상입니다. 무훈(전쟁 참여)과 공헌(적 토지 뒤집기·보급 운송)이 모두 낮거나 최근 활동이 크게 떨어진 인원입니다. 이름에 마우스를 올리면 사유가 나옵니다.',D.filter(d=>d.rk&&d.rk.r>=70)],['이탈 위험 주의','이탈 위험 점수 50~69입니다. 한쪽(무훈 또는 공헌)만 낮은 전투형·기여형은 점수가 낮게 나옵니다.',D.filter(d=>d.rk&&d.rk.r>=50&&d.rk.r<70)]]:[]),
+   ...(D.some(d=>d.rk&&d.rk.sgv&&d.rk.sgv.length)?[['공성위탁설정 필요','공성은 자동 집결이라 점수에는 쓰지 않습니다. 대신 최근 2주 연속 주 공성 횟수가 동맹 중앙값의 30% 미만인 인원입니다(가입 2주 이내·부계·예비 제외). 공성 위탁 설정을 안내해 주세요.',D.filter(d=>d.rk&&d.rk.sg===2)],['공성위탁 관찰','지난주 공성 횟수만 낮은 인원입니다. 2주 연속이면 필요 목록으로 올라갑니다.',D.filter(d=>d.rk&&d.rk.sg===1)]]:[]),
+   ...(CFG.spy?[['간첩 의심',`점수 60 이상이고 신호가 2개 이상 겹친 인원입니다. 확정이 아니라 간부가 먼저 확인할 대상이며, 자동 조치는 없습니다. 사유는 이름에 마우스를 올리면 나옵니다.`,D.filter(d=>d.rk&&d.rk.sp&&d.rk.sp.lv===3)],['간첩 의심 주의','신호 1개로 점수 50 이상이거나 점수 50~59입니다.',D.filter(d=>d.rk&&d.rk.sp&&d.rk.sp.lv===2)]]:[]),
    ['즉시 편성 대상','미편성이면서 공헌 1만 이상입니다.',D.filter(d=>d.g==='미편성'&&d.c>=10000)],
    ['편성 여부 확인','미편성이면서 이번 주 무훈이 없습니다. 톡방 참여자는 뺐습니다.',D.filter(d=>d.g==='미편성'&&d.m===0&&!d.t)],
    ['재기 중이지만 활동 있음','지역이 없지만 무훈이 있습니다. 이주를 안내할 대상입니다.',D.filter(d=>d.jaegi&&d.m>0)]];
@@ -221,6 +231,11 @@ function tabRules(){
    <tr><td>토돼지</td><td>번영 ${f(14e4)} 이상, 기록 기간 동안 번영이 증가, 주간 무훈과 공헌이 모두 동맹 하위 ${TOK_Q}%. 판정과 별개의 표시입니다.</td></tr>
    <tr><td>월요일</td><td>주간 리셋일입니다. 월요일 업로드 값은 이전 값과의 차이가 아니라 값 자체를 그날 증가분으로 보고 같은 기준으로 판정합니다.</td></tr>
    <tr><td>제외일</td><td>그날 동맹원 일 무훈 중앙값이 직전 평균의 30% 미만이면 상대가 없던 날로 보고 판정과 연속 일수에서 뺍니다. 제외일은 연속 일수를 끊지 않고 건너뜁니다.</td></tr></tbody></table></div></section>
+  <section class="blk"><h2 style="font-size:17px">이탈 위험 · 활동유형 · 공성위탁${CFG.spy?' · 간첩 의심':''}</h2><p class="lead">시즌은 약 1.5달입니다. 무훈은 전쟁에 참여해야 오르고, 공헌은 적 토지 뒤집기·보급품 운송처럼 동맹에 도움이 되는 활동을 해야 오릅니다. 그래서 둘 중 한쪽만 낮으면 위험으로 보지 않고, 둘 다 낮을 때 크게 봅니다.</p><div class="tw"><table class="rules"><tbody>
+   <tr><td>활동유형</td><td>무훈·공헌 점수가 각각 50 이상이면 복합형, 무훈만이면 전투형, 공헌만이면 기여형, 둘 다 미만이면 미활동형입니다.</td></tr>
+   <tr><td>이탈 위험(0~100)</td><td>활동 부족 45(둘 중 높은 쪽 기준) · 최근 3일 하락 15 · 무훈 5만 이하 연속일 20(공헌이 높으면 감소) · 번영·무훈·공헌 정체 10 · 톡방 미참여 10. 계산할 수 없는 항목은 빼고 100점으로 환산합니다. 30 관찰 · 50 주의 · 70 높음.</td></tr>
+   <tr><td>공성위탁설정 필요</td><td>공성은 자동 집결이라 점수에 쓰지 않습니다. 대신 최근 2주 연속 주 공성 횟수(일요일 값)가 동맹 중앙값의 30% 미만이면 필요, 지난주만이면 관찰입니다. 가입 2주 이내·부계·예비는 뺍니다.</td></tr>
+   ${CFG.spy?'<tr><td>간첩 의심</td><td>가입 직후 번영 상위 30%인데 무훈·공헌 하위 · 인증 이상(실패 3회 이상·여러 CID 시도·차단 CID) · 가입·이탈 반복 또는 닉네임 변경. 점수 60 이상이고 신호 2개 이상일 때만 표시합니다. 인증 로그와 이력은 30일 뒤 자동 삭제됩니다.</td></tr>':''}</tbody></table></div></section>
   <section class="blk"><h2 style="font-size:17px">점수</h2><p class="lead">등급은 점수 순위로 정합니다. 상위 10%는 S, 30%까지 A, 70%까지 B, 나머지는 C입니다.</p><div class="tw"><table class="rules"><tbody>
    <tr><td>일 무훈</td><td>${W.m}점. 그날 상위 3명을 뺀 평균·표준편차로 z점수를 구하고(−2~+2.5로 제한) 0~100으로 바꿔, 최근 7판정일 평균에 반영합니다.</td></tr>
    <tr><td>일 공헌</td><td>${W.c}점. 무훈과 같은 방식입니다.</td></tr>
