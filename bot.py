@@ -959,7 +959,7 @@ class Bot(discord.Client):
             refresh_talk()
         await asyncio.to_thread(lambda: (db_load(), jc_load()))      # 시트에 저장된 인증·정철 상태를 미리 불러옴
         await start_web()
-        self.add_view(VerifyView()); self.add_view(DipView()); self.add_view(InqView()); self.add_view(InqEscView()); self.add_view(InqResolveView()); self.add_view(InqRateView())
+        self.add_view(VerifyView()); self.add_view(DipView()); self.add_view(InqView()); self.add_view(InqEscView()); self.add_view(InqResolveView()); self.add_view(InqRateView()); self.add_view(WelcomeView())
         g = discord.Object(GUILD_ID)
         if OPEN_SERVERS:                                   # 다른 서버에서도 명령이 보이게 전역 등록(허가 안 된 서버는 /동맹등록만 가능)
             self.tree.clear_commands(guild=g); await self.tree.sync(guild=g); await self.tree.sync()
@@ -988,6 +988,7 @@ class Bot(discord.Client):
         try: await asyncio.to_thread(perm_refresh); log.info("승인된 관리자 %d명", len(PERM))
         except Exception: log.exception("승인 목록 로드 실패")
         asyncio.create_task(setting_backfill())
+        if WELCOME_GUILD and self.get_guild(WELCOME_GUILD): asyncio.create_task(welcome_post(self.get_guild(WELCOME_GUILD)))
         for g in list(self.guilds):                                  # 아직 등록 전인 서버에는 시작 가이드(등록·인사파일 방법)를 올려 둔다
             if g.id != GUILD_ID and not licensed(g.id):
                 try: await start_post(g)
@@ -3000,6 +3001,65 @@ def hr_import(now=None, rows=None, gid=GUILD_ID, reset=False, with_stat=True):
     return out, warn
 
 
+
+
+# ---------- 첫 이용 맹주 환영 + 만족도(예/아니오) ----------
+WELCOME_GUILD = int(os.environ.get("WELCOME_GUILD", "549866860741525504") or 0)      # 1번째로 이용한 서버(Lucy)
+WELCOME_UID = int(os.environ.get("WELCOME_UID", "486487805287989269") or 0)          # 그 서버 맹주(승인된 관리자)
+WELCOME_PATH = DB_PATH.with_name("welcome.json")
+
+
+class WelcomeView(CtxView):
+    def __init__(self): super().__init__(timeout=None)
+
+    async def _ans(self, it: discord.Interaction, yes: bool):
+        if it.user.id != WELCOME_UID: return await it.response.send_message("이 질문은 1번째로 이용해 주신 맹주님께 드린 것입니다.", ephemeral=True)
+        rec = await asyncio.to_thread(lambda: store_get("welcome", WELCOME_PATH, {}) or {})
+        if rec.get("answer"): return await it.response.send_message("이미 답해 주셨습니다. 감사합니다!", ephemeral=True)
+        rec.update(answer="yes" if yes else "no", answered=int(time.time()), by=it.user.id)
+        await asyncio.to_thread(store_set, "welcome", WELCOME_PATH, rec)
+        tail = "😊 만족해 주셔서 감사합니다! 앞으로도 더 좋아지도록 노력하겠습니다." if yes else "🙇 불편을 드려 죄송합니다. 어떤 점이 아쉬우셨는지 **문의함**에 남겨 주시면 바로 확인하겠습니다."
+        await it.response.edit_message(content=f"{it.message.content}\n\n**답변: {'예' if yes else '아니오'}**\n{tail}", view=None)
+        try:
+            ow = await bot.fetch_user(OWNER_ID) if OWNER_ID else None
+            if ow: await ow.send(f"📊 첫 이용 맹주({it.user}) 만족도 답변: **{'예 (만족)' if yes else '아니오 (불만족)'}** · 서버 {it.guild.name if it.guild else '-'}")
+        except Exception: log.warning("제작자 알림 실패", exc_info=True)
+        ch = await log_channel(it.guild, create=False) if it.guild else None
+        if ch:
+            try: await ch.send(f"📊 첫 이용 만족도: {'예' if yes else '아니오'} — {it.user}", allowed_mentions=discord.AllowedMentions.none())
+            except Exception: pass
+
+    @discord.ui.button(label="예", style=discord.ButtonStyle.success, emoji="👍", custom_id="wel_yes")
+    async def yes(self, it: discord.Interaction, _): await self._ans(it, True)
+
+    @discord.ui.button(label="아니오", style=discord.ButtonStyle.danger, emoji="👎", custom_id="wel_no")
+    async def no(self, it: discord.Interaction, _): await self._ans(it, False)
+
+
+async def welcome_post(g):
+    """첫 이용 서버에 환영 + 만족도 질문을 한 번만 올린다(서버 시작 시 확인)."""
+    try:
+        if g is None or g.id != WELCOME_GUILD: return
+        def mark():
+            set_gid(g.id); r = dict(store_get("welcome", WELCOME_PATH, {}) or {})
+            if r.get("sent"): return False
+            r["sent"] = int(time.time()); store_set("welcome", WELCOME_PATH, r); return True
+        if not await asyncio.to_thread(mark): return
+        me = g.me; skip = {INQ_CH, LOG_CH, HR_CH, HRINFO_CH}
+        cands = ([g.system_channel] if g.system_channel else []) + [c for c in g.text_channels if c.name not in skip]
+        ch = next((c for c in cands if c and c.permissions_for(me).send_messages), None)
+        inq = discord.utils.get(g.text_channels, name=INQ_CH)
+        if ch is None:
+            await asyncio.to_thread(lambda: (set_gid(g.id), store_set("welcome", WELCOME_PATH, {}))); log.warning("환영 메시지를 올릴 채널이 없습니다"); return
+        msg = await ch.send(f"🎉 <@{WELCOME_UID}> **1번째로 이용해 주신 맹주님 환영합니다!**\n저의 서비스에 만족하십니까? 아래 **예 / 아니오**를 눌러 주세요.\n\n궁금한 사항이나 오류가 나면 " + (inq.mention if inq else "**문의함**") + "에 문의주세요~",
+                            view=WelcomeView(), allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=WELCOME_UID)]))
+        def save():
+            set_gid(g.id); r = dict(store_get("welcome", WELCOME_PATH, {}) or {}); r.update(ch=ch.id, msg=msg.id); store_set("welcome", WELCOME_PATH, r)
+        await asyncio.to_thread(save)
+    except Exception:
+        log.exception("환영 메시지 게시 실패")
+        try: await asyncio.to_thread(lambda: (set_gid(g.id), store_set("welcome", WELCOME_PATH, {})))      # 다음 시작 때 다시 시도
+        except Exception: pass
 
 
 # ---------- 시즌 종료 · 시작 ----------
