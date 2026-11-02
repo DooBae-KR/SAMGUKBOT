@@ -4145,7 +4145,9 @@ JC_STEP = 300                                              # 5분마다 지급
 JC_PAT = [13, 13, 14]                                      # 지급량 반복(15분에 40개 = 시간당 160개)
 JC_PHASE = int(os.environ.get("JC_PHASE", "0"))            # 앵커 직후 첫 지급이 패턴의 몇 번째인지(0=13, 2=14)
 JC_ANCHOR = datetime.datetime(2026, 10, 25, 21, 23, 10, tzinfo=datetime.timezone(datetime.timedelta(hours=9))).timestamp()  # 실제 지급 시각 기준점
-ALERT_MIN = int(os.environ.get("ALERT_MIN", "30"))         # 필요량 도달 N분 전에 '곧 도달' 알림
+ALERT_STEPS = sorted({int(x) for x in os.environ.get("ALERT_STEPS", "10,1").split(",") if x.strip().isdigit() and int(x) > 0}, reverse=True) or [10, 1]   # 건설 가능(필요량 도달) N분 전 알림(큰 순)
+ALERT_MIN = ALERT_STEPS[0]
+ALERT_TXT = "·".join(f"{m}분" for m in ALERT_STEPS)
 # 성지(관문) 레벨별 기본 소모량. 12레벨은 관문 기준
 COST = {4: 500, 6: 750, 8: 1000, 9: 1000, 10: 1500, 11: 1500, 12: 500, 13: 2000, 14: 2000, 15: 2500, 16: 2500, 18: 3000, 20: 6000}
 
@@ -4303,7 +4305,7 @@ async def siege_add(it: discord.Interaction, 레벨: app_commands.Choice[int], �
         f"정철 도달 예상 <t:{int(fund)}:f> (<t:{int(fund)}:R>) · 도달하면 보유 정철에서 {cost:,}개를 자동 차감하고 건축을 시작합니다.\n"
         f"(봇 계산 보유 정철 약 {int(jc_stock_now(st)):,}개. 게임 내 실제 수량과 다르면 `/정철설정`으로 맞춰야 예상 시각이 정확합니다.)\n"
         f"주둔지 건설 완료 예상 **{fmt_t(end)}**{night}\n"
-        f"정철 도달 {ALERT_MIN}분 전, 도달·건축 시작, 주둔지 건설 완료 때 알려 드립니다. 전체 일정은 `/공성`으로 확인하세요.")
+        f"건설 가능(정철 도달) {ALERT_TXT} 전, 도달·건축 시작, 주둔지 건설 완료 때 알려 드립니다. 전체 일정은 `/공성`으로 확인하세요.")
 
 
 @bot.tree.command(name="공성", description="[간부] 현재 정철 개수와 진행 중인 공성 예상 일정을 봅니다(대외비)")
@@ -4477,9 +4479,11 @@ async def jc_tick():
             nxt = f"\n다음: **{siege_name(sg[0])}** {sg[0]['cost']:,}개 대기 중" if sg else ""
             await _say(e["channel"], f"🔔 <@{e['user']}> **{siege_name(e)}** 정철이 모였습니다! 필요 {e['cost']:,}개를 차감하고 건축을 시작합니다. (남은 정철 약 {int(left):,}개)\n🏗️ 주둔지 건설 완료 예상 **{fmt_t(end)}** (<t:{int(end)}:R>){nxt}")
         for e, eta, _ in jc_plan(st):                                   # 도달 직전 알림
-            if not e.get("soon") and eta - now <= ALERT_MIN * 60:
-                e["soon"] = True; changed = True
-                await _say(e["channel"], f"⏰ <@{e['user']}> **{siege_name(e)}** 정철이 곧 모입니다. 약 {fmt_dur((eta - now) / 3600)} 남았습니다. (<t:{int(eta)}:t>)")
+            sent = set(e.get("soon_m") or []); left_m = (eta - now) / 60
+            due = [m for m in ALERT_STEPS if left_m <= m and m not in sent]
+            if due:                                                      # 이미 지난 단계는 건너뛰고 가장 가까운 단계 하나만 알림
+                m = min(due); e["soon_m"] = sorted(sent | set(due), reverse=True); e["soon"] = True; changed = True
+                await _say(e["channel"], f"⏰ <@{e['user']}> **{siege_name(e)}** {'**1분 전!** ' if m <= 1 else ''}약 {m}분 뒤 건설 가능합니다. 정철 {int(e['cost']):,}개가 모이는 시각 <t:{int(eta)}:t> (<t:{int(eta)}:R>)")
         for r in list(rv):                                             # 공성 N분 전 간부 호출
             if r["t"] + 600 < now: rv.remove(r); changed = True; continue
             if not r.get("alerted") and r["t"] - now <= SIEGE_ALERT_MIN * 60:
