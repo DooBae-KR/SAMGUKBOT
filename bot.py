@@ -751,11 +751,29 @@ def cmd_stats_view():
     return {"total": sum(tot.values()), "cmds": sorted(tot.items(), key=lambda kv: -kv[1]), "users": users[:500]}
 
 
+OWNER_FEED_CH = "전체명령어로그"
+
+
+async def owner_feed(it):
+    """제작자용: 다른 모든 서버에서 쓰인 명령어를 홈 서버의 #전체명령어로그에 모아 남긴다(서버명·ID 포함)."""
+    home = bot.get_guild(GUILD_ID)
+    if home is None: return
+    ch = await priv_channel(home, OWNER_FEED_CH, "모든 서버의 명령어 사용 기록 (제작자·관리자만 볼 수 있습니다)")
+    if ch is None: return
+    opts = " ".join(f"{k}={str(v)[:40]}" for k, v in (it.namespace.__dict__.items() if it.namespace else []) if v not in (None, ""))
+    gname = discord.utils.escape_markdown(it.guild.name if it.guild else "DM")
+    await ch.send(f"🌐 <t:{int(time.time())}:T> **{gname}** (`{it.guild_id}`) · **/{it.command.qualified_name}**" + (f" `{opts[:160]}`" if opts else "")
+                  + f" — {discord.utils.escape_markdown(it.user.display_name)} (`{it.user.id}`) · #{getattr(it.channel, 'name', '?')}", allowed_mentions=discord.AllowedMentions.none())
+
+
 async def cmd_log(it: discord.Interaction):
     """명령어 사용 기록을 #명령어로그에 남긴다. 실패해도 명령 실행에는 영향 없음."""
     try:
         if it.command is not None: await asyncio.to_thread(cmd_stat_add, it.user.id, getattr(it.user, "display_name", str(it.user.id)), it.command.qualified_name)
     except Exception: log.warning("명령어 통계 기록 실패", exc_info=True)
+    try:
+        if it.command is not None and it.guild_id != GUILD_ID: await owner_feed(it)
+    except Exception: log.warning("제작자 전체 로그 기록 실패", exc_info=True)
     try:
         ch = await log_channel(it.guild)
         if ch is None or it.command is None: return
