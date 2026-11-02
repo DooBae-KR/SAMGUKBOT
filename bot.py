@@ -1852,7 +1852,7 @@ def activity_calc(gid, members, tset, skip=()):
     """sam_emp_stat 날짜별 주간 누적값 → 일 증가분(주 리셋 시 값 자체) → 제외일/경고/쟁 미참여/점수. members 순서대로 dict 목록(없으면 None)."""
     if not SB_ON: return None
     since = (datetime.datetime.utcnow() + datetime.timedelta(hours=9) - datetime.timedelta(days=ACT_DAYS + 7)).strftime("%Y-%m-%d")
-    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}&select=cid,snap_date,war_merit,contribution,prosperity&order=snap_date.asc&limit=100000") or []
+    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}&select=cid,snap_date,war_merit,contribution,prosperity,total_merit,total_contribution&order=snap_date.asc&limit=100000") or []
     by = {}
     for r in rows: by.setdefault(r["cid"], []).append(r)
     D = datetime.date.fromisoformat
@@ -1860,10 +1860,17 @@ def activity_calc(gid, members, tset, skip=()):
     for cid, L in by.items():
         for a, b in zip(L, L[1:]):
             gap = max(1, (D(b["snap_date"]) - D(a["snap_date"])).days)
-            dm, dc = (b["war_merit"] or 0) - (a["war_merit"] or 0), (b["contribution"] or 0) - (a["contribution"] or 0)
             mon = D(b["snap_date"]).weekday() == 0           # 월요일 = 주간 리셋일: 그날 값 자체가 증가분
-            if dm < 0 or mon: dm = b["war_merit"] or 0; gap = 1 if mon else gap
-            if dc < 0 or mon: dc = b["contribution"] or 0
+            if a.get("total_merit") is not None and b.get("total_merit") is not None:     # 누적 값이 둘 다 있으면 누적 차이가 가장 정확
+                dm = max(0, b["total_merit"] - a["total_merit"])
+            else:
+                dm = (b["war_merit"] or 0) - (a["war_merit"] or 0)
+                if dm < 0 or mon: dm = b["war_merit"] or 0; gap = 1 if mon else gap
+            if a.get("total_contribution") is not None and b.get("total_contribution") is not None:
+                dc = max(0, b["total_contribution"] - a["total_contribution"])
+            else:
+                dc = (b["contribution"] or 0) - (a["contribution"] or 0)
+                if dc < 0 or mon: dc = b["contribution"] or 0
             delta.setdefault(b["snap_date"], {})[cid] = (dm / gap, dc / gap, gap)
     dates = sorted(delta)[-ACT_DAYS:]
     if not dates: return {"dates": [], "rows": [None] * len(members), "quiet": [], "n": 0}
@@ -2393,6 +2400,17 @@ def _sb_count(table, gid=GUILD_ID):
     return len(_sb_req("GET", f"{table}?guild_id=eq.{gid}&select=guild_id&limit=100000") or [])
 
 
+def _merit_cols(g, mh, m_tot, ch, c_tot, base):
+    """무훈·공헌 열 값을 주간/누적 칸에 나눠 담는다. 누적 파일은 주간 값을 (누적 − 주 시작 전 누적)으로 만든다."""
+    out = {}
+    for h, tot, wk, tk, bk in ((mh, m_tot, "war_merit", "total_merit", "total_merit"), (ch, c_tot, "contribution", "total_contribution", "total_contribution")):
+        v = _num(g.get(h)) if h else 0
+        if tot:
+            out[tk] = v; out[wk] = max(0, v - ((base or {}).get(bk) or 0)) if base else v
+        else: out[wk] = v
+    return out
+
+
 def _num(v):
     try: return int(float(str(v).replace(",", "").strip() or 0))
     except ValueError: return 0
@@ -2425,12 +2443,23 @@ def hr_import(now=None, rows=None, gid=GUILD_ID):
     same = {n: c for n, c in names.items() if len(c) > 1}
     if same: warn.append("이름은 같고 CID가 다른 멤버: " + ", ".join(f"{n}({'/'.join(c)})" for n, c in list(same.items())[:5]))
     ro, st = [], []
+    # G열(무훈)·H열(공헌) 제목이 '주간 …' 이면 주간 값, '총/누적 …' 이면 누적 값으로 받는다(둘 다 지원)
+    def _mode(key):
+        hs = [h for h in H if key in h]
+        h = next((x for x in hs if re.search("총|누적", x)), None) or next((x for x in hs if "주간" in x), None) or (hs[0] if hs else None)
+        return h, bool(h and re.search("총|누적", h))
+    mh, m_tot = _mode("무훈"); ch, c_tot = _mode("공헌")
+    base = {}
+    if m_tot or c_tot:                                          # 누적 파일: 이번 주 월요일 이전 마지막 누적값을 빼서 주간 값을 만든다
+        kst = datetime.datetime.strptime(snap, "%Y-%m-%d").date(); monday = (kst - datetime.timedelta(days=kst.weekday())).isoformat()
+        for r in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=lt.{monday}&total_merit=not.is.null&select=cid,total_merit,total_contribution&order=snap_date.desc&limit=100000") or []:
+            base.setdefault(r["cid"], r)
     for cid, g in merged.items():
         ro.append({"guild_id": gid, "cid": cid, "name": g.get("멤버", ""), "job": g.get("직업", ""), "updated_at": now,
                    "extra": {"조별": g.get("조별", "")}})
         m = re.match(r"\s*([^(]*)\(\s*(\d+)\s*,\s*(\d+)\s*\)", g.get("주둔지", ""))
         st.append({"guild_id": gid, "cid": cid, "snap_date": snap, "title": g.get("직위", ""), "prosperity": _num(g.get("번영")),
-                   "war_merit": _num(g.get("주간 무훈")), "contribution": _num(g.get("주간 공헌")),
+                   **_merit_cols(g, mh, m_tot, ch, c_tot, base.get(cid)),
                    "camp": (m.group(1).strip() if m else g.get("주둔지", "")), "camp_x": int(m.group(2)) if m else None,
                    "camp_y": int(m.group(3)) if m else None, "siege_count": _num(g.get("주 공성 횟수"))})
     # 이번 명단에서 빠진 사람 = 접었거나 동맹을 나간 사람 → 이탈자 표(sam_emp_left)로 옮기고 sam_emp에서 제외
