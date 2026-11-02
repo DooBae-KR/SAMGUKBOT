@@ -2049,7 +2049,7 @@ CMD_HELP = {
            ("/공성예약", "공성 시각 예약(30분 전 간부 호출)"), ("/공성예약취소", "공성 예약 취소"),
            ("/정철설정", "정철 보유량 맞추기"), ("/동맹수정", "등록된 서버 번호·동맹명 수정"),
            ("/동맹원추가", "게임 엑셀(오전 8시 반영)에 아직 없는 동맹원을 직접 추가")],
-    "관리자": [("/업적부여", "후원자(☕·💎) 업적 부여·회수"), ("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
+    "관리자": [("/업적부여", "후원자(☕·💎) 업적 부여·회수"), ("/시즌종료", "이번 시즌 결산 통계(애니메이션 페이지) 만들기"), ("/시즌시작", "새 시즌 시작: 동맹원 명단(CID·닉네임 엑셀 또는 MemberWeek)으로 처음부터 집계"), ("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
 }
 
 
@@ -2644,7 +2644,7 @@ def adm_state(gid):
         r["dn"] = str(m) if m else ""; r["ok"] = bool(r["d"])
     reserve = sorted(rsv.values(), key=lambda x: (x["ok"], x["n"]))
     blk = sorted(({"c": c, "n": v.get("name", ""), "memo": v.get("memo", ""), "t": v.get("t", ""), "ok": bool(did_of.get(c))} for c, v in (db.get("bl") or {}).items()), key=lambda x: x["c"])
-    return {"blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "spy": [{"id": str(i), "name": (lambda m: str(m) if m else "")((bot.get_guild(gid).get_member(i) if bot.get_guild(gid) else None))} for i in sorted(spy_ids(gid))], "now": int(time.time())}
+    return {"blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "spy": [{"id": str(i), "name": (lambda m: str(m) if m else "")((bot.get_guild(gid).get_member(i) if bot.get_guild(gid) else None))} for i in sorted(spy_ids(gid))], "season": (lambda sn: {"no": sn["no"], "start": sn["start"], "ended": sn["ended"], "links": [{"no": a["no"], "at": a.get("at", ""), "url": ss_url(gid, a["no"])} for a in sn["archive"]][::-1]})(season_get()), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
@@ -2678,6 +2678,13 @@ async def web_admin(request):
     if not p or not adm_is_admin(p[0], p[1]): return web.Response(status=403, text="링크가 만료되었거나 권한이 없습니다. 디스코드에서 /관리 를 다시 입력해 주세요.")
     tpl = (Path(__file__).parent / "admin_template.html").read_text("utf-8")
     return web.Response(text=tpl.replace("__T__", request.query.get("t")), content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+
+async def web_admin_tpl(request):
+    p = adm_parse(request.query.get("t"))
+    if not p or not adm_is_admin(p[0], p[1]): return web.Response(status=403, text="링크가 만료되었거나 권한이 없습니다.")
+    return web.Response(body=season_template_xlsx().getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": "attachment; filename*=UTF-8''%EC%83%88%EC%8B%9C%EC%A6%8C_%EB%8F%99%EB%A7%B9%EC%9B%90_%EC%96%91%EC%8B%9D.xlsx"})
 
 
 async def web_admin_api(request):
@@ -2812,6 +2819,27 @@ async def web_admin_api(request):
             n = await asyncio.to_thread(rs)
             if not n: raise ValueError("해당 ID(디스코드 ID 또는 CID)의 실패 기록이 없습니다.")
             msg = f"✅ 인증 실패 횟수를 초기화했습니다 ({n}건)."
+        elif op == "season_end":
+            def se():
+                set_gid(gid); cur = season_get()
+                if cur.get("ended") and any(a.get("no") == cur["no"] for a in cur["archive"]): return "이미 종료된 시즌입니다. 아래 결산 링크를 열어 보세요."
+                _, stats = season_end_work(gid); return f"✅ 시즌 {stats['no']} 통계를 만들었습니다. 아래 결산 링크를 열어 보세요."
+            msg = await asyncio.to_thread(se)
+        elif op == "season_start":
+            kind, rows = "", None
+            try:
+                if body.get("file_b64"):
+                    raw = base64.b64decode(str(body["file_b64"]), validate=False)
+                    if len(raw) > 140_000: raise ValueError("파일이 너무 큽니다. 디스코드 `/시즌시작`에 첨부해 주세요.")
+                    kind, rows = await asyncio.to_thread(roster_rows_from_xlsx, io.BytesIO(raw))
+                else: kind, rows = await asyncio.to_thread(roster_rows_from_text, str(body.get("text", ""))[:100_000])
+            except ValueError: raise
+            except Exception as e: raise ValueError("파일을 읽지 못했습니다: " + str(e)[:100])
+            set_gid(gid)
+            nst, out, warn, note, nalt = await asyncio.to_thread(season_start_work, gid, rows, kind)
+            g = bot.get_guild(gid)
+            if g: await sync_members(g); await hr_notify(g, f"🎌 **시즌 {nst['no']} 시작** — 동맹원 {len(rows) - 1}명 · 처리: 관리 페이지")
+            msg = f"🎌 시즌 {nst['no']}을(를) 시작했습니다. 동맹원 {len(rows) - 1}명 반영" + ("\n" + "\n".join(note) if note else "") + ("\n⚠️ " + " / ".join(warn) if warn else "")
         elif op != "state": raise ValueError("알 수 없는 요청입니다.")
         st = await asyncio.to_thread(lambda: (set_gid(gid), adm_state(gid))[1])
     except ValueError as e: return web.json_response({"error": str(e)}, status=400)
@@ -2826,7 +2854,7 @@ async def start_web():
     app.router.add_get("/img/{k}/{size}/{name}", web_img); app.router.add_get("/guide/{name}", web_guide)
     app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
     app.router.add_get("/admin", web_admin); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
-    app.router.add_get("/invite", web_invite); app.router.add_get("/bimg/{iid}", web_bimg)
+    app.router.add_get("/season", web_season); app.router.add_get("/admin/season_template.xlsx", web_admin_tpl); app.router.add_get("/invite", web_invite); app.router.add_get("/bimg/{iid}", web_bimg)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", WEB_PORT).start()
@@ -2878,9 +2906,10 @@ def _num(v):
 MANUAL_KEEP_DAYS = 3
 
 
-def hr_import(now=None, rows=None, gid=GUILD_ID):
+def hr_import(now=None, rows=None, gid=GUILD_ID, reset=False, with_stat=True):
     """인사 탭을 읽어 중복(같은 CID)을 하나로 묶고, 사람 정보와 주간 수치를 나눠 저장한다.
-    sam_emp: CID·멤버·직업·조별 / sam_emp_stat: 직위·번영·주간 무훈·주간 공헌·주둔지·주 공성 횟수(날짜별)."""
+    sam_emp: CID·멤버·직업·조별 / sam_emp_stat: 직위·번영·주간 무훈·주간 공헌·주둔지·주 공성 횟수(날짜별).
+    reset=True(새 시즌): 이번 명단에 없는 사람은 이탈자 표 없이 그냥 지우고 대량 이탈 안전장치도 건너뛴다. with_stat=False: CID·닉네임만 있는 양식이라 수치(0)는 저장하지 않는다."""
     now = now or datetime.datetime.now(datetime.timezone.utc).isoformat()
     snap = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")   # KST 날짜
     if rows is None: raise RuntimeError("명단은 엑셀 업로드(/명단업데이트)로만 반영합니다.")
@@ -2929,11 +2958,14 @@ def hr_import(now=None, rows=None, gid=GUILD_ID):
         except Exception: return False
     kept = [r for r in old if r["cid"] not in merged and _manual_fresh(r)]
     gone = [r for r in old if r["cid"] not in merged and not _manual_fresh(r)]
-    moved = 0
+    moved = 0; purged = []
+    if reset: kept, purged, gone = [], [r for r in old if r["cid"] not in merged], []
     if gone and len(old) >= 10 and len(gone) > len(old) * 0.5:      # 파일이 잘못 올라온 경우 전원이 이탈 처리되는 사고 방지
         warn.append(f"이번 명단에서 빠진 사람이 {len(gone)}/{len(old)}명으로 너무 많아 이탈 처리를 건너뛰었습니다. 명단 파일을 확인해 주세요.")
         gone = []
-    _sb_rows("sam_emp", ro); _sb_rows("sam_emp_stat", st, conflict="guild_id,cid,snap_date")
+    _sb_rows("sam_emp", ro); _sb_rows("sam_emp_stat", st if with_stat else [], conflict="guild_id,cid,snap_date")
+    for i in range(0, len(purged), 100):
+        _sb_req("DELETE", f"sam_emp?guild_id=eq.{gid}&cid=in.({','.join(r['cid'] for r in purged[i:i + 100])})", prefer="return=minimal")
     if gone:
         last = {}                                                  # 이탈 직전 마지막 인사 수치를 함께 보관(sam_emp 삭제 시 sam_emp_stat은 같이 지워지므로)
         for i in range(0, len(gone), 100):
@@ -2951,7 +2983,7 @@ def hr_import(now=None, rows=None, gid=GUILD_ID):
     back = [r["cid"] for r in (_sb_req("GET", f"sam_emp_left?guild_id=eq.{gid}&select=cid&limit=100000") or []) if r["cid"] in merged]
     for i in range(0, len(back), 100):                              # 다시 명단에 나타난 사람은 이탈자 표에서 뺀다
         _sb_req("DELETE", f"sam_emp_left?guild_id=eq.{gid}&cid=in.({','.join(back[i:i + 100])})", prefer="return=minimal")
-    if old:                                                          # 가입·이탈·복귀·닉네임 변경 이력(30일 보관). 첫 업로드(old 없음)는 전원이 신규라 기록하지 않는다
+    if old and not reset:                                            # 가입·이탈·복귀·닉네임 변경 이력(30일 보관). 첫 업로드(old 없음)는 전원이 신규라 기록하지 않는다
         try:
             oldn = {r["cid"]: (r.get("name") or "") for r in old}; evs = []
             for cid, g in merged.items():
@@ -2970,6 +3002,256 @@ def hr_import(now=None, rows=None, gid=GUILD_ID):
 
 
 
+# ---------- 시즌 종료 · 시작 ----------
+SEASON_PATH = Path(os.environ.get("SEASON_PATH", "season.json"))
+SEASON_LINK_DAYS = int(os.environ.get("SEASON_LINK_DAYS", "14"))
+SEASON_KEEP = 5                                              # 보관할 지난 시즌 통계 수
+_CID_HEADS = {"cid", "캐릭터id", "uid", "아이디", "id", "유저id"}
+_NICK_HEADS = {"닉네임", "멤버", "닉", "이름", "캐릭터명", "캐릭터이름"}
+
+
+def season_get():
+    d = dict(store_get("season", SEASON_PATH, {}) or {})
+    d.setdefault("no", 1); d.setdefault("start", None); d.setdefault("ended", None); d.setdefault("archive", [])
+    return d
+
+
+def season_set(d): store_set("season", SEASON_PATH, d)
+
+
+def roster_rows_detect(rows):
+    """명단 표를 자동 인식한다. → ('week', 원본 행) 게임 MemberWeek 파일 / ('simple', [['캐릭터 ID','멤버'], …]) A열 CID·B열 닉네임 양식."""
+    nz = lambda x: re.sub(r"\s+", "", str(x if x is not None else "")).lower()
+    for r in rows[:10]:
+        hs = [nz(x) for x in r]
+        if "멤버" in hs and any(h in ("캐릭터id", "cid") for h in hs): return "week", rows
+    ci, ni, start = 0, 1, 0
+    for i, r in enumerate(rows[:10]):                          # 머리글이 있으면 그 열을 쓰고, 없으면 A열=CID, B열=닉네임
+        hs = [nz(x) for x in r]
+        c = next((j for j, h in enumerate(hs) if h in _CID_HEADS), None); n = next((j for j, h in enumerate(hs) if h in _NICK_HEADS), None)
+        if c is not None and n is not None and c != n: ci, ni, start = c, n, i + 1; break
+    out = {}
+    for r in rows[start:]:
+        cid = Roster.user_uid(r[ci]) if ci < len(r) else ""
+        nick = re.sub(r"\s+", " ", str(r[ni]) if ni < len(r) and r[ni] is not None else "").strip()
+        if cid.isdigit() and 4 <= len(cid) <= 14 and nick: out[cid] = nick[:25]
+    if not out: raise ValueError("명단을 읽지 못했습니다. A열에 CID(숫자), B열에 닉네임을 2행부터 입력해 주세요. (게임 MemberWeek 파일도 그대로 가능)")
+    return "simple", [["캐릭터 ID", "멤버"]] + [[c, n] for c, n in out.items()]
+
+
+def roster_rows_from_xlsx(src):
+    wb = openpyxl.load_workbook(src, read_only=True, data_only=True)
+    rows = [["" if c is None else (str(int(c)) if isinstance(c, float) and c.is_integer() else str(c)) for c in r] for r in wb.worksheets[0].iter_rows(values_only=True)]
+    return roster_rows_detect(rows)
+
+
+def roster_rows_from_text(text):
+    rows = [re.split(r"\s*[\t,]\s*|\s+", ln.strip(), maxsplit=1) for ln in str(text or "").splitlines() if ln.strip()]
+    return roster_rows_detect(rows)
+
+
+def season_template_xlsx():
+    """새 시즌 명단 양식: A열 CID, B열 닉네임(2행부터)."""
+    from openpyxl.styles import Font
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "동맹원"
+    ws.append(["CID", "닉네임"])
+    ws["D1"] = "← A열에 CID(숫자), B열에 닉네임을 2행부터 입력하세요. 이 안내(D열)는 지워도 됩니다."
+    ws.column_dimensions["A"].width = 18; ws.column_dimensions["B"].width = 22; ws.column_dimensions["D"].width = 60
+    for c in ("A1", "B1"): ws[c].font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    for i in range(2, 202): ws.cell(i, 1).number_format = "@"          # CID는 문자열로(긴 숫자가 지수로 바뀌는 것 방지)
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0); return buf
+
+
+def season_stats(gid, start=None):
+    """시즌 중 쌓인 인사 기록(sam_emp_stat)으로 통계를 만든다. 부계정·명단에 없는 사람은 제외. 스레드에서 호출."""
+    D = datetime.date.fromisoformat
+    emp = {r["cid"]: r for r in (_sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid,name,job&limit=5000") or [])}
+    alts = {r["alt_cid"] for r in (_sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid&limit=100000") or [])}
+    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}" + (f"&snap_date=gte.{start}" if start else "") + "&select=cid,snap_date,prosperity,war_merit,contribution,siege_count&order=snap_date.asc&limit=100000") or []
+    by, wk, dates = {}, {}, set()
+    for r in rows:
+        if r["cid"] not in emp or r["cid"] in alts: continue
+        by.setdefault(r["cid"], []).append(r); dates.add(r["snap_date"])
+        d = D(r["snap_date"]); w = wk.setdefault((d - datetime.timedelta(days=d.weekday())).isoformat(), {}).setdefault(r["cid"], [0, 0, 0])
+        w[0] = max(w[0], r["war_merit"] or 0); w[1] = max(w[1], r["contribution"] or 0); w[2] = max(w[2], r["siege_count"] or 0)
+    weeks = sorted(wk); per = []
+    for cid, L in by.items():
+        wm = sum(wk[w].get(cid, [0, 0, 0])[0] for w in weeks); ct = sum(wk[w].get(cid, [0, 0, 0])[1] for w in weeks); sg = sum(wk[w].get(cid, [0, 0, 0])[2] for w in weeks)
+        days = streak = best = 0
+        for a, b in zip(L, L[1:]):                          # 일 증가분: 같은 주면 차이, 월요일(주 리셋)·감소면 그날 값 자체
+            reset = D(b["snap_date"]).weekday() == 0 or D(b["snap_date"]) < D(a["snap_date"])
+            dm = (b["war_merit"] or 0) - (a["war_merit"] or 0); dc = (b["contribution"] or 0) - (a["contribution"] or 0)
+            if reset or dm < 0: dm = b["war_merit"] or 0
+            if reset or dc < 0: dc = b["contribution"] or 0
+            if dm + dc > 0: days += 1; streak += 1; best = max(best, streak)
+            else: streak = 0
+        pg = (L[-1]["prosperity"] or 0) - (L[0]["prosperity"] or 0) if len(L) > 1 else 0
+        per.append({"c": cid, "n": emp[cid].get("name") or "", "j": emp[cid].get("job") or "", "wm": wm, "ct": ct, "sg": sg, "days": days, "streak": best, "pg": pg, "p": L[-1]["prosperity"] or 0, "first": L[0]["snap_date"]})
+    if not per: return {"n": 0}
+    first = min(dates)
+    top = lambda key, k=10: [{"n": x["n"], "j": x["j"], "v": x[key]} for x in sorted(per, key=lambda x: -x[key])[:k] if x[key] > 0]
+    mw, mc = max(x["wm"] for x in per) or 1, max(x["ct"] for x in per) or 1
+    medw, medc = _med([x["wm"] for x in per if x["wm"] > 0]), _med([x["ct"] for x in per if x["ct"] > 0])
+    types = {"전투형": 0, "기여형": 0, "복합형": 0, "미활동형": 0}
+    for x in per:
+        hw, hc = x["wm"] > 0 and x["wm"] >= medw, x["ct"] > 0 and x["ct"] >= medc
+        types["복합형" if hw and hc else "전투형" if hw else "기여형" if hc else "미활동형"] += 1
+    allr = max(per, key=lambda x: min(x["wm"] / mw, x["ct"] / mc)); streak = max(per, key=lambda x: x["streak"])
+    jobs = {}
+    for x in per: jobs[x["j"] or "미정"] = jobs.get(x["j"] or "미정", 0) + 1
+    aw = []
+    def add(t, x, v, u): aw.append({"t": t, "n": x["n"], "j": x["j"], "v": v, "u": u})
+    k = max(per, key=lambda x: x["wm"]); k["wm"] > 0 and add("무훈왕", k, k["wm"], "무훈")
+    k = max(per, key=lambda x: x["ct"]); k["ct"] > 0 and add("공헌왕", k, k["ct"], "공헌")
+    min(allr["wm"] / mw, allr["ct"] / mc) > 0 and add("전천후", allr, round(min(allr["wm"] / mw, allr["ct"] / mc) * 100), "점")
+    k = max(per, key=lambda x: x["days"]); k["days"] > 0 and add("개근왕", k, k["days"], "일 활동")
+    k = max(per, key=lambda x: x["pg"]); k["pg"] > 0 and add("번영 성장왕", k, k["pg"], "번영 증가")
+    streak["streak"] >= 3 and add("연속 활동왕", streak, streak["streak"], "일 연속")
+    tw = [{"w": w[5:], "wm": sum(v[0] for v in wk[w].values()), "ct": sum(v[1] for v in wk[w].values()), "sg": sum(v[2] for v in wk[w].values())} for w in weeks]
+    left = len(_sb_req("GET", f"sam_emp_left?guild_id=eq.{gid}&select=cid&limit=100000") or [])
+    last = max(dates)
+    return {"n": len(per), "first": first, "last": last, "days": (D(last) - D(first)).days + 1, "snaps": len(dates), "left": left,
+            "joined": sum(1 for x in per if x["first"] > first), "wm": sum(x["wm"] for x in per), "ct": sum(x["ct"] for x in per), "sg": sum(x["sg"] for x in per),
+            "pg": sum(x["pg"] for x in per), "p": sum(x["p"] for x in per), "weeks": tw, "top_wm": top("wm"), "top_ct": top("ct"), "top_days": top("days", 5), "top_pg": top("pg", 5),
+            "types": types, "jobs": [{"j": j, "n": n} for j, n in sorted(jobs.items(), key=lambda t: -t[1])[:8]], "awards": aw}
+
+
+def season_end_work(gid):
+    """이번 시즌 통계를 만들어 보관하고 시즌을 '종료' 상태로 둔다. → (시즌 정보, 통계). 스레드에서 호출(서버 컨텍스트 필요)."""
+    set_gid(gid); st = season_get(); stats = season_stats(gid, st.get("start"))
+    if not stats.get("n"): raise ValueError("집계할 인사 기록이 없습니다. (명단 엑셀이 한 번도 반영되지 않았거나 이미 정리되었습니다)")
+    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
+    ally = store_get("alliance", ALLY_PATH, {}) or {}
+    stats.update(no=st["no"], end=today, alli=(f"{ally.get('server')}서버 " if ally.get("server") else "") + (ally.get("name") or "동맹"))
+    st["archive"] = [a for a in st["archive"] if a.get("no") != st["no"]] + [{"no": st["no"], "at": today, "stats": stats}]
+    st["archive"] = st["archive"][-SEASON_KEEP:]; st["ended"] = today; season_set(st)
+    return st, stats
+
+
+def season_start_work(gid, rows, kind):
+    """새 시즌: 지난 시즌 통계 보관(아직이면) → 인사 기록·이탈·이력 비우기 → 새 명단 반영 → 시즌 번호·시작일 갱신. 스레드에서 호출."""
+    set_gid(gid); st = season_get(); note = []
+    if not st.get("ended"):
+        try: season_end_work(gid); note.append(f"시즌 {st['no']} 통계를 자동으로 보관했습니다.")
+        except ValueError: pass
+    for t in ("sam_emp_stat", "sam_emp_left", "sam_emp_event"): _sb_req("DELETE", f"{t}?guild_id=eq.{gid}", prefer="return=minimal")
+    out, warn = hr_import(None, rows, gid, reset=True, with_stat=(kind == "week"))
+    cids = {r["cid"] for r in (_sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid&limit=5000") or [])}
+    gone = [r["alt_cid"] for r in (_sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,main_cid&limit=100000") or []) if r["alt_cid"] not in cids or r["main_cid"] not in cids]
+    for i in range(0, len(gone), 100): _sb_req("DELETE", f"sam_emp_alt?guild_id=eq.{gid}&alt_cid=in.({','.join(gone[i:i + 100])})", prefer="return=minimal")
+    st = season_get(); st["no"] = int(st["no"]) + 1; st["start"] = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d"); st["ended"] = None; season_set(st)
+    roster_load_db(gid)
+    return st, out, warn, note, len(gone)
+
+
+def ss_token(gid, no, exp): return f"{gid}.{no}.{exp}." + hmac.new(TIER_SECRET.encode(), f"ss:{gid}:{no}:{exp}".encode(), hashlib.sha256).hexdigest()[:24]
+
+
+def ss_parse(t):
+    p = (t or "").split(".")
+    if len(p) != 4 or not all(x.isdigit() for x in p[:3]) or int(p[2]) < time.time(): return None
+    ok = hmac.compare_digest(p[3], hmac.new(TIER_SECRET.encode(), f"ss:{p[0]}:{p[1]}:{p[2]}".encode(), hashlib.sha256).hexdigest()[:24])
+    return (int(p[0]), int(p[1])) if ok else None
+
+
+def ss_url(gid, no): return f"{PUBLIC_URL}/season?t={ss_token(gid, no, int(time.time()) + SEASON_LINK_DAYS * 86400)}"
+
+
+async def web_season(request):
+    p = ss_parse(request.query.get("t"))
+    if not p: return web.Response(status=403, text="링크가 만료되었거나 올바르지 않습니다. 디스코드에서 /시즌종료 를 다시 입력해 새 링크를 받으세요.")
+    gid, no = p; set_gid(gid)
+    st = await asyncio.to_thread(lambda: (set_gid(gid), season_get())[1])
+    a = next((x for x in st["archive"] if x.get("no") == no), None)
+    if not a: return web.Response(status=404, text="해당 시즌 통계를 찾지 못했습니다.")
+    tpl = (Path(__file__).parent / "season_template.html").read_text("utf-8")
+    return web.Response(text=tpl.replace("__S__", json.dumps(a["stats"], ensure_ascii=False).replace("</", "<\\/")), content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+
+def season_summary(stats):
+    aw = {a["t"]: a for a in stats.get("awards", [])}
+    pick = [f"{t} **{aw[t]['n']}**" for t in ("무훈왕", "공헌왕", "전천후", "개근왕") if t in aw]
+    return (f"🏆 **시즌 {stats['no']} 결산** — {stats['first']} ~ {stats['last']} ({stats['days']}일) · 동맹원 {stats['n']}명\n"
+            f"⚔️ 총 무훈 {stats['wm']:,} · 🌾 총 공헌 {stats['ct']:,}" + ("\n" + " · ".join(pick) if pick else ""))
+
+
+@bot.tree.command(name="시즌종료", description="[관리자] 이번 시즌 활동 기록으로 결산 통계(애니메이션 페이지)를 만듭니다")
+async def cmd_season_end(it: discord.Interaction):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if not is_admin(it): return await it.response.send_message(noperm_text(it, "관리자만 사용할 수 있습니다."), ephemeral=True)
+    if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
+    await it.response.defer(ephemeral=True); gid = cur_gid()
+    try:
+        st = await asyncio.to_thread(season_get)
+        old = next((a for a in st["archive"] if a.get("no") == st["no"]), None) if st.get("ended") else None
+        if old: stats, again = old["stats"], True
+        else: (st, stats), again = await asyncio.to_thread(season_end_work, gid), False
+    except Exception as e:
+        log.exception("시즌 종료 실패"); return await it.followup.send(f"❌ {str(e)[:300]}", ephemeral=True)
+    url = ss_url(gid, stats["no"])
+    if again: return await it.followup.send(f"이미 종료된 시즌입니다. 결산 링크를 다시 드립니다 ({SEASON_LINK_DAYS}일 유효)\n{url}\n새 시즌은 `/시즌시작`으로 시작하세요.", ephemeral=True)
+    try: await it.channel.send(season_summary(stats) + f"\n▶ 결산 영상처럼 보기 ({SEASON_LINK_DAYS}일 유효)\n{url}")
+    except Exception: log.warning("시즌 결산 게시 실패", exc_info=True)
+    await it.followup.send(f"✅ 시즌 {stats['no']} 통계를 만들어 이 채널에 올렸습니다.\n{url}\n다음 시즌은 `/시즌시작`으로 새 명단을 넣으면 시작됩니다. (그전까지 인사 기록은 그대로 쌓입니다)", ephemeral=True)
+
+
+class SeasonStartView(CtxView):
+    def __init__(self, gid, uid, kind, rows, fname):
+        super().__init__(timeout=300); self.gid, self.uid, self.kind, self.rows, self.fname = gid, uid, kind, rows, fname
+
+    @discord.ui.button(label="새 시즌 시작", style=discord.ButtonStyle.danger)
+    async def go(self, it: discord.Interaction, b: discord.ui.Button):
+        if it.user.id != self.uid: return await it.response.send_message("명령을 입력한 관리자만 누를 수 있습니다.", ephemeral=True)
+        await it.response.edit_message(content="⏳ 새 시즌을 준비하는 중입니다…", view=None)
+        try:
+            st, out, warn, note, nalt = await asyncio.to_thread(season_start_work, self.gid, self.rows, self.kind)
+            sy = await sync_members(it.guild)
+        except Exception as e:
+            log.exception("시즌 시작 실패"); return await it.edit_original_response(content=f"❌ 실패: {str(e)[:300]}")
+        n = len(self.rows) - 1
+        await it.edit_original_response(content=f"🎌 **시즌 {st['no']} 시작** — 동맹원 {n}명 반영\n" + "\n".join("• " + x for x in note + out)
+                                        + (f"\n• 새 명단에 없는 부계정 연결 {nalt}건 정리" if nalt else "") + f"\n• 역할 동기화: 인증자 {sy['total']}명 중 역할 변경 {sy['role']}명, 별명 변경 {sy['nick']}명"
+                                        + ("\n⚠️ " + "\n⚠️ ".join(warn) if warn else "")
+                                        + ("\n\n게임 인사 파일(MemberWeek)은 매일 올리던 방식 그대로 `/명단업데이트`로 올리면 이어서 집계됩니다." if self.kind == "simple" else ""))
+        try: await it.channel.send(f"🎌 **시즌 {st['no']}가 시작되었습니다!** 동맹원 {n}명 · 인사 기록을 새로 집계합니다. 이전 시즌 결산은 관리자가 `/시즌종료`로 다시 볼 수 있습니다.")
+        except Exception: pass
+
+    @discord.ui.button(label="취소", style=discord.ButtonStyle.secondary)
+    async def cancel(self, it: discord.Interaction, b: discord.ui.Button):
+        if it.user.id != self.uid: return await it.response.send_message("명령을 입력한 관리자만 누를 수 있습니다.", ephemeral=True)
+        await it.response.edit_message(content="취소했습니다. 아무것도 바꾸지 않았습니다.", view=None)
+
+
+SEASON_GUIDE = ("**새 시즌 시작 — 동맹원 명단을 먼저 넣어야 합니다.** 편한 방법 하나를 고르세요.\n"
+                "① 첨부한 양식(A열 CID · B열 닉네임, 2행부터)을 채워 `/시즌시작 파일:` 에 첨부\n"
+                "② 게임에서 받은 **MemberWeek.xlsx**를 그대로 `/시즌시작 파일:` 에 첨부 (양식은 자동으로 알아봅니다)\n"
+                "③ `/관리` 페이지의 **시즌** 탭에서 붙여넣기 또는 파일 선택\n\n"
+                "명단을 넣으면: 지난 시즌 결산 통계를 보관(아직이면 자동)하고, 주간 무훈·공헌·이탈·이력 기록을 비워 처음부터 집계하며, 새 명단에 없는 사람은 명단에서 빠집니다. 디스코드 인증·역할은 그대로 두고 명단과 다시 맞춥니다.")
+
+
+@bot.tree.command(name="시즌시작", description="[관리자] 새 시즌 시작 — 동맹원 명단(CID·닉네임 엑셀 또는 MemberWeek)을 넣고 처음부터 집계합니다")
+@app_commands.describe(파일="CID(A열)·닉네임(B열) 양식 또는 게임 MemberWeek.xlsx (비우면 양식과 안내를 받습니다)")
+async def cmd_season_start(it: discord.Interaction, 파일: discord.Attachment = None):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if not is_admin(it): return await it.response.send_message(noperm_text(it, "관리자만 사용할 수 있습니다."), ephemeral=True)
+    if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
+    if 파일 is None:
+        return await it.response.send_message(SEASON_GUIDE, file=discord.File(season_template_xlsx(), "새시즌_동맹원_양식.xlsx"), ephemeral=True)
+    await it.response.defer(ephemeral=True)
+    if not 파일.filename.lower().endswith(".xlsx") or 파일.size > 5_000_000: return await it.followup.send("❌ 5MB 이하의 .xlsx 파일을 첨부해 주세요.", ephemeral=True)
+    try:
+        raw = await 파일.read(); kind, rows = await asyncio.to_thread(roster_rows_from_xlsx, io.BytesIO(raw))
+        st = await asyncio.to_thread(season_get); gid = cur_gid()
+        cur = len(await asyncio.to_thread(lambda: _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid&limit=5000") or []))
+    except Exception as e:
+        return await it.followup.send(f"❌ 파일을 읽지 못했습니다: {str(e)[:250]}", ephemeral=True)
+    n = len(rows) - 1 if kind == "simple" else sum(1 for r in rows[1:] if any(str(x).strip() for x in r))
+    await it.followup.send(f"**시즌 {st['no']} 종료 → 시즌 {int(st['no']) + 1} 시작**\n파일: {파일.filename} ({'게임 MemberWeek' if kind == 'week' else 'CID·닉네임 양식'}) · 새 명단 약 **{n}명** (지금 명단 {cur}명)\n"
+                           f"• 시즌 {st['no']} 통계는 " + ("이미 보관되어 있습니다" if st.get("ended") else "지금 자동으로 보관됩니다") + "\n• 주간 무훈·공헌·이탈·이력 기록을 비우고 새로 집계합니다\n• 새 명단에 없는 사람은 명단에서 빠집니다 (되돌릴 수 없음)\n정말 시작할까요?",
+                           view=SeasonStartView(gid, it.user.id, kind, rows, 파일.filename), ephemeral=True)
+
+
 async def update_roster_tenant(it, 파일):
     gid = it.guild_id
     if 파일 is None or not 파일.filename.lower().endswith(".xlsx"):
@@ -2977,9 +3259,10 @@ async def update_roster_tenant(it, 파일):
     tmp = Path(tempfile.gettempdir()) / f"roster_{gid}.xlsx"
     try:
         await 파일.save(tmp)
-        wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
-        rows = [["" if c is None else (str(int(c)) if isinstance(c, float) and c.is_integer() else str(c)) for c in r] for r in wb.worksheets[0].iter_rows(values_only=True)]
-        out, warn = await asyncio.to_thread(hr_import, None, rows, gid)
+        kind, rows = await asyncio.to_thread(roster_rows_from_xlsx, tmp)          # 게임 MemberWeek·CID/닉네임 양식을 자동으로 알아본다
+        out, warn = await asyncio.to_thread(lambda: hr_import(None, rows, gid, with_stat=(kind == "week")))
+        if kind == "simple": out.insert(0, "CID·닉네임 양식으로 인식했습니다 (무훈·공헌 등 수치는 게임 MemberWeek 파일을 올려야 쌓입니다)")
+        if (await asyncio.to_thread(season_get)).get("ended"): warn.append("지난 시즌이 종료된 상태입니다. 새 시즌으로 시작하려면 `/시즌시작`에 같은 파일을 첨부하세요. (이 파일은 지난 시즌 기록에 이어서 반영됩니다)")
         await asyncio.to_thread(roster_load_db, gid)
     except Exception as e:
         log.exception("명단 업로드 실패"); return await it.followup.send(f"❌ 실패: {str(e)[:300]}", ephemeral=True)

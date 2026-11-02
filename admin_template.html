@@ -23,7 +23,7 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
 #toast.err{background:#3a1d1d;border-color:var(--verm)}.mute{color:var(--mute);font-size:12.5px}
 </style></head><body>
 <header><div class="wrap"><h1>🛠️ 관리 페이지</h1><div class="sub"><span id="dot" class="live"></span><span id="ally">불러오는 중…</span> · DB와 4초마다 자동 동기화</div></div></header>
-<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="alt">부캐</button><button data-t="adm">관리자 권한</button><button data-t="cmd">명령어 권한</button><button data-t="rsv">예비</button><button data-t="blk">블랙리스트</button><button data-t="spy">간첩 의심 열람</button><button data-t="stat">명령어 통계</button><button data-t="try">인증 횟수 제한</button></div></nav>
+<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="alt">부캐</button><button data-t="adm">관리자 권한</button><button data-t="cmd">명령어 권한</button><button data-t="rsv">예비</button><button data-t="blk">블랙리스트</button><button data-t="spy">간첩 의심 열람</button><button data-t="sea">시즌</button><button data-t="stat">명령어 통계</button><button data-t="try">인증 횟수 제한</button></div></nav>
 <main><div class="wrap">
 <div class="tab on" id="talk">
  <div class="card"><h2>톡방 참여자 <span class="mute" id="tcnt"></span></h2><p class="lead">여러 명은 줄바꿈이나 쉼표로 구분해 한 번에 추가할 수 있습니다. 명단에 없는 이름은 ⚠️로 표시됩니다.</p>
@@ -67,6 +67,14 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
  <div class="card"><h2>간첩 의심 열람 권한</h2><p class="lead">인사 화면의 "간첩 의심" 표시와 점수는 여기서 권한을 받은 사람(관리자는 항상)만 볼 수 있습니다. 권한이 없는 간부에게는 이탈 위험과 공성위탁설정 목록만 보입니다. 디스코드 설정에서 개발자 모드를 켠 뒤 프로필 → "사용자 ID 복사"로 ID를 얻습니다.</p>
   <div class="row"><input id="si" inputmode="numeric" placeholder="디스코드 사용자 ID"><button class="b" id="sbtn">열람 권한 부여</button></div></div>
  <div class="card"><h2>열람 가능한 사람</h2><ul id="splist"></ul></div>
+</div>
+<div class="tab" id="sea">
+ <div class="card"><h2>시즌 <span class="mute" id="sno"></span></h2><p class="lead">시즌이 끝나면 <b>결산 통계</b>(애니메이션 페이지)를 만들고, 새 시즌은 동맹원 명단을 넣어 시작합니다. 디스코드의 <code>/시즌종료</code>·<code>/시즌시작</code>과 같은 기능입니다.</p>
+  <div class="row"><button class="b" id="seBtn">시즌 종료 · 결산 통계 만들기</button></div><ul id="slinks"></ul></div>
+ <div class="card"><h2>새 시즌 시작</h2><p class="lead">동맹원 명단을 넣으면 지난 시즌 결산을 보관(아직이면 자동)하고, 주간 무훈·공헌·이탈·이력 기록을 비워 처음부터 집계합니다. 명단에 없는 사람은 빠집니다(되돌릴 수 없음). 디스코드 인증·역할은 그대로 두고 명단과 다시 맞춥니다.</p>
+  <p class="mute"><b>방법 ①</b> 양식을 받아 A열 CID · B열 닉네임(2행부터)을 채운 뒤 아래에서 파일 선택 &nbsp;<a href="/admin/season_template.xlsx?t=__T__" style="color:var(--jade)">양식 내려받기</a><br><b>방법 ②</b> 게임에서 받은 MemberWeek.xlsx를 그대로 선택 (자동 인식)<br><b>방법 ③</b> 엑셀에서 CID와 닉네임 두 열을 복사해 아래 칸에 붙여넣기</p>
+  <input type="file" id="sfile" accept=".xlsx"><textarea id="stext" style="margin-top:8px;min-height:120px" placeholder="2004105680812&#9;용감한호랑이&#10;2004105680813&#9;날쌘독수리"></textarea>
+  <div class="row" style="margin-top:8px"><button class="b" id="ssBtn" style="background:var(--verm);color:#fff">새 시즌 시작</button></div></div>
 </div>
 <div class="tab" id="stat">
  <div class="card"><h2>명령어 사용 통계 <span class="mute" id="scnt"></span></h2><p class="lead">누가 어떤 명령어를 몇 번 썼는지 누적 기록입니다(이 기능이 켜진 뒤부터 집계).</p><ul id="slist"></ul></div>
@@ -112,12 +120,20 @@ function render(){if(!S)return;const a=S.ally||{};$("#ally").textContent=(a.serv
  $("#ulist").innerHTML=st.users.filter(u=>!q||(u.n+u.id+u.c.map(x=>x[0]).join(" ")).toLowerCase().includes(q)).map(u=>`<li style="display:block"><div class="row" style="gap:8px"><b>${esc(u.n||"(이름 미확인)")}</b><span class="mute">${esc(u.id)}${u.last?" · 마지막 "+esc(u.last):""}</span><span class="tag o" style="margin-left:auto;flex:none">${u.total}회</span></div><div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">${u.c.map(x=>`<span class="tag" style="flex:none">/${esc(x[0])} ${x[1]}</span>`).join("")}</div></li>`).join("")||'<li class="mute">없습니다</li>'}
 $("#trlist").innerHTML=S.tries.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">디스코드 ${esc(x.d)}${x.cid?" · 시도한 CID "+esc(x.cid):""}</span></span><span class="tag ${x.lock?"w":""}">${x.n}/${S.maxTries}${x.lock?" 잠김":""}</span><button class="b g" data-tr="${esc(x.d)}">초기화</button></li>`).join("")||'<li class="mute">실패 기록이 없습니다</li>';
  $("#splist").innerHTML=(S.spy||[]).map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">${esc(x.id)}</span></span><button class="b d" data-spyd="${esc(x.id)}">해제</button></li>`).join("")||'<li class="mute">없습니다 (관리자만 볼 수 있음)</li>';
+ {const z=S.season||{no:1,links:[]};$("#sno").textContent="(현재 시즌 "+z.no+(z.start?" · 시작 "+z.start:"")+(z.ended?" · 종료됨 "+z.ended:" · 진행 중")+")";
+ $("#slinks").innerHTML=z.links.map(x=>`<li><span class="n">시즌 ${x.no} 결산 <span class="mute">${esc(x.at)}</span></span><a class="tag o" target="_blank" rel="noopener" href="${esc(x.url)}">결산 보기</a></li>`).join("")||'<li class="mute">아직 만든 결산이 없습니다</li>'}
  $("#alist").innerHTML=S.admins.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">${esc(x.id)}</span></span>${x.src=="owner"?'<span class="tag o">제작자</span>':x.src=="discord"?'<span class="tag">디스코드 관리자</span>':'<span class="tag o">부여됨</span>'}${x.src=="grant"&&x.id!=S.me?`<button class="b d" data-rev="${esc(x.id)}">권한 빼기</button>`:""}</li>`).join("")}
 $("#tbtn").onclick=async()=>{const v=$("#tadd").value.split(/[\n,]/).map(x=>x.trim()).filter(Boolean);if(!v.length)return toast("이름을 입력해 주세요",1);if(await api({op:"talk",req:{op:"add",names:v}}))$("#tadd").value=""};
 $("#tlist").onclick=async e=>{const d=e.target.dataset;if(d.del&&confirm(d.del+" 님을 톡방 목록에서 삭제할까요?"))api({op:"talk",req:{op:"remove",names:[d.del]}});
  if(d.ren){const n=prompt("새 이름",d.ren);if(n&&n!==d.ren)api({op:"talk",req:{op:"rename",from:d.ren,to:n}})}};
 $("#tq").oninput=render;
 $("#mbtn").onclick=async()=>{if(await api({op:"member_add",cid:$("#mc").value,nick:$("#mn").value,job:$("#mj").value})){$("#mc").value=$("#mn").value=$("#mj").value=""}};
+$("#seBtn").onclick=()=>api({op:"season_end"});
+$("#ssBtn").onclick=async()=>{const f=$("#sfile").files[0],t=$("#stext").value.trim();if(!f&&!t)return toast("양식 파일을 고르거나 CID·닉네임을 붙여넣어 주세요",1);
+ if(!confirm("새 시즌을 시작할까요?\n주간 무훈·공헌·이탈·이력 기록이 비워지고, 새 명단에 없는 사람은 명단에서 빠집니다. 되돌릴 수 없습니다."))return;
+ let body={op:"season_start"};if(f){if(f.size>140000)return toast("파일이 너무 큽니다. 디스코드 /시즌시작에 첨부해 주세요",1);
+  const b=new Uint8Array(await f.arrayBuffer());let s="";for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));body.file_b64=btoa(s)}else body.text=t;
+ if(await api(body)){$("#sfile").value="";$("#stext").value=""}};
 $("#sbtn").onclick=async()=>{if(await api({op:"spy_add",id:$("#si").value}))$("#si").value=""};
 $("#splist").onclick=e=>{const d=e.target.dataset.spyd;if(d&&confirm("열람 권한을 뺄까요?"))api({op:"spy_del",id:d})};
 $("#abtn").onclick=async()=>{if(await api({op:"admin_add",id:$("#ai").value}))$("#ai").value=""};
