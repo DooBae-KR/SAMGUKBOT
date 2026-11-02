@@ -266,6 +266,20 @@ if SAVE_URL or SB_ON: threading.Thread(target=_writer, daemon=True).start()
 log.info("저장소: %s%s", "Supabase" if SB_ON else "", (" + 시트 미러" if SB_ON and SAVE_URL else "시트" if SAVE_URL else "" if SB_ON else "로컬 파일"))
 
 
+def roster_snap_date(gid):
+    """그 서버 인사 데이터(sam_emp_stat)의 가장 최근 기준일 'YYYY-MM-DD'. 없으면 ''. 스레드에서 호출."""
+    try:
+        r = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&select=snap_date&order=snap_date.desc&limit=1") or []
+        return str(r[0]["snap_date"]) if r else ""
+    except Exception: return ""
+
+
+def fmt_snap(d):
+    try:
+        dt = datetime.date.fromisoformat(d); return f"{d}({'월화수목금토일'[dt.weekday()]})"
+    except Exception: return d or "알 수 없음"
+
+
 def roster_load_db(gid):
     """sam_emp(사람) + sam_emp_stat(가장 최근 날짜 수치)로 그 서버의 명단을 메모리에 올린다."""
     emp = _sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid,name,job,extra&limit=5000") or []
@@ -2195,7 +2209,7 @@ def render_html(tok=None):
         if m is not None and m is not d: m.setdefault("alts", []).append(d["n"])
     D = [d for d in D if not (d.get("_c") in alts and alts[d["_c"]] in cn and alts[d["_c"]] != d["_c"])]
     for d in D: d.pop("_c", None)
-    cfg = {"rosterFile": roster.src or "명단", "rosterDate": today,
+    cfg = {"rosterFile": roster.src or "명단", "rosterDate": roster_snap_date(gid) or today,
            "talkFile": ("대시보드 톡방 관리" if managed else "구글 시트 톡방참여자 탭") if names else "없음", "talkDate": tdate or today, "graceEnd": GRACE_END,
            "act": ({"dates": act["dates"], "quiet": act["quiet"], "n": act["n"], "warn": ACT_WARN, "need": ACT_ACTIVE} if act and act["n"] else None)}
     if tok: cfg.update(edit=True, tok=tok, talkNames=sorted(names))
@@ -4311,8 +4325,8 @@ async def hr_link(it: discord.Interaction):
     hc = discord.utils.get(it.guild.text_channels, name=HRINFO_CH) if it.guild else None
     if hc is not None and it.channel_id != hc.id: return await it.response.send_message(f"`/인사`는 간부 전용 {hc.mention} 채널에서 사용해 주세요.", ephemeral=True)
     if not roster.members: return await it.response.send_message("명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", ephemeral=True)
-    exp = int(time.time()) + HR_HOURS * 3600
-    await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp, cur_gid())}\n멤버 {len(roster.members)}명 기준", ephemeral=True)
+    exp = int(time.time()) + HR_HOURS * 3600; snap = await asyncio.to_thread(roster_snap_date, cur_gid())
+    await it.response.send_message(f"📋 인사데이터 링크 (본인 전용 · {HR_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/hr?t={hr_token(it.user.id, exp, cur_gid())}\n📅 **기준일 {fmt_snap(snap)}** · 멤버 {len(roster.members)}명 기준", ephemeral=True)
 
 
 @bot.tree.command(name="인증해제", description="[관리자] CID의 인증 기록을 지우고 실패 횟수를 초기화합니다(재인증 허용)")
