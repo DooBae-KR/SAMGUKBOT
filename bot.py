@@ -25,7 +25,9 @@ def set_gid(g): _CTX.set(int(g) if g else GUILD_ID)
 
 
 LICENSED = set()                                        # 제작자가 승인한 서버(홈 서버는 항상 허가)
-def licensed(gid): return gid == GUILD_ID or gid in LICENSED
+RECO_SERVERS = set()                                    # 봇이 직접 만든 '추천 전용' 서버(/추천만 허용)
+RECOSRV_PATH = Path(os.environ.get("RECOSRV_PATH", "recosrv.json"))
+def licensed(gid): return gid == GUILD_ID or gid in LICENSED or gid in RECO_SERVERS
 EXCEL_PATH = os.environ.get("EXCEL_PATH", "261023.xlsx")
 SHEET_NAME = os.environ.get("SHEET_NAME", "")            # 비우면 첫 시트
 VERIFY_CHANNEL_ID = int(os.environ.get("VERIFY_CHANNEL_ID", "0"))  # 인증 안내 채널
@@ -938,6 +940,8 @@ class GuildTree(app_commands.CommandTree):
         set_gid(it.guild_id)
         if it.guild_id is None:
             await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True); return False
+        if it.guild_id in RECO_SERVERS and not (it.command and it.command.name in ("추천", "명령어")):
+            await it.response.send_message("이 서버에서는 `/추천` 명령어만 사용할 수 있습니다.", ephemeral=True); return False
         if licensed(it.guild_id) or (it.command and it.command.name in ("동맹등록", "명령어")):
             if it.command is not None: asyncio.create_task(cmd_log(it))
             return True
@@ -979,6 +983,8 @@ class Bot(discord.Client):
         if not donate_loop.is_running(): donate_loop.start()
         if not idle_loop.is_running(): idle_loop.start()
         if not purge_loop.is_running(): purge_loop.start()
+        try: await asyncio.to_thread(reco_servers_load)
+        except Exception: log.exception("추천 전용 서버 목록 로드 실패")
         hg = self.get_guild(GUILD_ID)
         if hg:
             if not discord.utils.get(hg.roles, name=RESERVE_ROLE):
@@ -995,7 +1001,7 @@ class Bot(discord.Client):
                 except Exception: log.exception("시작 가이드 게시 실패 %s", g.id)
 
     async def on_member_join(self, m: discord.Member):
-        if not licensed(m.guild.id) or m.bot: return
+        if not licensed(m.guild.id) or m.bot or m.guild.id in RECO_SERVERS: return
         set_gid(m.guild.id)
         ch = await verify_channel(m.guild)
         try:
@@ -2754,6 +2760,39 @@ async def adm_revoke(gid, did, by):
 
 
 # ---------- 제작자 모드(/제작자모드: 모든 서버 채널 관리 페이지) ----------
+def reco_servers_load():
+    tok = _CTX.set(GUILD_ID)
+    try: d = store_get("recosrv", RECOSRV_PATH, {}) or {}
+    finally: _CTX.reset(tok)
+    RECO_SERVERS.clear(); RECO_SERVERS.update(int(x) for x in d.get("ids", []))
+
+
+def reco_servers_save():
+    tok = _CTX.set(GUILD_ID)
+    try: store_set("recosrv", RECOSRV_PATH, {"ids": sorted(RECO_SERVERS)})
+    finally: _CTX.reset(tok)
+
+
+async def reco_server_create(name):
+    """봇이 소유하는 새 서버를 만들고 #추천전용 채널과 초대 링크를 준비한다(들어온 사람은 인증 없이 /추천만 사용)."""
+    name = re.sub(r"\s+", " ", name or "").strip()[:60] or "천하결전 추천덱"
+    try: g = await bot.create_guild(name=name)
+    except discord.HTTPException as e: raise ValueError(f"서버를 만들지 못했습니다(봇이 서버 10개 미만일 때만 가능): {e.text or e}")
+    RECO_SERVERS.add(g.id); await asyncio.to_thread(reco_servers_save)
+    await asyncio.sleep(3)
+    g = bot.get_guild(g.id) or g
+    ch = await g.create_text_channel(GUEST_CH, topic="추천 전용 — /추천 으로 덱 추천 페이지 링크를 받습니다", reason="추천 전용 서버")
+    f = GUIDE_DIR / "reco_guide-1.png"
+    try: await ch.send("📘 **추천 전용 서버입니다.** 이 채널에서 `/추천`을 입력하면 나에게만 보이는 덱 추천 페이지 링크가 나옵니다. (인증은 필요 없습니다)", **({"file": discord.File(f, filename="추천_이용가이드.png")} if f.is_file() else {}), allowed_mentions=discord.AllowedMentions.none())
+    except Exception: log.warning("추천전용 서버 안내 실패", exc_info=True)
+    for c in list(g.channels):
+        if c.id != ch.id:
+            try: await c.delete(reason="추천 전용 서버 정리")
+            except Exception: pass
+    inv = await ch.create_invite(max_age=0, max_uses=0, unique=False, reason="추천 전용 서버 초대")
+    return g, inv.url
+
+
 SB_GUILD_TABLES = ("sam_alli", "sam_auth_log", "sam_build", "sam_build_reserve", "sam_dex", "sam_emp", "sam_emp_alt", "sam_emp_event", "sam_emp_left", "sam_emp_out",
                    "sam_emp_stat", "sam_iron", "sam_leave_case", "sam_perm", "sam_store", "sam_verified")
 GUEST_ROLE, GUEST_CH = "추천이용자", "추천전용"
@@ -2829,6 +2868,9 @@ async def web_owner_api(request):
     if not isinstance(b, dict): return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
     op = b.get("op")
     try:
+        if op == "newserver":
+            g2, url = await reco_server_create(str(b.get("name", "")))
+            return web.json_response({"ok": True, "msg": f"'{g2.name}' 서버를 만들었습니다. 초대 링크: {url}", "url": url})
         if op == "guest":                                    # 추천 전용 이용자 추가(본 서버, 추천만 쓸 수 있는 채널·역할)
             msg = await reco_guest_add(str(b.get("did", "")).strip(), str(b.get("name", "")).strip())
             return web.json_response({"ok": True, "msg": msg})
@@ -2851,8 +2893,10 @@ async def web_owner_api(request):
             if g.id == GUILD_ID: raise ValueError("본 서버에서는 철수할 수 없습니다.")
             if str(b.get("confirm", "")).strip() != g.name: raise ValueError("확인용 서버 이름이 일치하지 않습니다.")
             gid0, gname = g.id, g.name
-            await g.leave()
+            if g.owner_id == bot.user.id: await g.delete()              # 봇이 소유한 서버는 서버 자체를 삭제
+            else: await g.leave()
             LICENSED.discard(gid0)
+            if gid0 in RECO_SERVERS: RECO_SERVERS.discard(gid0); await asyncio.to_thread(reco_servers_save)
             for k in [k for k in list(PERM) if k[0] == gid0]: PERM.discard(k)
             def wipe():
                 n = 0
@@ -5011,7 +5055,12 @@ def reco_defs():
     return {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
 
 
-def _my_cid(did): return next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
+def _my_cid(did):
+    cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
+    if cid is None and cur_gid() in RECO_SERVERS:                  # 추천 전용 서버: 들어온 누구나 인증 없이 /추천 가능(가상 CID로 자동 등록)
+        cid = "G" + str(did); db = db_load(); db["uid"][cid] = str(did)
+        db.setdefault("dip", {})[cid] = {"ally": "추천전용", "name": "손님", "t": (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}; db_save(db)
+    return cid
 
 
 def _split_names(raw): return [re.sub(r"\s+", " ", x).strip() for x in re.split(r"[,\n，、;/]+", raw or "") if x.strip()]
