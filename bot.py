@@ -2958,17 +2958,19 @@ def hr_import(now=None, rows=None, gid=GUILD_ID, reset=False, with_stat=True):
     same = {n: c for n, c in names.items() if len(c) > 1}
     if same: warn.append("이름은 같고 CID가 다른 멤버: " + ", ".join(f"{n}({'/'.join(c)})" for n, c in list(same.items())[:5]))
     ro, st = [], []
-    # G열(무훈)·H열(공헌) 제목이 '주간 …' 이면 주간 값, '총/누적 …' 이면 누적 값으로 받는다(둘 다 지원)
+    # 제목이 '주간 무훈/공헌'이면 주간 값(전주와의 상대값), 그냥 '무훈/공헌' 또는 '총·누적 …'이면 누적 값으로 받는다
     def _mode(key):
         hs = [h for h in H if key in h]
-        h = next((x for x in hs if re.search("총|누적", x)), None) or next((x for x in hs if "주간" in x), None) or (hs[0] if hs else None)
-        return h, bool(h and re.search("총|누적", h))
+        h = next((x for x in hs if "주간" not in x), None) or (hs[0] if hs else None)       # 누적 쪽 열이 있으면 우선(일 증가분을 누적 차이로 계산)
+        return h, bool(h and "주간" not in h)
     mh, m_tot = _mode("무훈"); ch, c_tot = _mode("공헌")
     base = {}
     if m_tot or c_tot:                                          # 누적 파일: 이번 주 월요일 이전 마지막 누적값을 빼서 주간 값을 만든다
         kst = datetime.datetime.strptime(snap, "%Y-%m-%d").date(); monday = (kst - datetime.timedelta(days=kst.weekday())).isoformat()
         for r in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=lt.{monday}&total_merit=not.is.null&select=cid,total_merit,total_contribution&order=snap_date.desc&limit=100000") or []:
             base.setdefault(r["cid"], r)
+        for r in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{monday}&snap_date=lt.{snap}&total_merit=not.is.null&select=cid,total_merit,total_contribution&order=snap_date.asc&limit=100000") or []:
+            base.setdefault(r["cid"], r)                    # 이번 주 이전의 누적 기록이 없으면 이번 주 첫 누적 기록을 기준으로 삼는다(첫 주만 근사)
     for cid, g in merged.items():
         ro.append({"guild_id": gid, "cid": cid, "name": g.get("멤버", ""), "job": g.get("직업", ""), "updated_at": now,
                    "extra": {"조별": g.get("조별", "")}})
