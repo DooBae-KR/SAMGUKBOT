@@ -1,0 +1,67 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>제작자 모드 · 전체 서버 채널 관리</title>
+<style>
+:root{color-scheme:dark;--bg:#0e1716;--raise:#14211f;--line:#263a36;--text:#e8e3d3;--mute:#93a49e;--jade:#5ecfb1;--gold:#e0b65a;--verm:#ea5a42}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 'Noto Sans KR','Malgun Gothic',sans-serif}
+header{padding:18px 16px 12px;border-bottom:1px solid var(--line)}h1{margin:0;font-size:21px}.sub{color:var(--mute);font-size:12.5px;margin-top:2px}
+.lay{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 70px)}
+aside{border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - 70px);position:sticky;top:0}
+main{padding:16px 18px 80px;min-width:0}
+input,select,textarea{background:#0b1312;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;width:100%}
+textarea{min-height:70px}
+.g{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;cursor:pointer;border:1px solid transparent;margin-top:4px}
+.g:hover{background:var(--raise)}.g.on{background:var(--raise);border-color:var(--gold)}
+.g img,.g .ph{width:34px;height:34px;border-radius:50%;background:#1d2d2a;flex:0 0 auto;display:grid;place-items:center;font-size:13px;color:var(--mute)}
+.g b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.g small{color:var(--mute);font-size:11.5px}
+.card{background:var(--raise);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+h2{margin:0 0 8px;font-size:17px}.mute{color:var(--mute);font-size:12.5px}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1 1 140px}.row>button{flex:0 0 auto}
+button.b{background:var(--jade);color:#062;border:0;border-radius:8px;padding:8px 14px;font:600 13.5px inherit;cursor:pointer}
+button.s{background:none;color:var(--mute);border:1px solid var(--line);border-radius:7px;padding:3px 9px;font-size:12px;cursor:pointer}
+button.s:hover{color:var(--text);border-color:var(--mute)}button.s.d{color:var(--verm);border-color:#6b2f27}
+.cat{margin-top:14px;padding:6px 10px;color:var(--gold);font-weight:700;font-size:13px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line)}
+.ch{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid #1c2b28;flex-wrap:wrap}
+.ch .n{flex:1 1 200px;min-width:0;word-break:break-all}.ch .n small{color:var(--mute);margin-left:6px}.ch .ac{display:flex;gap:4px;flex-wrap:wrap}
+.ic{width:20px;text-align:center;color:var(--mute)}
+#toast{white-space:pre-line;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d3a34;border:1px solid var(--jade);padding:10px 18px;border-radius:10px;display:none;max-width:90vw;z-index:9}
+#toast.err{background:#3a1d1d;border-color:var(--verm)}
+#msgs{max-height:260px;overflow:auto;font-size:13px;margin-top:8px}#msgs div{padding:4px 0;border-bottom:1px solid #1c2b28;word-break:break-all}#msgs b{color:var(--jade)}
+@media(max-width:760px){.lay{grid-template-columns:1fr}aside{position:static;max-height:240px;border-right:0;border-bottom:1px solid var(--line)}}
+</style></head><body>
+<header><h1>👑 제작자 모드 · 전체 서버 채널 관리</h1><div class="sub">봇이 들어가 있는 모든 서버를 관리합니다 (제작자 본인 전용 · 링크 공유 금지). 봇에 채널 관리 권한이 있어야 동작합니다.</div></header>
+<div class="lay"><aside><input id="gq" placeholder="서버 검색"><div id="gl"></div></aside>
+<main id="main"><p class="mute">왼쪽에서 서버를 선택하세요.</p></main></div><div id="toast"></div>
+<script>
+const T="__T__",$=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let G=[],GID=null,S=null;
+function toast(m,e){const t=$('#toast');t.textContent=m;t.className=e?'err':'';t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
+async function api(o){try{const r=await fetch('/api/owner?t='+encodeURIComponent(T),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)});const j=await r.json();if(!r.ok||j.error){toast(j.error||'실패',1);return null}return j}catch(e){toast('네트워크 오류',1);return null}}
+async function loadG(){const j=await api({op:'guilds'});if(!j)return;G=j.guilds;drawG()}
+function drawG(){const q=$('#gq').value.trim().toLowerCase();$('#gl').innerHTML=G.filter(g=>!q||g.name.toLowerCase().includes(q)).map(g=>`<div class="g ${g.id===GID?'on':''}" data-g="${g.id}">${g.icon?`<img src="${esc(g.icon)}">`:`<div class="ph">${esc(g.name.slice(0,1))}</div>`}<div style="min-width:0"><b>${esc(g.name)}</b><small>멤버 ${g.n}명${g.home?' · 본 서버':''}${g.lic?' · 승인':''}</small></div></div>`).join('')||'<p class="mute">없음</p>'}
+async function loadC(){if(!GID)return;const j=await api({op:'channels',gid:GID});if(!j)return;S=j;draw()}
+const TI={text:'#',voice:'🔊',stage:'🎙',forum:'💬',news:'📢',category:'📁'};
+function chRow(c){return `<div class="ch"><span class="ic">${TI[c.type]||'#'}</span><div class="n">${esc(c.name)}<small>${c.id}${c.topic?' · '+esc(c.topic.slice(0,40)):''}</small></div><div class="ac">${c.text?`<button class="s" data-a="read" data-i="${c.id}">메시지 보기</button><button class="s" data-a="send" data-i="${c.id}">메시지 보내기</button><button class="s" data-a="topic" data-i="${c.id}">주제</button>`:''}<button class="s" data-a="rename" data-i="${c.id}" data-n="${esc(c.name)}">이름</button>${c.type!=='category'?`<button class="s" data-a="move" data-i="${c.id}">이동</button>`:''}<button class="s d" data-a="del" data-i="${c.id}" data-n="${esc(c.name)}">삭제</button></div></div>`}
+function draw(){if(!S)return;const cats=S.chs.filter(c=>c.type==='category'),by=id=>S.chs.filter(c=>c.type!=='category'&&c.cat===id);
+ const opts='<option value="">(카테고리 없음)</option>'+cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+ $('#main').innerHTML=`<div class="card"><h2>${esc(S.name)}</h2><div class="mute">채널 ${S.chs.filter(c=>c.type!=='category').length}개 · 카테고리 ${cats.length}개 · 멤버 ${S.n}명</div></div>
+ <div class="card"><h2>채널·카테고리 만들기</h2><div class="row"><input id="nn" placeholder="이름" maxlength="100"><select id="nt"><option value="text">텍스트 채널</option><option value="voice">음성 채널</option><option value="category">카테고리</option></select><select id="nc">${opts}</select><button class="b" id="mk">만들기</button></div></div>
+ <div class="card"><h2>채널 목록</h2>${by(null).length?`<div class="cat">(카테고리 없음)</div>${by(null).map(chRow).join('')}`:''}${cats.map(c=>`<div class="cat">${TI.category} ${esc(c.name)}<span class="mute">${c.id}</span><span style="flex:1"></span><button class="s" data-a="rename" data-i="${c.id}" data-n="${esc(c.name)}">이름</button><button class="s d" data-a="del" data-i="${c.id}" data-n="${esc(c.name)}">삭제</button></div>${by(c.id).map(chRow).join('')||'<div class="mute" style="padding:6px 10px">비어 있음</div>'}`).join('')}</div>
+ <div class="card" id="box" style="display:none"></div>`}
+function box(h){const b=$('#box');b.style.display='block';b.innerHTML=h;b.scrollIntoView({behavior:'smooth',block:'nearest'})}
+document.addEventListener('click',async e=>{
+ const g=e.target.closest('[data-g]');if(g){GID=g.dataset.g;drawG();S=null;$('#main').innerHTML='<p class="mute">불러오는 중…</p>';loadC();return}
+ if(e.target.id==='mk'){const name=$('#nn').value.trim();if(!name)return toast('이름을 입력하세요',1);const j=await api({op:'create',gid:GID,name,type:$('#nt').value,cat:$('#nc').value});if(j){toast('만들었습니다');loadC()}return}
+ const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,i=b.dataset.i,n=b.dataset.n;
+ if(a==='del'){if(!confirm(`'${n}' 을(를) 정말 삭제할까요? 되돌릴 수 없습니다.`))return;const j=await api({op:'delete',gid:GID,id:i});if(j){toast('삭제했습니다');loadC()}}
+ else if(a==='rename'){const v=prompt('새 이름',n);if(!v||v===n)return;const j=await api({op:'rename',gid:GID,id:i,name:v});if(j){toast('이름을 바꿨습니다');loadC()}}
+ else if(a==='topic'){const v=prompt('채널 주제(비우면 삭제)','');if(v===null)return;const j=await api({op:'topic',gid:GID,id:i,topic:v});if(j){toast('주제를 바꿨습니다');loadC()}}
+ else if(a==='move'){const cats=S.chs.filter(c=>c.type==='category');box(`<h2>채널 이동</h2><div class="row"><select id="mv"><option value="">(카테고리 없음)</option>${cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><button class="b" id="mvgo" data-i="${i}">이동</button></div>`)}
+ else if(a==='send'){box(`<h2>메시지 보내기 <span class="mute">(봇 이름으로 전송)</span></h2><textarea id="tx" maxlength="2000" placeholder="내용 (최대 2000자)"></textarea><div class="row" style="margin-top:8px"><button class="b" id="sg" data-i="${i}">보내기</button></div>`)}
+ else if(a==='read'){const j=await api({op:'read',gid:GID,id:i});if(j)box(`<h2>최근 메시지</h2><div id="msgs">${j.msgs.map(m=>`<div><b>${esc(m.by)}</b> <span class="mute">${esc(m.at)}</span><br>${esc(m.text)}</div>`).join('')||'<span class="mute">없음</span>'}</div>`)}
+});
+document.addEventListener('click',async e=>{
+ if(e.target.id==='mvgo'){const j=await api({op:'move',gid:GID,id:e.target.dataset.i,cat:$('#mv').value});if(j){toast('이동했습니다');loadC()}}
+ if(e.target.id==='sg'){const text=$('#tx').value.trim();if(!text)return toast('내용을 입력하세요',1);const j=await api({op:'send',gid:GID,id:e.target.dataset.i,text});if(j){toast('보냈습니다');$('#tx').value=''}}
+});
+$('#gq').oninput=drawG;loadG();
+</script></body></html>

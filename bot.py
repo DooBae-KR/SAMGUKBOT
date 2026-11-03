@@ -2700,6 +2700,106 @@ async def adm_revoke(gid, did, by):
     if m and m.guild_permissions.administrator: raise ValueError("부여 권한은 뺐지만, 이 사용자는 디스코드 서버 관리자 권한이 있어 계속 관리자입니다.")
 
 
+# ---------- 제작자 모드(/제작자모드: 모든 서버 채널 관리 페이지) ----------
+def own_token(uid, exp):
+    return f"{uid}.{exp}." + hmac.new(TIER_SECRET.encode(), f"own:{uid}:{exp}".encode(), hashlib.sha256).hexdigest()[:24]
+
+
+async def own_parse(t):
+    """제작자 링크 검사 → 사용자 ID 또는 None (매 요청마다 제작자 본인인지 다시 확인)"""
+    p = (t or "").split(".")
+    if len(p) != 3 or not (p[0].isdigit() and p[1].isdigit()) or int(p[1]) < time.time(): return None
+    want = hmac.new(TIER_SECRET.encode(), f"own:{p[0]}:{p[1]}".encode(), hashlib.sha256).hexdigest()[:24]
+    if not hmac.compare_digest(p[2], want): return None
+    try: owner = await perm_owner()
+    except Exception: return None
+    return int(p[0]) if int(p[0]) == owner.id else None
+
+
+def _ch_kind(c):
+    if isinstance(c, discord.CategoryChannel): return "category"
+    if isinstance(c, discord.StageChannel): return "stage"
+    if isinstance(c, discord.VoiceChannel): return "voice"
+    if isinstance(c, discord.ForumChannel): return "forum"
+    return "news" if getattr(c, "is_news", lambda: False)() else "text"
+
+
+async def web_owner(request):
+    if not await own_parse(request.query.get("t")): return web.Response(status=403, text="링크가 만료되었거나 권한이 없습니다. 디스코드에서 /제작자모드 를 다시 입력해 주세요.")
+    tpl = (Path(__file__).parent / "owner_template.html").read_text("utf-8")
+    return web.Response(text=tpl.replace("__T__", request.query.get("t")), content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+
+async def web_owner_api(request):
+    uid = await own_parse(request.query.get("t"))
+    if not uid: return web.json_response({"error": "링크가 만료되었거나 권한이 없습니다. 디스코드에서 /제작자모드 를 다시 입력해 주세요."}, status=403)
+    try: b = await request.json()
+    except Exception: return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
+    if not isinstance(b, dict): return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
+    op = b.get("op")
+    try:
+        if op == "guilds":
+            gs = sorted(bot.guilds, key=lambda g: (g.id != GUILD_ID, -(g.member_count or 0)))
+            return web.json_response({"guilds": [{"id": str(g.id), "name": g.name, "n": g.member_count or 0, "icon": str(g.icon.url) if g.icon else "", "home": g.id == GUILD_ID, "lic": g.id in LICENSED} for g in gs]})
+        g = bot.get_guild(int(b.get("gid") or 0))
+        if not g: return web.json_response({"error": "봇이 들어가 있지 않은 서버입니다."}, status=404)
+        why = f"제작자 페이지({uid})"
+        def pick(key="id"):
+            c = g.get_channel(int(b.get(key) or 0))
+            if not c: raise ValueError("채널을 찾을 수 없습니다. 목록을 새로고침해 주세요.")
+            return c
+        def cat_of(v):
+            if not v: return None
+            c = g.get_channel(int(v))
+            if not isinstance(c, discord.CategoryChannel): raise ValueError("카테고리를 찾을 수 없습니다.")
+            return c
+        if op == "channels":
+            chs = [{"id": str(c.id), "name": c.name, "type": _ch_kind(c), "cat": str(c.category_id) if getattr(c, "category_id", None) else None, "pos": c.position,
+                    "text": isinstance(c, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel)), "topic": getattr(c, "topic", "") or ""} for c in g.channels]
+            cats = sorted([c for c in chs if c["type"] == "category"], key=lambda c: c["pos"]); rest = sorted([c for c in chs if c["type"] != "category"], key=lambda c: c["pos"])
+            return web.json_response({"name": g.name, "n": g.member_count or 0, "chs": cats + rest})
+        if op == "create":
+            name = re.sub(r"\s+", " ", str(b.get("name", ""))).strip()[:100]; ty = b.get("type")
+            if not name: raise ValueError("이름을 입력해 주세요.")
+            if ty == "category": await g.create_category(name, reason=why)
+            elif ty == "voice": await g.create_voice_channel(name, category=cat_of(b.get("cat")), reason=why)
+            else: await g.create_text_channel(name, category=cat_of(b.get("cat")), reason=why)
+        elif op == "rename":
+            name = re.sub(r"\s+", " ", str(b.get("name", ""))).strip()[:100]
+            if not name: raise ValueError("이름을 입력해 주세요.")
+            await pick().edit(name=name, reason=why)
+        elif op == "topic":
+            c = pick()
+            if not isinstance(c, discord.TextChannel): raise ValueError("텍스트 채널만 주제를 바꿀 수 있습니다.")
+            await c.edit(topic=str(b.get("topic", ""))[:1024] or None, reason=why)
+        elif op == "move":
+            c = pick()
+            if isinstance(c, discord.CategoryChannel): raise ValueError("카테고리는 이동할 수 없습니다.")
+            await c.edit(category=cat_of(b.get("cat")), reason=why)
+        elif op == "delete":
+            c = pick(); await c.delete(reason=why)
+        elif op == "send":
+            c = pick(); text = str(b.get("text", "")).strip()[:2000]
+            if not text: raise ValueError("내용을 입력해 주세요.")
+            if not hasattr(c, "send"): raise ValueError("메시지를 보낼 수 없는 채널입니다.")
+            await c.send(text, allowed_mentions=discord.AllowedMentions.none())
+        elif op == "read":
+            c = pick()
+            if not hasattr(c, "history"): raise ValueError("메시지를 읽을 수 없는 채널입니다.")
+            kst = datetime.timezone(datetime.timedelta(hours=9)); msgs = []
+            async for m in c.history(limit=15):
+                msgs.append({"by": m.author.display_name, "at": m.created_at.astimezone(kst).strftime("%m-%d %H:%M"), "text": (m.content or ("[첨부/임베드]" if (m.attachments or m.embeds) else ""))[:500]})
+            return web.json_response({"ok": True, "msgs": msgs})
+        else: return web.json_response({"error": "알 수 없는 요청"}, status=400)
+        log.info("제작자 페이지 %s: guild=%s op=%s", uid, g.id, op)
+        return web.json_response({"ok": True})
+    except discord.Forbidden: return web.json_response({"error": "봇에 이 작업을 할 권한이 없습니다. (서버에서 봇 역할에 채널 관리·메시지 보내기 권한을 주세요)"}, status=400)
+    except discord.HTTPException as e: return web.json_response({"error": f"디스코드 오류: {e.text or e}"}, status=400)
+    except ValueError as e: return web.json_response({"error": str(e)}, status=400)
+    except Exception: log.exception("제작자 페이지 오류"); return web.json_response({"error": "처리 중 오류가 났습니다."}, status=500)
+
+
+
 async def web_admin(request):
     p = adm_parse(request.query.get("t"))
     if not p or not adm_is_admin(p[0], p[1]): return web.Response(status=403, text="링크가 만료되었거나 권한이 없습니다. 디스코드에서 /관리 를 다시 입력해 주세요.")
@@ -2880,7 +2980,7 @@ async def start_web():
     app = web.Application(middlewares=[gzip_mw]); app.router.add_get("/", web_index)
     app.router.add_get("/img/{k}/{size}/{name}", web_img); app.router.add_get("/guide/{name}", web_guide)
     app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
-    app.router.add_get("/admin", web_admin); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
+    app.router.add_get("/admin", web_admin); app.router.add_get("/owner", web_owner); app.router.add_post("/api/owner", web_owner_api); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
     app.router.add_get("/season", web_season); app.router.add_get("/admin/season_template.xlsx", web_admin_tpl); app.router.add_get("/invite", web_invite); app.router.add_get("/bimg/{iid}", web_bimg)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
@@ -4877,6 +4977,14 @@ async def cmd_manual_update(it: discord.Interaction, 강제: bool = False):
         except Exception: log.exception("메뉴얼 업데이트 실패 %s", g.id); a = u = None
         (ok if (a or u) else bad).append(g.name)
     await it.followup.send(f"📚 메뉴얼 업데이트 완료 — 성공 {len(ok)}개 서버" + (f"\n⚠️ 실패(봇에 채널 관리 권한 필요): {', '.join(bad)}" if bad else "") + "\n(내용이 바뀐 서버만 새로 올립니다)" if not 강제 else f"📚 메뉴얼 강제 업데이트 — 성공 {len(ok)}개 서버" + (f"\n⚠️ 실패: {', '.join(bad)}" if bad else ""), ephemeral=True)
+
+
+@bot.tree.command(name="제작자모드", description="[제작자] 봇이 들어간 모든 서버의 채널을 관리하는 페이지 링크")
+async def cmd_owner_mode(it: discord.Interaction):
+    owner = await perm_owner()
+    if it.user.id != owner.id: return await it.response.send_message("제작자만 사용할 수 있습니다.", ephemeral=True)
+    exp = int(time.time()) + ADM_HOURS * 3600
+    await it.response.send_message(f"👑 제작자 모드 (본인 전용 · {ADM_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/owner?t={own_token(it.user.id, exp)}", ephemeral=True)
 
 
 @bot.tree.command(name="관리", description="[관리자] 톡방 참여자·동맹원 추가·관리자 권한을 DB와 실시간으로 관리하는 페이지 링크")
