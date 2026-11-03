@@ -90,7 +90,8 @@ function prep(){if(TALK)D.forEach(d=>d.t=TALK.has(d.n)?1:0);D.forEach((d,i)=>d.i
 const ACC={'액티브':'--jade','저조':'--ash','경고':'--gold','쟁 미참여':'--verm','집계 중':'--blue'};
 const PAL=['--jade','--gold','--blue','--verm','--ash','#b48ad6','#e08fb0','#9bd36c'];
 const W={m:55,c:35,talk:10};
-const TOK_Q=50;   // 토돼지: 번영도 대비 무훈(최근 7일 무훈 합 ÷ 번영) 비율이 동맹 하위 50%
+const TOK_P=140000,TIER={t10:.1,t30:.3,t50:.5};   // 총(누적) 무훈 순위: 상위10% 천하무쌍 · 상위30% 액티브 · 상위50% 쟁참여자 · 나머지(하위50%) 중 번영 14만 이상 토돼지
+let CUT={c10:0,c30:0,c50:0,n10:0,n30:0,n50:0,basis:'총(누적) 무훈'};
 const AC_ORDER=['쟁 미참여','경고','저조','액티브','집계 중'];
 const cv=c=>c.startsWith('--')?`var(${c})`:c;
 const tag=(label,c)=>`<span class="tag" style="--c:${cv(c)}">${label}</span>`;
@@ -110,10 +111,14 @@ function derive(){
       d.ac='집계 중';
     }
   });
-  {const wm7=d=>d.a&&d.a.days&&d.a.days.length?d.a.days.slice(-7).reduce((s,x)=>s+(x.m||0),0):(d.m||0);
-   const pool=D.filter(d=>d.p>0&&d.r!=='예비');pool.forEach(d=>d.ratio=wm7(d)/d.p);
-   D.forEach(d=>{d.tok=false});
-   pool.forEach(d=>{d.tok=pool.filter(x=>x.ratio<d.ratio).length/pool.length*100<TOK_Q})}
+  {const hasTM=D.some(d=>d.tm!=null),val=d=>hasTM?(d.tm||0):(d.m||0);CUT.basis=hasTM?'총(누적) 무훈':'주간 무훈(누적 값이 아직 없음)';
+   const srt=[...D].sort((a,b)=>val(b)-val(a)||(b.p||0)-(a.p||0)),n=srt.length,k=r=>Math.ceil(n*r);
+   srt.forEach((d,i)=>{const v=val(d);d.wv=v;d.wrank=i+1;d.tw=i<k(TIER.t10)&&v>0;d.tz=i<k(TIER.t30)&&v>0;d.tj=i<k(TIER.t50)&&v>0;
+     d.tok=!d.tj&&d.p>=TOK_P&&d.r!=='예비';
+     if(d.tz&&(d.ac==='저조'||d.ac==='집계 중'))d.ac='액티브';
+     d.wg=d.tw?'천하무쌍':d.tz?'액티브':d.tj?'쟁참여자':'';});
+   const mn=a=>a.length?Math.min(...a.map(val)):0;
+   CUT={...CUT,c10:mn(srt.filter(d=>d.tw)),c30:mn(srt.filter(d=>d.tz)),c50:mn(srt.filter(d=>d.tj)),n10:srt.filter(d=>d.tw).length,n30:srt.filter(d=>d.tz).length,n50:srt.filter(d=>d.tj).length}}
   const sc=D.map(d=>d.score),t=[q(sc,.9),q(sc,.7),q(sc,.3)];
   D.forEach(d=>d.grade=d.score>=t[0]?'S':d.score>=t[1]?'A':d.score>=t[2]?'B':'C');
 }
@@ -155,7 +160,7 @@ function tabSummary(){
   const S=(b,l,a)=>`<div class="stat" data-w="${a?W_(a):''}" data-t="${l}"><b>${b}</b><span>${l}</span></div>`;
   const jobs=[...new Set(D.map(d=>d.j))].map(j=>[j,D.filter(d=>d.j===j)]).sort((a,b)=>b[1].length-a[1].length),mxj=jobs[0][1].length;
   document.getElementById('t0').innerHTML=`
-  <div class="strip">${S(n,'전체 인원',D)}${S(cn('액티브').length,'액티브',cn('액티브'))}${S(cn('저조').length,'저조',cn('저조'))}${S(cn('경고').length,'경고',cn('경고'))}${S(cn('쟁 미참여').length,'쟁 미참여',cn('쟁 미참여'))}${S(tk.length,'톡방 참여',tk)}${S(D.filter(d=>d.tok).length,'토돼지',D.filter(d=>d.tok))}${S(un.length,'미편성',un)}</div>
+  <div class="strip">${S(n,'전체 인원',D)}${S(cn('액티브').length,'액티브',cn('액티브'))}${S(cn('저조').length,'저조',cn('저조'))}${S(cn('경고').length,'경고',cn('경고'))}${S(cn('쟁 미참여').length,'쟁 미참여',cn('쟁 미참여'))}${S(tk.length,'톡방 참여',tk)}${S(D.filter(d=>d.tok).length,'토돼지',D.filter(d=>d.tok))}${S(f(CUT.c10),'무훈 상위 10% 기준 · 천하무쌍 '+CUT.n10+'명',D.filter(d=>d.tw))}${S(f(CUT.c30),'무훈 상위 30% 기준 · 액티브 '+CUT.n30+'명',D.filter(d=>d.tz))}${S(f(CUT.c50),'무훈 상위 50% 기준 · 쟁참여자 '+CUT.n50+'명',D.filter(d=>d.tj))}${S(un.length,'미편성',un)}</div>
   <section class="blk"><h2>진영도</h2><p class="lead">네모 하나가 연맹원 한 명입니다. 묶는 기준을 바꿔 보고, 칸에 마우스를 올리면 누구인지 나옵니다. 각 묶음 안에서는 점수가 높은 사람이 앞에 옵니다.</p>
    <div class="seg" id="gseg">${Object.keys(groupers).map(k=>`<button data-g="${k}">${k}</button>`).join('')}</div><div class="waffle" id="wf"></div></section>
   <section><h2>직업</h2><p class="lead">직업별 인원입니다.</p>${jobs.map(([j,a],i)=>bar(j,a.length,mxj,PAL[i%PAL.length],W_(a))).join('')}</section>`;
@@ -168,7 +173,7 @@ const COLS=[
  {h:'액티브 판정',s:d=>d.ac,f:d=>acTag(d.ac)},{h:'등급',s:d=>d.score,f:d=>`<span class="grade">${d.grade}</span>`},
  {h:'점수',n:1,s:d=>d.score,f:d=>d.score.toFixed(1)},{h:'최근 일 무훈',n:1,s:d=>lastM(d)==null?-1:lastM(d),f:d=>lastM(d)==null?'':f(lastM(d))},
  {h:'주간 무훈',n:1,s:d=>d.m,f:d=>f(d.m)},{h:'주간 공헌',n:1,s:d=>d.c,f:d=>f(d.c)},{h:'번영',n:1,s:d=>d.p,f:d=>f(d.p)},
- {h:'지역',s:d=>d.reg||'재기',f:d=>d.reg||'재기'},{h:'톡방',s:d=>d.t,f:d=>d.t?'참여':'비참여'},{h:'토돼지',s:d=>d.tok?1:0,f:d=>d.tok?acTag2('토돼지'):''},
+ {h:'지역',s:d=>d.reg||'재기',f:d=>d.reg||'재기'},{h:'톡방',s:d=>d.t,f:d=>d.t?'참여':'비참여'},{h:'무훈 등급',s:d=>d.wrank||9999,f:d=>(d.wg?acTag2(d.wg):'')+(d.tok?' '+acTag2('토돼지'):'')},{h:'누적 무훈',s:d=>d.wv||0,f:d=>f(d.wv||0)},
  {h:'활동유형',s:d=>d.rk?d.rk.ty:'',f:d=>d.rk?d.rk.ty:''},{h:'이탈 위험',n:1,s:d=>d.rk&&d.rk.r!=null?d.rk.r:-1,f:d=>d.rk&&d.rk.r!=null?d.rk.r:''},
  {h:'공성위탁',s:d=>d.rk?d.rk.sg:0,f:d=>d.rk&&d.rk.sg?(d.rk.sg===2?'필요':'관찰'):''}].concat(CFG.spy?[{h:'간첩 의심',n:1,s:d=>d.rk&&d.rk.sp?d.rk.sp.s:-1,f:d=>d.rk&&d.rk.sp&&d.rk.sp.lv>=2?(d.rk.sp.lv===3?'간첩 의심 ':'주의 ')+d.rk.sp.s:''}]:[]);
 let M={ac:'',q:'',j:'',g:'',t:''};
@@ -199,7 +204,7 @@ function tabRoster(){
 function tabIssues(){
   const A=CFG.act,I=[
    ...(A?[['쟁 미참여 인원',`판정일 연속 2일 일 무훈 ${f(A.warn)} 이하입니다. 상대가 없던 날은 뺐습니다.`,D.filter(d=>d.ac==='쟁 미참여')],['경고',`가장 최근 판정일 일 무훈이 ${f(A.warn)} 이하입니다. 하루 더 이어지면 쟁 미참여입니다.`,D.filter(d=>d.ac==='경고')]]:[]),
-   ['토돼지',`번영도에 비해 무훈이 낮은 인원입니다. 최근 7일 무훈 합 ÷ 번영 비율이 동맹 하위 ${TOK_Q}%입니다(예비 제외, 무훈 0은 모두 포함).`,D.filter(d=>d.tok)],
+   ['천하무쌍',`${CUT.basis} 상위 10%입니다(${f(CUT.c10)} 이상).`,D.filter(d=>d.tw)],['토돼지',`${CUT.basis} 상위 50%에 들지 못했고 번영이 ${f(TOK_P)} 이상인 인원입니다(예비 제외).`,D.filter(d=>d.tok)],
    ...(D.some(d=>d.rk&&d.rk.r!=null)?[['이탈 위험 높음','이탈 위험 점수 70 이상입니다. 무훈(전쟁 참여)과 공헌(적 토지 뒤집기·보급 운송)이 모두 낮거나 최근 활동이 크게 떨어진 인원입니다. 이름에 마우스를 올리면 사유가 나옵니다.',D.filter(d=>d.rk&&d.rk.r>=70)],['이탈 위험 주의','이탈 위험 점수 50~69입니다. 한쪽(무훈 또는 공헌)만 낮은 전투형·기여형은 점수가 낮게 나옵니다.',D.filter(d=>d.rk&&d.rk.r>=50&&d.rk.r<70)]]:[]),
    ...(D.some(d=>d.rk&&d.rk.sgv&&d.rk.sgv.length)?[['공성위탁설정 필요','공성은 자동 집결이라 점수에는 쓰지 않습니다. 대신 최근 2주 연속 주 공성 횟수가 동맹 중앙값의 30% 미만인 인원입니다(가입 2주 이내·부계·예비 제외). 공성 위탁 설정을 안내해 주세요.',D.filter(d=>d.rk&&d.rk.sg===2)],['공성위탁 관찰','지난주 공성 횟수만 낮은 인원입니다. 2주 연속이면 필요 목록으로 올라갑니다.',D.filter(d=>d.rk&&d.rk.sg===1)]]:[]),
    ...(CFG.spy?[['간첩 의심',`점수 60 이상이고 신호가 2개 이상 겹친 인원입니다. 확정이 아니라 간부가 먼저 확인할 대상이며, 자동 조치는 없습니다. 사유는 이름에 마우스를 올리면 나옵니다.`,D.filter(d=>d.rk&&d.rk.sp&&d.rk.sp.lv===3)],['간첩 의심 주의','신호 1개로 점수 50 이상이거나 점수 50~59입니다.',D.filter(d=>d.rk&&d.rk.sp&&d.rk.sp.lv===2)]]:[]),
@@ -231,7 +236,8 @@ function tabRules(){
    <tr><td>${acTag('경고')}</td><td>가장 최근 판정일 일 무훈 ${f(A.warn)} 이하</td></tr>
    <tr><td>${acTag('액티브')}</td><td>경고 없음, 점수 ${A.need} 이상</td></tr><tr><td>${acTag('저조')}</td><td>경고 없음, 점수 ${A.need} 미만</td></tr>
    <tr><td>${acTag('집계 중')}</td><td>인사파일이 이틀 이상 쌓이기 전이거나 신규 멤버입니다.</td></tr>
-   <tr><td>토돼지</td><td>최근 7일 무훈 합 ÷ 번영 비율이 동맹 하위 ${TOK_Q}%(예비 제외). 번영은 높은데 전쟁에 덜 나선 인원을 가려내는 표시이며 판정과 별개입니다.</td></tr>
+   <tr><td>무훈 등급</td><td>${CUT.basis} 순위로 매깁니다. 상위 10% 천하무쌍(${f(CUT.c10)} 이상), 상위 30% 액티브(${f(CUT.c30)} 이상, 판정이 저조·집계 중이면 액티브로 올립니다), 상위 50% 쟁참여자(${f(CUT.c50)} 이상). 무훈 0은 포함하지 않습니다.</td></tr>
+   <tr><td>토돼지</td><td>무훈 상위 50%에 들지 못했고 번영 ${f(TOK_P)} 이상인 인원(예비 제외). 판정과 별개의 표시입니다.</td></tr>
    <tr><td>월요일</td><td>주간 리셋일입니다. 월요일 업로드 값은 이전 값과의 차이가 아니라 값 자체를 그날 증가분으로 보고 같은 기준으로 판정합니다.</td></tr>
    <tr><td>제외일</td><td>그날 동맹원 일 무훈 중앙값이 직전 평균의 30% 미만이면 상대가 없던 날로 보고 판정과 연속 일수에서 뺍니다. 제외일은 연속 일수를 끊지 않고 건너뜁니다.</td></tr></tbody></table></div></section>
   <section class="blk"><h2 style="font-size:17px">이탈 위험 · 활동유형 · 공성위탁${CFG.spy?' · 간첩 의심':''}</h2><p class="lead">시즌은 약 1.5달입니다. 무훈은 전쟁에 참여해야 오르고, 공헌은 적 토지 뒤집기·보급품 운송처럼 동맹에 도움이 되는 활동을 해야 오릅니다. 그래서 둘 중 한쪽만 낮으면 위험으로 보지 않고, 둘 다 낮을 때 크게 봅니다.</p><div class="tw"><table class="rules"><tbody>

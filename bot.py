@@ -294,7 +294,7 @@ def roster_build_db(gid, snap=None):
         by[e["cid"]] = {"job": job, "title": x.get("title") or "", "name": e.get("name") or ""}
         if job and job not in jobs: jobs.append(job)
         members.append({"_c": e["cid"], "n": e.get("name") or "", "j": job, "g": (e.get("extra") or {}).get("조별", ""), "r": x.get("title") or "",
-                        "p": x.get("prosperity") or 0, "m": x.get("war_merit") or 0, "c": x.get("contribution") or 0, "s": x.get("siege_count") or 0,
+                        "p": x.get("prosperity") or 0, "m": x.get("war_merit") or 0, "tm": x.get("total_merit"), "c": x.get("contribution") or 0, "s": x.get("siege_count") or 0,
                         "reg": x.get("camp") or "", "x": x.get("camp_x") or 0, "y": x.get("camp_y") or 0, "t": 0})
     return by, members, jobs, (str(last[0]["snap_date"]) if last else "")
 
