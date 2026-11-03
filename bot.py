@@ -827,10 +827,10 @@ GUIDE_PATH = Path(os.environ.get("GUIDE_PATH", "guide.json"))
 GUIDE_DIR = Path(__file__).parent / "guides"
 
 
-async def _guide_channel(g, name, public, prefix, topic, text, force=False, key=None, cat=None):
+async def _guide_channel(g, name, public, prefix, topic, text, force=False, key=None, cat=None, extra=()):
     """가이드 채널을 만들고(없으면) 가이드 이미지를 올린다. 이미지 내용이 바뀌면 이전 글을 지우고 새로 올린다. 만들 수 없으면 None."""
     me = g.me
-    files = sorted(GUIDE_DIR.glob(prefix + "*.png"))[:10]
+    files = (sorted(GUIDE_DIR.glob(prefix + "*.png")) + [f for f in extra if f.is_file()])[:10]          # extra: 다른 가이드의 이미지를 뒤에 덧붙임
     if me is None or not files: return None
     ch = discord.utils.get(g.text_channels, name=name)
     if ch is None and time.time() - _log_fail.get((name, g.id), 0) > 3600:
@@ -875,7 +875,7 @@ async def _guide_channel(g, name, public, prefix, topic, text, force=False, key=
 
 async def guide_post(g, force=False):
     """#관리자가이드(관리자·봇만)와 #이용자가이드(모두 읽기 전용)를 만들고 가이드 이미지를 올린다. → 관리자가이드 채널"""
-    ach = await _guide_channel(g, GUIDE_CH, False, "admin_guide", "관리자 가이드 (서버 관리자만 볼 수 있습니다)", "📘 **관리자 가이드** — 관리 페이지(`/관리`), 권한, 채널, 문제 해결을 정리했습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force)
+    ach = await _guide_channel(g, GUIDE_CH, False, "admin_guide", "관리자 가이드 (서버 관리자만 볼 수 있습니다)", "📘 **관리자 가이드** — 관리 페이지(`/관리`), 권한, 채널, 문제 해결을 정리했습니다. 맨 뒤 장에 **인사파일(MemberWeek.xlsx) 받는 법·파일 위치**도 있습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force, extra=[GUIDE_DIR / "start_guide-1.png"])
     uch = await _guide_channel(g, USER_GUIDE_CH, True, "user_guide", "동맹원용 이용 가이드", "📗 **이용자 가이드** — 인증하기, 자주 쓰는 명령어, 추천덱 보는 법을 1장으로 정리했습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force)
     return ach, uch
 
