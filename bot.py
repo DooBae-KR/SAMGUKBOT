@@ -2780,7 +2780,12 @@ async def reco_server_prepare(g):
     if me is None: raise ValueError("봇이 이 서버에 없습니다.")
     ch = discord.utils.get(g.text_channels, name=GUEST_CH)
     if ch is None:
-        ch = await g.create_text_channel(GUEST_CH, topic="추천 전용 — /추천 으로 덱 추천 페이지 링크를 받습니다", reason="추천 전용 서버")
+        ch = await g.create_text_channel(GUEST_CH, topic="추천 전용 — /추천 으로 덱 추천 페이지 링크를 받습니다", reason="추천 전용 서버"); fresh = True
+    else:
+        fresh = True                                                   # 이미 있는 채널이라도 봇 안내 글이 없으면 올린다
+        try: fresh = not [m async for m in ch.history(limit=30) if m.author == me]
+        except Exception: pass
+    if fresh:
         f = GUIDE_DIR / "reco_guide-1.png"
         try: await ch.send("📘 **추천 전용 서버입니다.** 이 채널에서 `/추천`을 입력하면 나에게만 보이는 덱 추천 페이지 링크가 나옵니다. (인증은 필요 없습니다)", **({"file": discord.File(f, filename="추천_이용가이드.png")} if f.is_file() else {}), allowed_mentions=discord.AllowedMentions.none())
         except Exception: log.warning("추천전용 안내 실패", exc_info=True)
@@ -2822,7 +2827,7 @@ async def reco_server_create(name):
 
 SB_GUILD_TABLES = ("sam_alli", "sam_auth_log", "sam_build", "sam_build_reserve", "sam_dex", "sam_emp", "sam_emp_alt", "sam_emp_event", "sam_emp_left", "sam_emp_out",
                    "sam_emp_stat", "sam_iron", "sam_leave_case", "sam_perm", "sam_store", "sam_verified")
-GUEST_ROLE, GUEST_CH = "추천이용자", "추천전용"
+GUEST_ROLE, GUEST_CH = "추천이용자", "덱추천"
 
 
 async def reco_guest_add(did, name):
