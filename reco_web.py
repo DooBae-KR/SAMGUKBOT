@@ -54,7 +54,7 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
 .tg{display:inline-flex;align-items:center;gap:1px;font-size:10px;color:var(--gold,#e0b65a);margin-left:3px}.tg:before{content:"";width:9px;height:12px;background:var(--st) center/contain no-repeat}
 </style></head><body><div class="wrap" id="app"></div>
 <script>
-const IMS=b=>!b?'':(b.startsWith('/img/')||b.startsWith('data:'))?b:'data:image/jpeg;base64,'+b;const D=__DATA__;const ERR=__ERR__;const $=s=>document.querySelector(s);
+const PH='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20104%20160%22%3E%3Crect%20width%3D%22104%22%20height%3D%22160%22%20rx%3D%228%22%20fill%3D%22%231d2430%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2298%22%20height%3D%22154%22%20rx%3D%226%22%20fill%3D%22none%22%20stroke%3D%22%235b6678%22%20stroke-width%3D%222%22%20stroke-dasharray%3D%225%204%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2258%22%20r%3D%2217%22%20fill%3D%22none%22%20stroke%3D%22%237a8599%22%20stroke-width%3D%223%22%2F%3E%3Cpath%20d%3D%22M52%2050v10l7%205%22%20fill%3D%22none%22%20stroke%3D%22%237a8599%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Ctext%20x%3D%2252%22%20y%3D%22102%22%20text-anchor%3D%22middle%22%20font-family%3D%22Malgun%20Gothic%2CApple%20SD%20Gothic%20Neo%2CNoto%20Sans%20KR%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22700%22%20fill%3D%22%23c9d1de%22%3E%EC%9D%B4%EB%AF%B8%EC%A7%80%3C%2Ftext%3E%3Ctext%20x%3D%2252%22%20y%3D%22124%22%20text-anchor%3D%22middle%22%20font-family%3D%22Malgun%20Gothic%2CApple%20SD%20Gothic%20Neo%2CNoto%20Sans%20KR%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22700%22%20fill%3D%22%23c9d1de%22%3E%EC%A4%80%EB%B9%84%EC%A4%91%3C%2Ftext%3E%3C%2Fsvg%3E';const IMS=b=>!b?'':(b.startsWith('/img/')||b.startsWith('data:'))?b:'data:image/jpeg;base64,'+b;const D=__DATA__;const ERR=__ERR__;const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const NAT={'촉':'#50aa6e','위':'#648cdc','오':'#dc645a','군':'#aaaaaa'};const KC={'한방딜':'burst','도트딜':'dot','일반딜':'norm','회복':'heal','지원':'sup'};
 let MODE='pvp';try{MODE=sessionStorage.getItem('rmode')||'pvp'}catch(e){}
@@ -83,14 +83,14 @@ function donate(){const d=D.don||{};return `<div><div style="margin:8px 0;line-h
 window.addEventListener('message',e=>{if(e.data&&e.data.dexSaved)DIRTY=true});
 function setTab(t){if(DIRTY&&(t==='build'||t==='market')){DIRTY=false;try{sessionStorage.setItem('rtab',t)}catch(e){}location.reload();return}TAB=t;try{sessionStorage.setItem('rtab',t)}catch(e){}draw()}
 function vg(label,v,i,scope){return `<span class="vg">${label}<button class="vb u ${v.m==='u'?'on':''}" onclick="vote(${i},'${scope}','u')">👍 ${v.u}</button><button class="vb d ${v.m==='d'?'on':''}" onclick="vote(${i},'${scope}','d')">👎 ${v.d}</button></span>`}
-function tcell(t){return `<div class="tac" data-tip="${esc(tipHtml(t.n))}">${t.img?`<img src="${IMS(t.img)}">`:'<img>'}<div><div class="t">${esc(t.n)}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc(t.type)}·${esc(t.trait)}</span></div></div></div>`}
+function tcell(t){return `<div class="tac" data-tip="${esc(tipHtml(t.n))}">${t.img?`<img src="${IMS(t.img)}">`:`<img src="${PH}">`}<div><div class="t">${esc(t.n)}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc(t.type)}·${esc(t.trait)}</span></div></div></div>`}
 function hero(h){
   if(!h.n)return `<div class="h"><div class="empty">${esc(h.src||'보유 장수 부족')}</div></div>`;
   const gem=h.tr>0?`<div class="gems" style="--st:url(${D.stone})">${[1,2,3,4,5].map(k=>`<i class="${h.tr>=k?'on':''}"></i>`).join('')}</div>`:'';
   const L=['무력','지력','통솔','선공'];
   const st=h.fin?L.map((l,k)=>`<span>${l} <b>${h.fin[k]}</b>${h.add[k]?`<em> (+${h.add[k]})</em>`:''}</span>`).join(''):'';
-  const tac=h.tac.length?h.tac.map(t=>`<div class="tac">${t.img?`<img src="${IMS(t.img)}">`:'<img>'}<div><div class="t">${esc(t.n)}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc(t.type)}·${esc(t.trait)} · ${esc(t.why)}</span></div></div></div>`).join(''):`<div class="empty">전법 부족 (보유 전법 없음)</div>`;
-  return `<div class="h"><div class="pic">${h.img?`<img class="p" src="${IMS(h.img)}">`:''}<div class="lb">${gem}50 ${esc(h.n)}</div></div><div class="hi">
+  const tac=h.tac.length?h.tac.map(t=>`<div class="tac">${t.img?`<img src="${IMS(t.img)}">`:`<img src="${PH}">`}<div><div class="t">${esc(t.n)}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc(t.type)}·${esc(t.trait)} · ${esc(t.why)}</span></div></div></div>`).join(''):`<div class="empty">전법 부족 (보유 전법 없음)</div>`;
+  return `<div class="h"><div class="pic">${h.img?`<img class="p" src="${IMS(h.img)}">`:`<img class="p" src="${PH}">`}<div class="lb">${gem}50 ${esc(h.n)}</div></div><div class="hi">
   <div class="hn">${esc(h.n)}${h.nation?`<span class="nat" style="background:${NAT[h.nation]||'#999'}">${esc(h.nation)}</span>`:''}${h.rank?`<span class="rk" data-tip="행동 순서">${h.rank}</span>`:''}</div>
   <div class="m">${esc([h.pos,h.troop].filter(Boolean).join(' · '))}</div><div class="sk">${esc(h.sk)}${h.sktype?` (${esc(h.sktype)})`:''}</div>
   <div class="stats">${st}</div>${h.eq?`<div class="eqp" data-tip="특기 대체: ${esc(h.eq.alt)}">🛡 특기 <b>${esc(h.eq.trait)}</b> · 이펙트 <b>${esc(h.eq.effects.join(', '))}</b></div>`:''}${h.src?`<div class="src">← ${esc(h.src)}</div>`:''}</div></div>`}
@@ -107,10 +107,10 @@ function tinfo(u){if(!u.name||!u.heroes.some(h=>h.ti&&(h.ti['스탯']||[]).lengt
 function mine(){const dv=MODE==='dev';return `<div class="bar"><button class="sbtn mo ${!dv?'on':''}" onclick="setMode('pvp')">PvP 추천</button><button class="sbtn mo ${dv?'on':''}" onclick="setMode('dev')">개척 추천</button><span class="m">${dv?'개척덱 기준':'PvP 티어덱 기준'} · 내 보유 장수·전법으로 5부대</span></div>`+US().map(unit).join('')+`<div class="m">티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웁니다. 장수 👎는 그 덱을 빼고, 전법 👎는 전법만 다시 고릅니다. 모든 서버의 평가가 합산됩니다.</div>`}
 function rank(){const R=D.rank;
   const own=new Set(D.ownsk||[]),nk=s=>s.replace(/[\s·\-]/g,'');
-  const rhero=h=>`<div class="h"><div class="pic">${h.img?`<img class="p" src="${IMS(h.img)}">`:''}<div class="lb">50 ${esc(h.n)}</div></div><div class="hi">
+  const rhero=h=>`<div class="h"><div class="pic">${h.img?`<img class="p" src="${IMS(h.img)}">`:`<img class="p" src="${PH}">`}<div class="lb">50 ${esc(h.n)}</div></div><div class="hi">
     <div class="hn">${esc(h.n)}${h.nation?`<span class="nat" style="background:${NAT[h.nation]||'#999'}">${esc(h.nation)}</span>`:''}</div>
     <div class="m">${esc([h.pos,h.troop].filter(Boolean).join(' · '))}${h.alts.length?` · 대체 ${esc(h.alts.join('/'))}`:''}</div><div class="sk">${esc(h.sk)}${h.sktype?` (${esc(h.sktype)})`:''}</div>
-    ${h.tac.map(t=>`<div class="tac" data-tip="${esc(tipHtml(t.n))}">${t.img?`<img src="${IMS(t.img)}">`:'<img>'}<div><div class="t ${own.has(nk(t.n))?'ownt':''}">${esc(t.n)}${own.has(nk(t.n))?' ✓':''}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc([t.type,t.trait].filter(Boolean).join('·'))}</span></div>${t.alt.length?`<div class="m">대체: ${esc(t.alt.join(' / '))}</div>`:''}</div></div>`).join('')}
+    ${h.tac.map(t=>`<div class="tac" data-tip="${esc(tipHtml(t.n))}">${t.img?`<img src="${IMS(t.img)}">`:`<img src="${PH}">`}<div><div class="t ${own.has(nk(t.n))?'ownt':''}">${esc(t.n)}${own.has(nk(t.n))?' ✓':''}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc([t.type,t.trait].filter(Boolean).join('·'))}</span></div>${t.alt.length?`<div class="m">대체: ${esc(t.alt.join(' / '))}</div>`:''}</div></div>`).join('')}
     ${h.tac.length<2?'<div class="empty">추천 전법 정보 없음</div>':''}</div></div>`;
   const detail=d=>{const cb=R.tacs.filter(t=>t.deck===d.name);const rated=cb.length?`<div class="flow"><div><b>평가된 전법 조합</b><span>${cb.map(t=>`${t.tset.map(x=>`<span class="chip">${esc(x)}</span>`).join('')} <span class="m">👍 ${t.u} 👎 ${t.d}</span>`).join('<br>')}</span></div></div>`:'';
     return `<div class="m" style="margin-bottom:6px">${fm(d.form)}${d.note?' · '+esc(d.note):''} · <span style="color:#2e9f5f;font-weight:700">✓</span> = 내가 보유한 전법 · 장수마다 추천 전법 2개</div><div class="hs">${d.cards.map(rhero).join('')}</div>${rated}`};
@@ -129,7 +129,7 @@ function ownList(){TRS=TRS||Object.assign({},D.own.tr||{});OWNS=OWNS||{h:new Set
   const GR={'전설':0,'영웅':1},ko=(a,b)=>a.n.localeCompare(b.n,'ko');
   const hs=D.all.h.filter(h=>keep(h.n,OWNS.h.has(h.n),h.season)).sort(ko);
   const ss=D.all.s.filter(s=>keep(s.n,OWNS.s.has(s.n),s.season,(s.kw||[]).join('')+(s.trait||'')+(s.desc||''))).sort((a,b)=>((GR[a.grade]??9)-(GR[b.grade]??9))||ko(a,b));
-  const im=(b,c)=>b?`<img class="${c}" src="${IMS(b)}">`:'';
+  const im=(b,c)=>b?`<img class="${c}" src="${IMS(b)}">`:`<img class="${c}" src="${PH}">`;
   const stones=h=>{const n=TRS[h.n]||0;return `<span class="sts" data-tip="돌 단계 (돌을 눌러 변경)" style="--st:url(${D.stone})">${[1,2,3,4,5].map(k=>`<i class="sg ${k<=n?'on':''}" onclick="event.stopPropagation();setTr('${esc(h.n)}',${k})"></i>`).join('')}</span>`};
   const card=h=>`<div class="oc hc ${OWNS.h.has(h.n)?'on':''}" onclick="toggleOwn('h','${esc(h.n)}')">${im(h.img,'th')}<span><span class="nm">${esc(h.n)}</span>${OWNS.h.has(h.n)?stones(h):''}</span></div>`;
   const NO={'촉':0,'위':1,'오':2,'군':3},NN={'촉':'촉','위':'위','오':'오','군':'군웅'};let hc='';
@@ -163,7 +163,7 @@ let PK=null,PQ='',MS='like',MF=false,MT='',MN='',SVT=null;
 let ANS=null,MY=null,MKT='req',EXP=new Set(),RT='',RN='',AN='';
 const ownH=()=>ANS?ANS.h:(OWNS?OWNS.h:new Set(D.own.h)),ownS=()=>ANS?ANS.s:(OWNS?OWNS.s:new Set(D.own.s));
 const usedH=()=>new Set(BLD.flatMap(u=>u.h).filter(Boolean)),usedS=()=>new Set(BLD.flatMap(u=>u.t.flat()).filter(Boolean));
-const imj=(b,c)=>b?`<img class="${c}" src="${IMS(b)}">`:'';
+const imj=(b,c)=>b?`<img class="${c}" src="${IMS(b)}">`:`<img class="${c}" src="${PH}">`;
 function saveDraft(){if(ANS)return;clearTimeout(SVT);SVT=setTimeout(()=>{fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(ser):null})}).catch(()=>{})},700)}
 async function mpost(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return false}if(j.mk)D.mk=j.mk;return true}catch(e){alert('네트워크 오류');return false}}
 function pick(u,k,kind,j){PD=null;PK={u,k,kind,j};PQ='';draw()}

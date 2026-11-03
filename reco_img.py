@@ -93,7 +93,7 @@ def _hero_card(im, d, x, y, h, tac, hd, skd, info, eff=None, rank=None):
         d.text((x + 14, y + 80), "보유 장수 부족", font=_f(16), fill=MUTE); return
     p = _pic("HERO", n, (96, 150))
     if p: im.paste(p, (x + 8, y + 8))
-    else: d.rounded_rectangle((x + 8, y + 8, x + 104, y + 158), 6, fill=BG, outline=LINE); d.text((x + 56, y + 83), n, font=_f(15), fill=TXT, anchor="mm")
+    else: d.rounded_rectangle((x + 8, y + 8, x + 104, y + 158), 6, fill=BG, outline=LINE); d.text((x + 56, y + 70), "이미지", font=_f(15), fill=TXT, anchor="mm"); d.text((x + 56, y + 92), "준비중", font=_f(15), fill=TXT, anchor="mm")
     x2 = x + 114; x_end = x + CW - 18; v = hd.get(n) or {}
     e0 = (eff or {}).get(n)
     if e0 and e0.get("tr"): _stones(im, x + 8 + 48, y + 8 + 150 - 46, e0["tr"])           # 돌 단계만큼 켜진 돌
@@ -115,7 +115,7 @@ def _hero_card(im, d, x, y, h, tac, hd, skd, info, eff=None, rank=None):
     for t, _why in tac[:2]:
         ti = info(t); ic = _pic("SKI", t, (24, 37))
         if ic: im.paste(ic, (x2, ty))
-        else: d.rounded_rectangle((x2, ty, x2 + 24, ty + 37), 4, fill=BG, outline=LINE)
+        else: d.rounded_rectangle((x2, ty, x2 + 24, ty + 37), 4, fill=BG, outline=LINE); d.text((x2 + 12, ty + 12), "준비", font=_f(8), fill=MUTE, anchor="mm"); d.text((x2 + 12, ty + 24), "중", font=_f(8), fill=MUTE, anchor="mm")
         d.text((x2 + 30, ty), _fit(d, t, _f(14), x_end - x2 - 30), font=_f(14), fill=TXT)
         kc = KIND.get(ti["kind"], MUTE)
         d.text((x2 + 30, ty + 19), ti["kind"], font=_f(12), fill=kc)
