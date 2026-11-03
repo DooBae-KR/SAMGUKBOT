@@ -1319,7 +1319,7 @@ async def reco_channel(g, force=False):
     finally: _CTX.reset(tok)
     ch = discord.utils.get(g.text_channels, name=RECOCH); cat = await named_cat(g, GUIDE_CAT)
     if ch is None and rec.get("ch") and not force: return None
-    if ch is not None: await move_to(g, ch, cat); return ch
+    if ch is not None: await move_to(g, ch, cat); await reco_guide(g, ch); return ch
     try: ch = await g.create_text_channel(RECOCH, overwrites=verified_overwrites(g), topic="내 보유 장수에 맞는 시즌 추천 덱 — /추천", category=cat, reason="시즌 추천덱 채널")
     except Exception as e: log.warning("시즌추천덱 채널 생성 실패 서버=%s: %r", g.id, e); return None
     try: await ch.send("🏆 **시즌 추천덱**\n내 보유 장수에 맞는 **시즌 추천 덱**을 받아 가는 곳입니다. 명령어는 `/추천` 하나로 시즌1·2·3을 모두 볼 수 있습니다.\n\n"
@@ -1329,9 +1329,35 @@ async def reco_channel(g, force=False):
     except Exception: log.warning("시즌추천덱 안내 글 실패 %s", g.id, exc_info=True)
     def sv():
         t = _CTX.set(g.id)
-        try: store_set("recoch", RECOCH_PATH, {"ch": ch.id})
+        try: store_set("recoch", RECOCH_PATH, {**dict(store_get("recoch", RECOCH_PATH, {}) or {}), "ch": ch.id})
         finally: _CTX.reset(t)
-    await asyncio.to_thread(sv); return ch
+    await asyncio.to_thread(sv); await reco_guide(g, ch); return ch
+
+
+async def reco_guide(g, ch):
+    """#시즌추천덱에 /추천 서비스 이용 가이드 이미지(guides/reco_guide-1.png)를 올린다. 이미지가 바뀌면 이전 글을 지우고 새로 올린다."""
+    f = GUIDE_DIR / "reco_guide-1.png"
+    if g.me is None or not f.is_file() or not ch.permissions_for(g.me).send_messages: return
+    ver = hashlib.sha1(f.read_bytes()).hexdigest()[:10]
+
+    def ld():
+        tok = _CTX.set(g.id)
+        try: return dict(store_get("recoch", RECOCH_PATH, {}) or {})
+        finally: _CTX.reset(tok)
+    rec = await asyncio.to_thread(ld)
+    if rec.get("gver") == ver and rec.get("gch") == ch.id: return
+    for mid in rec.get("gids", []):
+        try: await (await ch.fetch_message(mid)).delete()
+        except Exception: pass
+    try: m = await ch.send("📘 **/추천 서비스 이용 가이드** — 인증 후 `/추천`을 입력하면 나에게만 보이는 추천 페이지 링크가 나옵니다.", file=discord.File(f, filename="추천_이용가이드.png"), allowed_mentions=discord.AllowedMentions.none())
+    except Exception: log.warning("추천 가이드 이미지 실패 %s", g.id, exc_info=True); return
+
+    def sv2():
+        tok = _CTX.set(g.id)
+        try:
+            d = dict(store_get("recoch", RECOCH_PATH, {}) or {}); d.update({"gver": ver, "gch": ch.id, "gids": [m.id]}); store_set("recoch", RECOCH_PATH, d)
+        finally: _CTX.reset(tok)
+    await asyncio.to_thread(sv2)
 
 
 async def channels_setup(g, force=False):
