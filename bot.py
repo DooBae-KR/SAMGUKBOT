@@ -2754,6 +2754,44 @@ async def adm_revoke(gid, did, by):
 
 
 # ---------- 제작자 모드(/제작자모드: 모든 서버 채널 관리 페이지) ----------
+SB_GUILD_TABLES = ("sam_alli", "sam_auth_log", "sam_build", "sam_build_reserve", "sam_dex", "sam_emp", "sam_emp_alt", "sam_emp_event", "sam_emp_left", "sam_emp_out",
+                   "sam_emp_stat", "sam_iron", "sam_leave_case", "sam_perm", "sam_store", "sam_verified")
+GUEST_ROLE, GUEST_CH = "추천이용자", "추천전용"
+
+
+async def reco_guest_add(did, name):
+    """본 서버에 '추천이용자' 역할과 #추천전용 채널을 만들고(없으면), 해당 디스코드 사용자를 /추천만 쓸 수 있는 손님으로 등록한다(명단 없이 가상 CID)."""
+    if not (did.isascii() and did.isdigit() and 15 <= len(did) <= 20): raise ValueError("디스코드 사용자 ID(숫자 17~19자리)를 입력해 주세요.")
+    name = re.sub(r"\s+", " ", name)[:20] or "손님"
+    g = bot.get_guild(GUILD_ID)
+    if g is None or g.me is None: raise ValueError("본 서버를 찾을 수 없습니다.")
+    role = discord.utils.get(g.roles, name=GUEST_ROLE) or await g.create_role(name=GUEST_ROLE, reason="추천 전용 이용자")
+    ch = discord.utils.get(g.text_channels, name=GUEST_CH); new = ch is None
+    if new:
+        ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
+              role: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)}
+        ch = await g.create_text_channel(GUEST_CH, overwrites=ow, topic="추천 전용 — /추천 으로 덱 추천 페이지 링크를 받습니다", category=await named_cat(g, GUIDE_CAT), reason="추천 전용 채널")
+    pc = "G" + did
+
+    def reg():
+        tok = _CTX.set(GUILD_ID)
+        try:
+            db = db_load(); db["uid"][pc] = did; db.setdefault("dip", {})[pc] = {"ally": "추천전용", "name": name, "t": (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}
+            db.setdefault("nick", {})[pc] = name; db_save(db)
+        finally: _CTX.reset(tok)
+    await asyncio.to_thread(reg)
+    if new:
+        f = GUIDE_DIR / "reco_guide-1.png"
+        try: await ch.send("📘 **추천 전용 채널** — 이 채널에서 `/추천`을 입력하면 나에게만 보이는 덱 추천 페이지 링크가 나옵니다. (인증은 필요 없습니다)", **({"file": discord.File(f, filename="추천_이용가이드.png")} if f.is_file() else {}), allowed_mentions=discord.AllowedMentions.none())
+        except Exception: log.warning("추천전용 안내 실패", exc_info=True)
+    m = g.get_member(int(did)); note = ""
+    if m is not None:
+        try: await m.add_roles(role, reason="추천 전용 이용자"); note = f" {m.display_name} 님에게 '{GUEST_ROLE}' 역할을 부여했습니다."
+        except discord.Forbidden: note = " 역할을 부여할 권한이 없습니다(봇 역할을 '추천이용자'보다 위로 올려 주세요)."
+    else: note = f" 이 사용자가 본 서버에 들어오면 같은 방법으로 한 번 더 눌러 역할을 부여하세요."
+    return f"#{GUEST_CH} 채널과 '{GUEST_ROLE}' 역할 준비 완료.{note}"
+
+
 def own_token(uid, exp):
     return f"{uid}.{exp}." + hmac.new(TIER_SECRET.encode(), f"own:{uid}:{exp}".encode(), hashlib.sha256).hexdigest()[:24]
 
@@ -2791,6 +2829,9 @@ async def web_owner_api(request):
     if not isinstance(b, dict): return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
     op = b.get("op")
     try:
+        if op == "guest":                                    # 추천 전용 이용자 추가(본 서버, 추천만 쓸 수 있는 채널·역할)
+            msg = await reco_guest_add(str(b.get("did", "")).strip(), str(b.get("name", "")).strip())
+            return web.json_response({"ok": True, "msg": msg})
         if op == "guilds":
             gs = sorted(bot.guilds, key=lambda g: (g.id != GUILD_ID, -(g.member_count or 0)))
             return web.json_response({"guilds": [{"id": str(g.id), "name": g.name, "n": g.member_count or 0, "icon": str(g.icon.url) if g.icon else "", "home": g.id == GUILD_ID, "lic": g.id in LICENSED} for g in gs]})
@@ -2806,6 +2847,22 @@ async def web_owner_api(request):
             c = g.get_channel(int(v))
             if not isinstance(c, discord.CategoryChannel): raise ValueError("카테고리를 찾을 수 없습니다.")
             return c
+        if op == "leave":                                    # 봇 철수 + 서버 데이터 전부 삭제
+            if g.id == GUILD_ID: raise ValueError("본 서버에서는 철수할 수 없습니다.")
+            if str(b.get("confirm", "")).strip() != g.name: raise ValueError("확인용 서버 이름이 일치하지 않습니다.")
+            gid0, gname = g.id, g.name
+            await g.leave()
+            LICENSED.discard(gid0)
+            for k in [k for k in list(PERM) if k[0] == gid0]: PERM.discard(k)
+            def wipe():
+                n = 0
+                for tb in SB_GUILD_TABLES:
+                    try: _sb_req("DELETE", f"{tb}?guild_id=eq.{gid0}", prefer="return=minimal"); n += 1
+                    except Exception: log.exception("서버 데이터 삭제 실패 %s %s", gid0, tb)
+                return n
+            n = await asyncio.to_thread(wipe)
+            log.info("제작자 페이지 %s: 서버 철수·데이터 삭제 guild=%s(%s) 표 %d개", uid, gid0, gname, n)
+            return web.json_response({"ok": True, "msg": f"'{gname}'에서 철수하고 데이터({n}개 표)를 삭제했습니다."})
         if op == "channels":
             chs = [{"id": str(c.id), "name": c.name, "type": _ch_kind(c), "cat": str(c.category_id) if getattr(c, "category_id", None) else None, "pos": c.position,
                     "text": isinstance(c, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel)), "topic": getattr(c, "topic", "") or ""} for c in g.channels]

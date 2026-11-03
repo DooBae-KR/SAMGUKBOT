@@ -30,7 +30,7 @@ button.s:hover{color:var(--text);border-color:var(--mute)}button.s.d{color:var(-
 </style></head><body>
 <header><h1>👑 제작자 모드 · 전체 서버 채널 관리</h1><div class="sub">봇이 들어가 있는 모든 서버를 관리합니다 (제작자 본인 전용 · 링크 공유 금지). 봇에 채널 관리 권한이 있어야 동작합니다.</div></header>
 <div class="lay"><aside><input id="gq" placeholder="서버 검색"><div id="gl"></div></aside>
-<main id="main"><p class="mute">왼쪽에서 서버를 선택하세요.</p></main></div><div id="toast"></div>
+<main id="main"><div class="card"><h2>🃏 추천 전용 이용자 추가 <span class="mute">(본 서버)</span></h2><div class="mute" style="margin-bottom:8px">명단 없이 /추천만 쓸 수 있는 손님을 등록합니다. 본 서버에 #추천전용 채널과 '추천이용자' 역할이 없으면 만들어 줍니다. 상대가 서버에 들어온 뒤 한 번 더 누르면 역할이 부여됩니다.</div><div class="row"><input id="gd" placeholder="디스코드 사용자 ID (숫자 17~19자리)"><input id="gn" placeholder="표시 이름"><button class="b" id="gadd">추가</button></div></div><p class="mute">왼쪽에서 서버를 선택하세요.</p></main></div><div id="toast"></div>
 <script>
 const T="__T__",$=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let G=[],GID=null,S=null;
@@ -43,13 +43,15 @@ const TI={text:'#',voice:'🔊',stage:'🎙',forum:'💬',news:'📢',category:'
 function chRow(c){return `<div class="ch"><span class="ic">${TI[c.type]||'#'}</span><div class="n">${esc(c.name)}<small>${c.id}${c.topic?' · '+esc(c.topic.slice(0,40)):''}</small></div><div class="ac">${c.text?`<button class="s" data-a="read" data-i="${c.id}">메시지 보기</button><button class="s" data-a="send" data-i="${c.id}">메시지 보내기</button><button class="s" data-a="topic" data-i="${c.id}">주제</button>`:''}<button class="s" data-a="rename" data-i="${c.id}" data-n="${esc(c.name)}">이름</button>${c.type!=='category'?`<button class="s" data-a="move" data-i="${c.id}">이동</button>`:''}<button class="s d" data-a="del" data-i="${c.id}" data-n="${esc(c.name)}">삭제</button></div></div>`}
 function draw(){if(!S)return;const cats=S.chs.filter(c=>c.type==='category'),by=id=>S.chs.filter(c=>c.type!=='category'&&c.cat===id);
  const opts='<option value="">(카테고리 없음)</option>'+cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
- $('#main').innerHTML=`<div class="card"><h2>${esc(S.name)}</h2><div class="mute">채널 ${S.chs.filter(c=>c.type!=='category').length}개 · 카테고리 ${cats.length}개 · 멤버 ${S.n}명</div></div>
+ $('#main').innerHTML=`<div class="card"><h2>${esc(S.name)}</h2><div class="mute">채널 ${S.chs.filter(c=>c.type!=='category').length}개 · 카테고리 ${cats.length}개 · 멤버 ${S.n}명</div>${(G.find(x=>x.id===GID)||{}).home?'':'<div style="margin-top:10px"><button class="s d" id="leave">🚪 봇 철수 + 이 서버 데이터 전부 삭제</button></div>'}</div>
  <div class="card"><h2>채널·카테고리 만들기</h2><div class="row"><input id="nn" placeholder="이름" maxlength="100"><select id="nt"><option value="text">텍스트 채널</option><option value="voice">음성 채널</option><option value="category">카테고리</option></select><select id="nc">${opts}</select><button class="b" id="mk">만들기</button></div></div>
  <div class="card"><h2>채널 목록</h2>${by(null).length?`<div class="cat">(카테고리 없음)</div>${by(null).map(chRow).join('')}`:''}${cats.map(c=>`<div class="cat">${TI.category} ${esc(c.name)}<span class="mute">${c.id}</span><span style="flex:1"></span><button class="s" data-a="rename" data-i="${c.id}" data-n="${esc(c.name)}">이름</button><button class="s d" data-a="del" data-i="${c.id}" data-n="${esc(c.name)}">삭제</button></div>${by(c.id).map(chRow).join('')||'<div class="mute" style="padding:6px 10px">비어 있음</div>'}`).join('')}</div>
  <div class="card" id="box" style="display:none"></div>`}
 function box(h){const b=$('#box');b.style.display='block';b.innerHTML=h;b.scrollIntoView({behavior:'smooth',block:'nearest'})}
 document.addEventListener('click',async e=>{
  const g=e.target.closest('[data-g]');if(g){GID=g.dataset.g;drawG();S=null;$('#main').innerHTML='<p class="mute">불러오는 중…</p>';loadC();return}
+ if(e.target.id==='gadd'){const did=$('#gd').value.trim(),name=$('#gn').value.trim();if(!did)return toast('디스코드 ID를 입력하세요',1);const j=await api({op:'guest',did,name});if(j)toast(j.msg||'완료');return}
+ if(e.target.id==='leave'){const nm=(G.find(x=>x.id===GID)||{}).name;const v=prompt(`봇이 '${nm}' 에서 나가고 이 서버의 저장 데이터가 모두 삭제됩니다. 되돌릴 수 없습니다.\n계속하려면 서버 이름을 정확히 입력하세요.`);if(v===null)return;const j=await api({op:'leave',gid:GID,confirm:v});if(j){toast(j.msg||'완료');GID=null;S=null;$('#main').innerHTML='<p class="mute">철수했습니다. 왼쪽에서 서버를 선택하세요.</p>';loadG()}return}
  if(e.target.id==='mk'){const name=$('#nn').value.trim();if(!name)return toast('이름을 입력하세요',1);const j=await api({op:'create',gid:GID,name,type:$('#nt').value,cat:$('#nc').value});if(j){toast('만들었습니다');loadC()}return}
  const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,i=b.dataset.i,n=b.dataset.n;
  if(a==='del'){if(!confirm(`'${n}' 을(를) 정말 삭제할까요? 되돌릴 수 없습니다.`))return;const j=await api({op:'delete',gid:GID,id:i});if(j){toast('삭제했습니다');loadC()}}
