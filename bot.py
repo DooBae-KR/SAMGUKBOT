@@ -875,7 +875,7 @@ async def _guide_channel(g, name, public, prefix, topic, text, force=False, key=
 
 async def guide_post(g, force=False):
     """#관리자가이드(관리자·봇만)와 #이용자가이드(모두 읽기 전용)를 만들고 가이드 이미지를 올린다. → 관리자가이드 채널"""
-    ach = await _guide_channel(g, GUIDE_CH, False, "admin_guide", "관리자 가이드 (서버 관리자만 볼 수 있습니다)", "📘 **관리자 가이드** — 관리 페이지(`/관리`), 권한, 채널, 문제 해결을 정리했습니다. 맨 뒤 장에 **인사파일(MemberWeek.xlsx) 받는 법·파일 위치**도 있습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force, extra=[GUIDE_DIR / "start_guide-1.png"])
+    ach = await _guide_channel(g, GUIDE_CH, False, "admin_guide", "관리자 가이드 (서버 관리자만 볼 수 있습니다)", "📘 **관리자 가이드** — 관리 페이지(`/관리`), 권한, 채널, 문제 해결을 정리했습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force)
     uch = await _guide_channel(g, USER_GUIDE_CH, True, "user_guide", "동맹원용 이용 가이드", "📗 **이용자 가이드** — 인증하기, 자주 쓰는 명령어, 추천덱 보는 법을 1장으로 정리했습니다. 내용이 바뀌면 제작자가 `/메뉴얼업데이트`로 새 버전으로 교체합니다.", force)
     return ach, uch
 
@@ -1378,7 +1378,7 @@ async def hrinfo_channel(g, force=False):
     finally: _CTX.reset(tok)
     ch = discord.utils.get(g.text_channels, name=HRINFO_CH)
     if ch is None and rec.get("ch") and not force: return None
-    if ch is not None: await move_to(g, ch, await named_cat(g, MGMT_CAT)); return ch
+    if ch is not None: await move_to(g, ch, await named_cat(g, MGMT_CAT)); await hrinfo_guide(g, ch); return ch
     if ch is None:
         topic = "간부 전용 — 여기서 /인사 를 입력하면 나에게만 보이는 인사데이터 링크가 나옵니다"; cat = await named_cat(g, MGMT_CAT)
         role = discord.utils.get(g.roles, name=OFFICER_ROLE)
@@ -1395,10 +1395,37 @@ async def hrinfo_channel(g, force=False):
         except Exception: log.warning("인사정보 안내 글 실패 %s", g.id, exc_info=True)
         def sv():
             t = _CTX.set(g.id)
-            try: store_set("hrinfo", HRINFO_PATH, {"ch": ch.id})
+            try: store_set("hrinfo", HRINFO_PATH, {**dict(store_get("hrinfo", HRINFO_PATH, {}) or {}), "ch": ch.id})
             finally: _CTX.reset(t)
-        await asyncio.to_thread(sv)
+        await asyncio.to_thread(sv); await hrinfo_guide(g, ch)
     return ch
+
+
+async def hrinfo_guide(g, ch):
+    """#인사정보에 인사파일(MemberWeek.xlsx) 받는 법·파일 위치 가이드 이미지를 올린다. 이미지가 바뀌면 이전 글을 지우고 새로 올린다."""
+    f = GUIDE_DIR / "start_guide-1.png"
+    if g.me is None or not f.is_file() or not ch.permissions_for(g.me).send_messages: return
+    ver = hashlib.sha1(f.read_bytes()).hexdigest()[:10]
+
+    def ld():
+        tok = _CTX.set(g.id)
+        try: return dict(store_get("hrinfo", HRINFO_PATH, {}) or {})
+        finally: _CTX.reset(tok)
+    rec = await asyncio.to_thread(ld)
+    if rec.get("gver") == ver and rec.get("gch") == ch.id: return
+    for mid in rec.get("gids", []):
+        try: await (await ch.fetch_message(mid)).delete()
+        except Exception: pass
+    try:
+        m = await ch.send("📥 **인사파일(MemberWeek.xlsx) 받는 법 · 파일 위치**\n게임(PC)에서 받은 파일을 `/명단업데이트`의 파일 칸에 첨부해 올리면 명단이 갱신됩니다.", file=discord.File(f, filename="인사파일_받는법.png"), allowed_mentions=discord.AllowedMentions.none())
+    except Exception: log.warning("인사정보 가이드 이미지 실패 %s", g.id, exc_info=True); return
+
+    def sv2():
+        tok = _CTX.set(g.id)
+        try:
+            d = dict(store_get("hrinfo", HRINFO_PATH, {}) or {}); d.update({"gver": ver, "gch": ch.id, "gids": [m.id]}); store_set("hrinfo", HRINFO_PATH, d)
+        finally: _CTX.reset(tok)
+    await asyncio.to_thread(sv2)
 
 
 async def setting_backfill():
