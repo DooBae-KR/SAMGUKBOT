@@ -1322,9 +1322,9 @@ async def reco_channel(g, force=False):
     if ch is not None: await move_to(g, ch, cat); return ch
     try: ch = await g.create_text_channel(RECOCH, overwrites=verified_overwrites(g), topic="내 보유 장수에 맞는 시즌 추천 덱 — /추천", category=cat, reason="시즌 추천덱 채널")
     except Exception as e: log.warning("시즌추천덱 채널 생성 실패 서버=%s: %r", g.id, e); return None
-    try: await ch.send("🏆 **시즌 추천덱**\n내 보유 장수에 맞는 **시즌 추천 덱**을 받아 가는 곳입니다. 명령어는 `/추천` 하나로 시즌1·시즌2를 모두 볼 수 있습니다.\n\n"
+    try: await ch.send("🏆 **시즌 추천덱**\n내 보유 장수에 맞는 **시즌 추천 덱**을 받아 가는 곳입니다. 명령어는 `/추천` 하나로 시즌1·2·3을 모두 볼 수 있습니다.\n\n"
                        "1. `/인증`으로 CID 인증을 먼저 해 주세요. (한 번만)\n2. `/추천`을 입력하면 **나에게만 보이는 추천 페이지 링크**가 나옵니다. (처음에는 시즌을 물어봅니다)\n"
-                       "3. 페이지 위쪽 **시즌1 / 시즌2** 버튼으로 시즌을 바꾸고, 보유 장수를 체크한 뒤 **[자동 편성]** 버튼을 누르면 추천 덱이 나옵니다.\n4. 정보가 부족하면 **편성대 의뢰**로 올릴 수 있습니다.\n\n"
+                       "3. 페이지 위쪽 **시즌1 / 시즌2 / 시즌3** 버튼으로 시즌을 바꾸고, 보유 장수를 체크한 뒤 **[자동 편성]** 버튼을 누르면 추천 덱이 나옵니다.\n4. 정보가 부족하면 **편성대 의뢰**로 올릴 수 있습니다.\n\n"
                        "🔗 링크는 본인 전용이고 시간이 지나면 만료됩니다. 다른 사람에게 공유하지 마세요.")
     except Exception: log.warning("시즌추천덱 안내 글 실패 %s", g.id, exc_info=True)
     def sv():
@@ -2570,7 +2570,7 @@ async def web_tier(request):
     info = roster.by_uid.get(cid) or {}
     dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
     cfg = await asyncio.to_thread(tier_sheet_cfg)
-    cfg |= {"embed": request.query.get("embed") == "1", "season": int(request.query["s"]) if request.query.get("s") in ("1", "2") else 0, "t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {}), "trs": dex.get("trs", {}), "hs": {k: [v["atk"], v["intl"], v["lead"], v["init"]] for k, v in hero_stats().items()}}
+    cfg |= {"embed": request.query.get("embed") == "1", "season": int(request.query["s"]) if request.query.get("s") in ("1", "2", "3") else 0, "t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {}), "trs": dex.get("trs", {}), "hs": {k: [v["atk"], v["intl"], v["lead"], v["init"]] for k, v in hero_stats().items()}}
     import reco_img
     tpl = await asyncio.to_thread(reco_img.tier_html)
     return web.Response(text=tpl.replace("__CFG__", json.dumps(cfg, ensure_ascii=False)), content_type="text/html", headers={"Cache-Control": "no-store"})
@@ -3543,7 +3543,7 @@ def tier_data():
     """tier_template.html 안의 시즌1·2 티어덱(S1·S2)과 장수·전법 데이터(SD)를 읽는다(처음 한 번)."""
     if not _TIER:
         t = (Path(__file__).parent / "tier_template.html").read_text("utf-8"); dec = json.JSONDecoder()
-        for k in ("S1", "S2", "SD"):
+        for k in ("S1", "S2", "S3", "SD"):
             i = t.index(f"const {k}=") + len(f"const {k}="); _TIER[k] = dec.raw_decode(t[i:])[0]
     return _TIER
 
@@ -3786,7 +3786,7 @@ def dev_decks():
 
 
 def reco_decks(season):
-    return dev_decks() if RECO_MODE.get() == "dev" else tier_data()["S1" if season == 1 else "S2"]
+    return dev_decks() if RECO_MODE.get() == "dev" else tier_data()["S%d" % (season if season in (1, 2, 3) else 2)]
 
 
 def recommend_decks(own_h, own_s, season, hd, skd, units=5, deal="도트딜", banned=(), votes=None, tpen=None, pins=()):
@@ -4261,7 +4261,7 @@ async def web_reco(request):
     if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /추천 으로 새 링크를 받으세요.")
     set_gid(pr[0]); cid = pr[1]; did = (db_load()["uid"] or {}).get(cid)
     if not did: return web.Response(status=403, text="인증 정보를 찾지 못했습니다. 디스코드에서 /인증 후 다시 시도하세요.")
-    sv = request.query.get("s"); season = int(sv) if sv in ("1", "2") else (pref_get(did).get("season") if pref_get(did).get("season") in (1, 2) else 1)
+    sv = request.query.get("s"); season = int(sv) if sv in ("1", "2", "3") else (pref_get(did).get("season") if pref_get(did).get("season") in (1, 2, 3) else 1)
     try:
         data, err = await asyncio.to_thread(reco_page_data, did, season, request.query["t"], False)
         import reco_web
@@ -4423,7 +4423,7 @@ def rq_post(did, b, hd, skd):
     """편성 의뢰: 내 보유 장수·전법(+돌)을 첨부해 다른 사람이 5부대를 짜 주게 한다."""
     cid = _my_cid(did)
     if not cid: return "인증된 CID가 없습니다"
-    season = 2 if b.get("season") == 2 else 1
+    season = b.get("season") if b.get("season") in (2, 3) else 1
     dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
     oh = [h for h in (dex.get("own") or []) if h in hd and h not in NOT_USED and hd[h].get("season", 1) <= season]
     os_ = [t for t in (dex.get("ownsk") or []) if t in skd and skd[t].get("season", 1) <= season]
@@ -4503,7 +4503,7 @@ def rq_adopt(did, rid, aid):
 def mk_post(did, b, hd, skd):
     cid = _my_cid(did)
     if not cid: return "인증된 CID가 없습니다"
-    season = 2 if b.get("season") == 2 else 1
+    season = b.get("season") if b.get("season") in (2, 3) else 1
     units, err = mk_clean(b.get("units"), hd, skd, season, _trmap(cid), _trsmap(cid))
     if err: return err
     title = re.sub(r"\s+", " ", str(b.get("title", ""))).strip()[:24]
@@ -4699,7 +4699,7 @@ async def web_reco_api(request):
     if not pr: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
     set_gid(pr[0]); did = (db_load()["uid"] or {}).get(pr[1])
     if not did: return web.json_response({"ok": False, "error": "인증 필요"}, status=403)
-    op = b.get("op"); season = 2 if b.get("season") == 2 else 1
+    op = b.get("op"); season = b.get("season") if b.get("season") in (2, 3) else 1
     if op == "vote":
         key, kind = str(b.get("key", ""))[:300], b.get("kind")
         if kind not in ("u", "d") or not (key.startswith(f"S{season}|") or key.startswith(f"T{season}|")): return web.json_response({"ok": False, "error": "잘못된 요청"}, status=400)
@@ -4767,7 +4767,7 @@ async def web_reco_api(request):
         if op in ("mk_post", "mk_like", "mk_del", "ans_post", "ans_del", "rq_adopt", "rq_del"): asyncio.create_task(strat_sync())
         return web.json_response({"ok": True, "mk": await asyncio.to_thread(mk_data, _my_cid(did))})
     elif op == "pin":
-        name = str(b.get("deck", "")); names = {d["name"] for d in tier_data()["S1" if season == 1 else "S2"]}
+        name = str(b.get("deck", "")); names = {d["name"] for d in tier_data()["S%d" % (season if season in (1, 2, 3) else 2)]}
         if name not in names: return web.json_response({"ok": False, "error": "없는 덱"}, status=400)
         def pn():
             cur = list(reco_pins(did, season)); cur = [x for x in cur if x != name] + ([name] if b.get("on") else [])
@@ -4790,6 +4790,9 @@ class SeasonPick(CtxView):
 
     @discord.ui.button(label="시즌2", style=discord.ButtonStyle.primary)
     async def s2(self, it, _): await self._pick(it, 2)
+
+    @discord.ui.button(label="시즌3", style=discord.ButtonStyle.primary)
+    async def s3(self, it, _): await self._pick(it, 3)
 
 
 def reco_defs():
@@ -4837,14 +4840,14 @@ def dex_edit(did, add_h="", add_s="", del_h="", del_s=""):
 
 
 @bot.tree.command(name="추천", description="내 보유 장수·전법으로 PvP·개척 5부대를 편성해 주는 개인 페이지 링크(장수·전법·도감·상성도 여기서)")
-@app_commands.describe(시즌="시즌1 / 시즌2 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)")
-@app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2)])
+@app_commands.describe(시즌="시즌1 / 시즌2 / 시즌3 (처음 한 번 고르면 기억하고, 바꿀 때만 지정)")
+@app_commands.choices(시즌=[app_commands.Choice(name="시즌1", value=1), app_commands.Choice(name="시즌2", value=2), app_commands.Choice(name="시즌3", value=3)])
 async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = None):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
     did = it.user.id; note = ""
     if 시즌 is None:
         saved = await asyncio.to_thread(lambda: pref_get(did).get("season"))
-        if saved not in (1, 2):                                          # 처음이면 시즌을 묻는다
+        if saved not in (1, 2, 3):                                          # 처음이면 시즌을 묻는다
             await it.response.send_message((note + "\n\n" if note else "") + "어느 시즌 기준으로 편성할까요? (한 번 고르면 기억합니다)", view=SeasonPick(did), ephemeral=True)
             return auto_delete(it)
         season = saved

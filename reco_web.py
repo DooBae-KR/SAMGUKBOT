@@ -447,7 +447,7 @@ function draw(){
   const late=tb('equip','장비','late')+tb('chart','상성 차트','late')+tb('mx','상성표','late')+tb('fill','부족한 것 메우기','late')+tb('guide','상황 가이드','late');
   $('#app').innerHTML=`<div class="ttl"><h1>🃏 ${esc([D.ally,D.who].filter(Boolean).join(' '))} · 덱 검색기 · 시즌${D.season}</h1><button class="sbtn on dbtn" onclick="showDon()">☕ 후원</button></div><div class="sub">티어덱을 보고, 내 보유 장수·전법으로 5부대를 짜거나 편성대요청으로 도움을 받으세요 · 한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없음</div>
   <div class="bar"><button class="tab mt" onclick="toggleMenu()">☰ 메뉴 ${MENU?'접기 ▴':'펼치기 ▾'}</button>${MENU?'':`<span class="m">현재: <b>${esc(NAME[TAB]||'')}</b></span>`}<span class="sp"></span>
-  <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a></div>
+  <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a><a class="sbtn ${D.season===3?'on':''}" href="${q(3)}">시즌3</a></div>
   ${MENU?`<div class="bar">${main}<span class="vs"></span><button class="tab lt" onclick="toggleLate()">참고 ${LATE?'접기 ▴':'펼치기 ▾'}</button>${LATE?late:''}</div>`:''}
   ${TAB==='board'?board():TAB==='build'?`<div class="bwrap">${build()}</div>`:TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}`}
 draw();
