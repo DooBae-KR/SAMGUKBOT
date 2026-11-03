@@ -984,7 +984,7 @@ class Bot(discord.Client):
         if not donate_loop.is_running(): donate_loop.start()
         if not idle_loop.is_running(): idle_loop.start()
         if not purge_loop.is_running(): purge_loop.start()
-        try: await asyncio.to_thread(reco_servers_load)
+        try: await asyncio.to_thread(reco_servers_load); asyncio.create_task(reco_servers_setup())
         except Exception: log.exception("추천 전용 서버 목록 로드 실패")
         hg = self.get_guild(GUILD_ID)
         if hg:
@@ -2770,8 +2770,33 @@ def reco_servers_load():
 
 def reco_servers_save():
     tok = _CTX.set(GUILD_ID)
-    try: store_set("recosrv", RECOSRV_PATH, {"ids": sorted(RECO_SERVERS), "invite": RECO_INVITE["url"]})
+    try: store_set("recosrv", RECOSRV_PATH, {"ids": [str(x) for x in sorted(RECO_SERVERS)], "invite": RECO_INVITE["url"]})
     finally: _CTX.reset(tok)
+
+
+async def reco_server_prepare(g):
+    """추천 전용 서버로 지정된 서버에 #추천전용 채널(없으면)과 공통 초대 링크를 준비한다. 기존 채널은 건드리지 않는다."""
+    me = g.me
+    if me is None: raise ValueError("봇이 이 서버에 없습니다.")
+    ch = discord.utils.get(g.text_channels, name=GUEST_CH)
+    if ch is None:
+        ch = await g.create_text_channel(GUEST_CH, topic="추천 전용 — /추천 으로 덱 추천 페이지 링크를 받습니다", reason="추천 전용 서버")
+        f = GUIDE_DIR / "reco_guide-1.png"
+        try: await ch.send("📘 **추천 전용 서버입니다.** 이 채널에서 `/추천`을 입력하면 나에게만 보이는 덱 추천 페이지 링크가 나옵니다. (인증은 필요 없습니다)", **({"file": discord.File(f, filename="추천_이용가이드.png")} if f.is_file() else {}), allowed_mentions=discord.AllowedMentions.none())
+        except Exception: log.warning("추천전용 안내 실패", exc_info=True)
+    if not RECO_INVITE["url"]:
+        inv = await ch.create_invite(max_age=0, max_uses=0, unique=False, reason="추천 전용 서버 초대")
+        RECO_INVITE["url"] = inv.url
+    RECO_SERVERS.add(g.id); await asyncio.to_thread(reco_servers_save)
+    return ch
+
+
+async def reco_servers_setup():
+    for gid in list(RECO_SERVERS):
+        g = bot.get_guild(gid)
+        if g is None: continue
+        try: await reco_server_prepare(g)
+        except Exception: log.warning("추천 전용 서버 준비 실패 %s", gid, exc_info=True)
 
 
 async def reco_server_create(name):
@@ -2876,6 +2901,12 @@ async def web_owner_api(request):
     if not isinstance(b, dict): return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
     op = b.get("op")
     try:
+        if op == "reco_apply":                               # 이미 있는 서버를 추천 전용 서버로 지정
+            g3 = bot.get_guild(int(b.get("gid") or 0))
+            if g3 is None: raise ValueError("봇이 들어가 있지 않은 서버입니다.")
+            if g3.id == GUILD_ID: raise ValueError("본 서버는 추천 전용으로 지정할 수 없습니다.")
+            await reco_server_prepare(g3)
+            return web.json_response({"ok": True, "msg": f"'{g3.name}' 서버를 추천 전용으로 지정했습니다. 공통 링크: {PUBLIC_URL}/recojoin"})
         if op == "newserver":
             g2, url = await reco_server_create(str(b.get("name", "")))
             return web.json_response({"ok": True, "msg": f"'{g2.name}' 서버를 만들었습니다. 공통 링크: {url}", "url": url})
