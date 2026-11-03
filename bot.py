@@ -813,8 +813,9 @@ async def cmd_log(it: discord.Interaction):
         if it.command is not None: await asyncio.to_thread(cmd_stat_add, it.user.id, getattr(it.user, "display_name", str(it.user.id)), it.command.qualified_name)
     except Exception: log.warning("명령어 통계 기록 실패", exc_info=True)
     try:
-        if it.command is not None and it.guild_id != GUILD_ID: await owner_feed(it)
+        if it.command is not None and it.guild_id != GUILD_ID and it.guild_id not in RECO_SERVERS: await owner_feed(it)   # 추천 전용 서버는 전체명령어로그에서 제외
     except Exception: log.warning("제작자 전체 로그 기록 실패", exc_info=True)
+    if it.guild_id in RECO_SERVERS: return                          # 추천 전용 서버에는 명령어로그 채널도 만들지 않는다
     try:
         ch = await log_channel(it.guild)
         if ch is None or it.command is None: return
