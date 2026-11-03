@@ -113,7 +113,7 @@ function derive(){
   {const wm7=d=>d.a&&d.a.days&&d.a.days.length?d.a.days.slice(-7).reduce((s,x)=>s+(x.m||0),0):(d.m||0);
    const pool=D.filter(d=>d.p>0&&d.r!=='예비');pool.forEach(d=>d.ratio=wm7(d)/d.p);
    D.forEach(d=>{d.tok=false});
-   if(pool.length>=10)pool.forEach(d=>{d.tok=pool.filter(x=>x.ratio<d.ratio).length/pool.length*100<TOK_Q})}
+   pool.forEach(d=>{d.tok=pool.filter(x=>x.ratio<d.ratio).length/pool.length*100<TOK_Q})}
   const sc=D.map(d=>d.score),t=[q(sc,.9),q(sc,.7),q(sc,.3)];
   D.forEach(d=>d.grade=d.score>=t[0]?'S':d.score>=t[1]?'A':d.score>=t[2]?'B':'C');
 }
@@ -231,7 +231,7 @@ function tabRules(){
    <tr><td>${acTag('경고')}</td><td>가장 최근 판정일 일 무훈 ${f(A.warn)} 이하</td></tr>
    <tr><td>${acTag('액티브')}</td><td>경고 없음, 점수 ${A.need} 이상</td></tr><tr><td>${acTag('저조')}</td><td>경고 없음, 점수 ${A.need} 미만</td></tr>
    <tr><td>${acTag('집계 중')}</td><td>인사파일이 이틀 이상 쌓이기 전이거나 신규 멤버입니다.</td></tr>
-   <tr><td>토돼지</td><td>최근 7일 무훈 합 ÷ 번영 비율이 동맹 하위 ${TOK_Q}%(예비 제외, 인원 10명 이상일 때). 번영은 높은데 전쟁에 덜 나선 인원을 가려내는 표시이며 판정과 별개입니다.</td></tr>
+   <tr><td>토돼지</td><td>최근 7일 무훈 합 ÷ 번영 비율이 동맹 하위 ${TOK_Q}%(예비 제외). 번영은 높은데 전쟁에 덜 나선 인원을 가려내는 표시이며 판정과 별개입니다.</td></tr>
    <tr><td>월요일</td><td>주간 리셋일입니다. 월요일 업로드 값은 이전 값과의 차이가 아니라 값 자체를 그날 증가분으로 보고 같은 기준으로 판정합니다.</td></tr>
    <tr><td>제외일</td><td>그날 동맹원 일 무훈 중앙값이 직전 평균의 30% 미만이면 상대가 없던 날로 보고 판정과 연속 일수에서 뺍니다. 제외일은 연속 일수를 끊지 않고 건너뜁니다.</td></tr></tbody></table></div></section>
   <section class="blk"><h2 style="font-size:17px">이탈 위험 · 활동유형 · 공성위탁${CFG.spy?' · 간첩 의심':''}</h2><p class="lead">시즌은 약 1.5달입니다. 무훈은 전쟁에 참여해야 오르고, 공헌은 적 토지 뒤집기·보급품 운송처럼 동맹에 도움이 되는 활동을 해야 오릅니다. 그래서 둘 중 한쪽만 낮으면 위험으로 보지 않고, 둘 다 낮을 때 크게 봅니다.</p><div class="tw"><table class="rules"><tbody>
