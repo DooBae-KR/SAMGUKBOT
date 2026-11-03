@@ -810,7 +810,9 @@ async def owner_feed(it):
 async def cmd_log(it: discord.Interaction):
     """명령어 사용 기록을 #명령어로그에 남긴다. 실패해도 명령 실행에는 영향 없음."""
     try:
-        if it.command is not None: await asyncio.to_thread(cmd_stat_add, it.user.id, getattr(it.user, "display_name", str(it.user.id)), it.command.qualified_name)
+        if it.command is not None and it.guild_id in RECO_SERVERS:                      # 추천 전용 서버는 일반 통계 대신 별도 이용 빈도만 집계
+            await asyncio.to_thread(reco_use_add, it.user.id, getattr(it.user, "display_name", str(it.user.id)), it.command.qualified_name)
+        elif it.command is not None: await asyncio.to_thread(cmd_stat_add, it.user.id, getattr(it.user, "display_name", str(it.user.id)), it.command.qualified_name)
     except Exception: log.warning("명령어 통계 기록 실패", exc_info=True)
     try:
         if it.command is not None and it.guild_id != GUILD_ID and it.guild_id not in RECO_SERVERS: await owner_feed(it)   # 추천 전용 서버는 전체명령어로그에서 제외
@@ -2766,6 +2768,38 @@ async def adm_revoke(gid, did, by):
 
 
 # ---------- 제작자 모드(/제작자모드: 모든 서버 채널 관리 페이지) ----------
+RECOUSE_PATH = Path(os.environ.get("RECOUSE_PATH", "recouse.json"))
+_recouse_lock = threading.Lock()
+
+
+def reco_use_add(did, name, cmd):
+    """추천 전용 서버의 이용 빈도(누가·몇 번·언제)를 본 서버 DB에 따로 누적한다."""
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    with _recouse_lock:
+        tok = _CTX.set(GUILD_ID)
+        try:
+            d = store_get("recouse", RECOUSE_PATH, {}) or {}
+            u = d.setdefault("u", {}).setdefault(str(did), {"n": 0, "c": {}, "first": now.strftime("%Y-%m-%d")})
+            u["nm"] = name[:40]; u["n"] += 1; u["c"][cmd] = u["c"].get(cmd, 0) + 1; u["last"] = now.strftime("%Y-%m-%d %H:%M")
+            day = d.setdefault("d", {}); k = now.strftime("%Y-%m-%d"); day[k] = day.get(k, 0) + 1
+            for old in sorted(day)[:-90]: day.pop(old, None)                           # 최근 90일만 보관
+            store_set("recouse", RECOUSE_PATH, d)
+        finally: _CTX.reset(tok)
+
+
+def reco_use_view():
+    tok = _CTX.set(GUILD_ID)
+    try: d = store_get("recouse", RECOUSE_PATH, {}) or {}
+    finally: _CTX.reset(tok)
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=9); today = now.strftime("%Y-%m-%d")
+    days = d.get("d", {}); w = [(now - datetime.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+    us = d.get("u", {}); top = sorted(us.items(), key=lambda kv: -kv[1].get("n", 0))[:20]
+    return {"users": len(us), "total": sum(v.get("n", 0) for v in us.values()), "today": days.get(today, 0), "week": sum(days.get(x, 0) for x in w),
+            "active_today": sum(1 for v in us.values() if str(v.get("last", "")).startswith(today)),
+            "days": [{"d": x, "n": days.get(x, 0)} for x in reversed(w)],
+            "top": [{"id": k, "name": v.get("nm", ""), "n": v.get("n", 0), "first": v.get("first", ""), "last": v.get("last", ""), "c": v.get("c", {})} for k, v in top]}
+
+
 def reco_servers_load():
     tok = _CTX.set(GUILD_ID)
     try: d = store_get("recosrv", RECOSRV_PATH, {}) or {}
@@ -2911,6 +2945,8 @@ async def web_owner_api(request):
     if not isinstance(b, dict): return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
     op = b.get("op")
     try:
+        if op == "recostat":
+            return web.json_response({"ok": True, "stat": await asyncio.to_thread(reco_use_view)})
         if op == "reco_apply":                               # 이미 있는 서버를 추천 전용 서버로 지정
             g3 = bot.get_guild(int(b.get("gid") or 0))
             if g3 is None: raise ValueError("봇이 들어가 있지 않은 서버입니다.")

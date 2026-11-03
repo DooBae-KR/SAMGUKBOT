@@ -29,8 +29,9 @@ button.s:hover{color:var(--text);border-color:var(--mute)}button.s.d{color:var(-
 @media(max-width:760px){.lay{grid-template-columns:1fr}aside{position:static;max-height:240px;border-right:0;border-bottom:1px solid var(--line)}}
 </style></head><body>
 <header><h1>👑 제작자 모드 · 전체 서버 채널 관리</h1><div class="sub">봇이 들어가 있는 모든 서버를 관리합니다 (제작자 본인 전용 · 링크 공유 금지). 봇에 채널 관리 권한이 있어야 동작합니다.</div></header>
-<div class="lay"><aside><input id="gq" placeholder="서버 검색"><div id="gl"></div></aside>
+<div class="lay"><aside><button class="b" id="tools" style="width:100%;margin-bottom:8px">🧰 도구·이용 현황</button><input id="gq" placeholder="서버 검색"><div id="gl"></div></aside>
 <main id="main"><div class="card"><h2>🃏 추천 전용 이용자 추가 <span class="mute">(본 서버)</span></h2><div class="mute" style="margin-bottom:8px">명단 없이 /추천만 쓸 수 있는 손님을 등록합니다. 본 서버에 #추천전용 채널과 '추천이용자' 역할이 없으면 만들어 줍니다. 상대가 서버에 들어온 뒤 한 번 더 누르면 역할이 부여됩니다.</div><div class="row"><input id="gd" placeholder="디스코드 사용자 ID (숫자 17~19자리)"><input id="gn" placeholder="표시 이름"><button class="b" id="gadd">추가</button></div></div>
+<div class="card"><h2>📊 추천 전용 서버 이용 현황</h2><div id="rs" class="mute">불러오는 중…</div></div>
 <div class="card"><h2>🏠 봇이 소유한 추천 전용 서버 만들기</h2><div class="mute" style="margin-bottom:8px">봇이 직접 서버를 만들어 주인이 되고, #추천전용 채널과 영구 초대 링크를 만듭니다. 들어온 사람은 인증 없이 /추천만 쓸 수 있습니다. (봇이 들어간 서버가 10개 미만일 때만 가능)</div><div class="row"><input id="sn" placeholder="서버 이름 (비우면 '천하결전 추천덱')"><button class="b" id="snew">만들기</button></div><div id="snout" class="mute" style="margin-top:8px;word-break:break-all"></div></div><p class="mute">왼쪽에서 서버를 선택하세요.</p></main></div><div id="toast"></div>
 <script>
 const T="__T__",$=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -51,6 +52,7 @@ function draw(){if(!S)return;const cats=S.chs.filter(c=>c.type==='category'),by=
 function box(h){const b=$('#box');b.style.display='block';b.innerHTML=h;b.scrollIntoView({behavior:'smooth',block:'nearest'})}
 document.addEventListener('click',async e=>{
  const g=e.target.closest('[data-g]');if(g){GID=g.dataset.g;drawG();S=null;$('#main').innerHTML='<p class="mute">불러오는 중…</p>';loadC();return}
+ if(e.target.id==='tools'){GID=null;S=null;$('#main').innerHTML=HOME_HTML;drawG();loadRS();return}
  if(e.target.id==='snew'){const j=await api({op:'newserver',name:$('#sn').value.trim()});if(j){toast('서버를 만들었습니다');$('#snout').innerHTML='공통 링크(누구나 사용): <a style="color:var(--jade)" href="'+esc(j.url)+'" target="_blank">'+esc(j.url)+'</a>';loadG()}return}
  if(e.target.id==='gadd'){const did=$('#gd').value.trim(),name=$('#gn').value.trim();if(!did)return toast('디스코드 ID를 입력하세요',1);const j=await api({op:'guest',did,name});if(j)toast(j.msg||'완료');return}
  if(e.target.id==='leave'){const nm=(G.find(x=>x.id===GID)||{}).name;const v=prompt(`봇이 '${nm}' 에서 나가고 이 서버의 저장 데이터가 모두 삭제됩니다. 되돌릴 수 없습니다.\n계속하려면 서버 이름을 정확히 입력하세요.`);if(v===null)return;const j=await api({op:'leave',gid:GID,confirm:v});if(j){toast(j.msg||'완료');GID=null;S=null;$('#main').innerHTML='<p class="mute">철수했습니다. 왼쪽에서 서버를 선택하세요.</p>';loadG()}return}
@@ -67,5 +69,7 @@ document.addEventListener('click',async e=>{
  if(e.target.id==='mvgo'){const j=await api({op:'move',gid:GID,id:e.target.dataset.i,cat:$('#mv').value});if(j){toast('이동했습니다');loadC()}}
  if(e.target.id==='sg'){const text=$('#tx').value.trim();if(!text)return toast('내용을 입력하세요',1);const j=await api({op:'send',gid:GID,id:e.target.dataset.i,text});if(j){toast('보냈습니다');$('#tx').value=''}}
 });
-$('#gq').oninput=drawG;loadG();
+const HOME_HTML=document.querySelector('#main').innerHTML;
+async function loadRS(){const j=await api({op:'recostat'});if(!j)return;const s=j.stat;$('#rs').innerHTML=`<div class="row" style="margin-bottom:8px"><div><b style="font-size:22px;color:var(--jade)">${s.users}</b><br>누적 이용자(명)</div><div><b style="font-size:22px">${s.active_today}</b><br>오늘 이용자(명)</div><div><b style="font-size:22px">${s.today}</b><br>오늘 사용(회)</div><div><b style="font-size:22px">${s.week}</b><br>최근 7일(회)</div><div><b style="font-size:22px">${s.total}</b><br>누적 사용(회)</div></div><div class="mute">최근 7일: ${s.days.map(x=>x.d.slice(5)+' '+x.n).join(' · ')}</div>${s.top.length?'<table style="width:100%;margin-top:8px;font-size:13px"><tr><td>이용자</td><td>횟수</td><td>처음</td><td>마지막</td></tr>'+s.top.map(x=>`<tr><td>${esc(x.name)} <span class="mute">${x.id}</span></td><td>${x.n}</td><td>${esc(x.first)}</td><td>${esc(x.last)}</td></tr>`).join('')+'</table>':'<div class="mute">아직 이용 기록이 없습니다.</div>'}`}
+$('#gq').oninput=drawG;loadG();loadRS();
 </script></body></html>
