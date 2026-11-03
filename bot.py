@@ -974,6 +974,10 @@ class Bot(discord.Client):
             await self.tree.sync(guild=g)
 
     async def on_guild_join(self, g: discord.Guild):
+        if g.id in RECO_SERVERS:                                   # 추천 전용 서버로 지정된 곳에 봇이 들어오면 채널·초대 링크를 준비
+            try: await reco_server_prepare(g)
+            except Exception: log.warning("추천 전용 서버 준비 실패 %s", g.id, exc_info=True)
+            return
         try: await start_post(g)
         except Exception: log.exception("시작 가이드 게시 실패 %s", g.id)
 
