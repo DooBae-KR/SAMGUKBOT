@@ -51,7 +51,7 @@ function draw(){if(!S)return;const cats=S.chs.filter(c=>c.type==='category'),by=
 function box(h){const b=$('#box');b.style.display='block';b.innerHTML=h;b.scrollIntoView({behavior:'smooth',block:'nearest'})}
 document.addEventListener('click',async e=>{
  const g=e.target.closest('[data-g]');if(g){GID=g.dataset.g;drawG();S=null;$('#main').innerHTML='<p class="mute">불러오는 중…</p>';loadC();return}
- if(e.target.id==='snew'){const j=await api({op:'newserver',name:$('#sn').value.trim()});if(j){toast('서버를 만들었습니다');$('#snout').innerHTML='초대 링크: <a style="color:var(--jade)" href="'+esc(j.url)+'" target="_blank">'+esc(j.url)+'</a>';loadG()}return}
+ if(e.target.id==='snew'){const j=await api({op:'newserver',name:$('#sn').value.trim()});if(j){toast('서버를 만들었습니다');$('#snout').innerHTML='공통 링크(누구나 사용): <a style="color:var(--jade)" href="'+esc(j.url)+'" target="_blank">'+esc(j.url)+'</a>';loadG()}return}
  if(e.target.id==='gadd'){const did=$('#gd').value.trim(),name=$('#gn').value.trim();if(!did)return toast('디스코드 ID를 입력하세요',1);const j=await api({op:'guest',did,name});if(j)toast(j.msg||'완료');return}
  if(e.target.id==='leave'){const nm=(G.find(x=>x.id===GID)||{}).name;const v=prompt(`봇이 '${nm}' 에서 나가고 이 서버의 저장 데이터가 모두 삭제됩니다. 되돌릴 수 없습니다.\n계속하려면 서버 이름을 정확히 입력하세요.`);if(v===null)return;const j=await api({op:'leave',gid:GID,confirm:v});if(j){toast(j.msg||'완료');GID=null;S=null;$('#main').innerHTML='<p class="mute">철수했습니다. 왼쪽에서 서버를 선택하세요.</p>';loadG()}return}
  if(e.target.id==='mk'){const name=$('#nn').value.trim();if(!name)return toast('이름을 입력하세요',1);const j=await api({op:'create',gid:GID,name,type:$('#nt').value,cat:$('#nc').value});if(j){toast('만들었습니다');loadC()}return}

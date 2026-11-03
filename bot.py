@@ -25,6 +25,7 @@ def set_gid(g): _CTX.set(int(g) if g else GUILD_ID)
 
 
 LICENSED = set()                                        # 제작자가 승인한 서버(홈 서버는 항상 허가)
+RECO_INVITE = {"url": ""}
 RECO_SERVERS = set()                                    # 봇이 직접 만든 '추천 전용' 서버(/추천만 허용)
 RECOSRV_PATH = Path(os.environ.get("RECOSRV_PATH", "recosrv.json"))
 def licensed(gid): return gid == GUILD_ID or gid in LICENSED or gid in RECO_SERVERS
@@ -2764,12 +2765,12 @@ def reco_servers_load():
     tok = _CTX.set(GUILD_ID)
     try: d = store_get("recosrv", RECOSRV_PATH, {}) or {}
     finally: _CTX.reset(tok)
-    RECO_SERVERS.clear(); RECO_SERVERS.update(int(x) for x in d.get("ids", []))
+    RECO_SERVERS.clear(); RECO_SERVERS.update(int(x) for x in d.get("ids", [])); RECO_INVITE["url"] = d.get("invite", "")
 
 
 def reco_servers_save():
     tok = _CTX.set(GUILD_ID)
-    try: store_set("recosrv", RECOSRV_PATH, {"ids": sorted(RECO_SERVERS)})
+    try: store_set("recosrv", RECOSRV_PATH, {"ids": sorted(RECO_SERVERS), "invite": RECO_INVITE["url"]})
     finally: _CTX.reset(tok)
 
 
@@ -2790,7 +2791,8 @@ async def reco_server_create(name):
             try: await c.delete(reason="추천 전용 서버 정리")
             except Exception: pass
     inv = await ch.create_invite(max_age=0, max_uses=0, unique=False, reason="추천 전용 서버 초대")
-    return g, inv.url
+    RECO_INVITE["url"] = inv.url; await asyncio.to_thread(reco_servers_save)
+    return g, f"{PUBLIC_URL}/recojoin"
 
 
 SB_GUILD_TABLES = ("sam_alli", "sam_auth_log", "sam_build", "sam_build_reserve", "sam_dex", "sam_emp", "sam_emp_alt", "sam_emp_event", "sam_emp_left", "sam_emp_out",
@@ -2854,6 +2856,12 @@ def _ch_kind(c):
     return "news" if getattr(c, "is_news", lambda: False)() else "text"
 
 
+async def web_recojoin(request):
+    """누구나 쓰는 고정 주소 → 추천 전용 서버 초대 링크로 연결."""
+    if not RECO_INVITE["url"]: return web.Response(status=404, text="추천 전용 서버가 아직 준비되지 않았습니다.")
+    raise web.HTTPFound(RECO_INVITE["url"])
+
+
 async def web_owner(request):
     if not await own_parse(request.query.get("t")): return web.Response(status=403, text="링크가 만료되었거나 권한이 없습니다. 디스코드에서 /제작자모드 를 다시 입력해 주세요.")
     tpl = (Path(__file__).parent / "owner_template.html").read_text("utf-8")
@@ -2870,7 +2878,7 @@ async def web_owner_api(request):
     try:
         if op == "newserver":
             g2, url = await reco_server_create(str(b.get("name", "")))
-            return web.json_response({"ok": True, "msg": f"'{g2.name}' 서버를 만들었습니다. 초대 링크: {url}", "url": url})
+            return web.json_response({"ok": True, "msg": f"'{g2.name}' 서버를 만들었습니다. 공통 링크: {url}", "url": url})
         if op == "guest":                                    # 추천 전용 이용자 추가(본 서버, 추천만 쓸 수 있는 채널·역할)
             msg = await reco_guest_add(str(b.get("did", "")).strip(), str(b.get("name", "")).strip())
             return web.json_response({"ok": True, "msg": msg})
@@ -2896,7 +2904,7 @@ async def web_owner_api(request):
             if g.owner_id == bot.user.id: await g.delete()              # 봇이 소유한 서버는 서버 자체를 삭제
             else: await g.leave()
             LICENSED.discard(gid0)
-            if gid0 in RECO_SERVERS: RECO_SERVERS.discard(gid0); await asyncio.to_thread(reco_servers_save)
+            if gid0 in RECO_SERVERS: RECO_SERVERS.discard(gid0); RECO_INVITE["url"] = "" if not RECO_SERVERS else RECO_INVITE["url"]; await asyncio.to_thread(reco_servers_save)
             for k in [k for k in list(PERM) if k[0] == gid0]: PERM.discard(k)
             def wipe():
                 n = 0
@@ -3134,7 +3142,7 @@ async def start_web():
     app = web.Application(middlewares=[gzip_mw]); app.router.add_get("/", web_index)
     app.router.add_get("/img/{k}/{size}/{name}", web_img); app.router.add_get("/guide/{name}", web_guide)
     app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
-    app.router.add_get("/admin", web_admin); app.router.add_get("/owner", web_owner); app.router.add_post("/api/owner", web_owner_api); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
+    app.router.add_get("/admin", web_admin); app.router.add_get("/owner", web_owner); app.router.add_get("/recojoin", web_recojoin); app.router.add_post("/api/owner", web_owner_api); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
     app.router.add_get("/season", web_season); app.router.add_get("/admin/season_template.xlsx", web_admin_tpl); app.router.add_get("/invite", web_invite); app.router.add_get("/bimg/{iid}", web_bimg)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
     runner = web.AppRunner(app); await runner.setup()
