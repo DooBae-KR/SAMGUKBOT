@@ -2439,6 +2439,80 @@ def risk_calc(gid, D, act, tset, alts, snap=None):
     return out
 
 
+def _tier_num(t):
+    m = re.match(r"\s*T\s*(\d+(?:\.\d+)?)", str(t or ""))
+    return float(m.group(1)) if m else None
+
+
+RANK_GENERAL, RANK_PLT = 3, 1                                     # 장수가 겹치지 않는 0~2티어 완성 덱을 3개 이상 짤 수 있으면 장군 · 1~2개 소대장 · 그 외 일반
+RANK_MAX_TIER = 2.0
+_RK_CACHE = {}
+_RK_DECKS = []
+
+
+def _rank_decks():
+    """시즌1·2 티어덱 중 티어 숫자가 RANK_MAX_TIER 이하인 덱(같은 장수 조합은 하나로, 티어 높은 순). → [(티어, 이름, [슬롯별 대체 포함 장수 목록])]"""
+    if not _RK_DECKS:
+        td = tier_data(); seen = set(); L = []
+        for ki, k in enumerate(("S1", "S2")):
+            for oi, dk in enumerate(td.get(k) or []):
+                v = _tier_num(dk.get("tier"))
+                if v is None or v > RANK_MAX_TIER: continue
+                slots = [[x for x in h.split("/") if x] for h in dk.get("heroes") or []]
+                key = tuple(sorted("/".join(sl) for sl in slots))
+                if len(slots) != 3 or key in seen: continue
+                seen.add(key); L.append((v, ki, oi, dk.get("tier"), dk.get("name") or "/".join(dk.get("heroes") or []), slots))
+        _RK_DECKS.extend((t, n, sl) for _v, _k, _o, t, n, sl in sorted(L, key=lambda x: x[:3]))
+    return _RK_DECKS
+
+
+def _rank_units(own_h, own_s, units=5):
+    """보유 장수로 장수가 겹치지 않는 0~2티어 완성 덱을 최대 units개까지 가장 많이 짠다(티어 높은 덱 우선). 전법은 부대당 6개(장수당 2개) 이상 보유해야 한다.
+    → [{"t": 티어, "n": 덱 이름, "h": [배치된 장수 3명]}]"""
+    own = set(own_h); key = (tuple(sorted(own)), len(own_s) // 6)
+    if key in _RK_CACHE: return _RK_CACHE[key]
+    cand = [d for d in _rank_decks() if all(any(a in own for a in sl) for sl in d[2])]
+    cap = min(units, len(own_s) // 6); best = []
+
+    def assign(sl, j, used, pick):
+        if j == len(sl): return pick
+        for a in sl[j]:
+            if a in own and a not in used and a not in pick:
+                r = assign(sl, j + 1, used, pick + [a])
+                if r: return r
+        return None
+
+    def rec(i, used, chosen):
+        nonlocal best
+        if len(chosen) > len(best): best = list(chosen)
+        if len(chosen) >= cap or i >= len(cand) or len(chosen) + len(cand) - i <= len(best): return
+        t, n, sl = cand[i]; pk = assign(sl, 0, used, [])
+        if pk: rec(i + 1, used | set(pk), chosen + [{"t": t, "n": n, "h": pk}])
+        rec(i + 1, used, chosen)
+    rec(0, frozenset(), [])
+    if len(_RK_CACHE) > 3000: _RK_CACHE.clear()
+    _RK_CACHE[key] = best
+    return best
+
+
+def member_rank_data(gid, cids):
+    """동맹원별로 장수가 겹치지 않는 0~2티어 완성 부대 수와 편성 → {cid: {"n", "d": [부대], "cl": 장군/소대장/일반, "dex": 도감 입력 여부}}. 스레드에서 호출."""
+    hd, skd = reco_defs(); dexes = {}
+    if SB_ON:
+        try:
+            for r in _sb_req("GET", f"sam_store?guild_id=eq.{gid}&name=like.dex_*&select=name,data&limit=5000") or []: dexes[r["name"][4:]] = r.get("data") or {}
+        except Exception: log.exception("도감 일괄 조회 실패")
+    out = {}
+    for c in cids:
+        dx = dexes.get(c)
+        if dx is None: dx = store_get(f"dex_{c}", dex_path(c), {}) or {}
+        oh = [h for h in dx.get("own") or [] if h in hd]; os_ = [t for t in dx.get("ownsk") or [] if t in skd]
+        ds = _rank_units(oh, os_) if len(oh) >= 3 else []
+        n = len(ds)
+        out[c] = {"n": n, "d": ds, "cl": "장군" if n >= RANK_GENERAL else ("소대장" if n >= RANK_PLT else "일반"), "dex": bool(oh or os_)}
+    return out
+
+
 def render_html(tok=None, snap=None):
     """현재 명단/톡방 데이터로 상황판 HTML 문자열을 만든다. 데이터가 없으면 None. tok이 있으면(간부 링크) 톡방 관리 탭이 켜진다."""
     if not roster.members: return None
@@ -2474,6 +2548,12 @@ def render_html(tok=None, snap=None):
         m = cn.get(alts.get(d.get("_c")))
         if m is not None and m is not d: m.setdefault("alts", []).append(d["n"])
     D = [d for d in D if not (d.get("_c") in alts and alts[d["_c"]] in cn and alts[d["_c"]] != d["_c"])]
+    try:
+        rd = member_rank_data(gid, [d["_c"] for d in D if d.get("_c")])
+        for d in D:
+            x = rd.get(d.get("_c"))
+            if x: d["bk"] = {"c": x["cl"], "n": x["n"], "d": x["d"], "x": 1 if x["dex"] else 0}
+    except Exception: log.exception("전투 등급(장군·소대장) 계산 실패")
     for d in D: d.pop("_c", None)
     cfg = {"spy": spy_ok, "rosterFile": roster.src or "명단", "rosterDate": snap or roster_snap_date(gid) or today,
            "talkFile": ("대시보드 톡방 관리" if managed else "구글 시트 톡방참여자 탭") if names else "없음", "talkDate": tdate or today, "graceEnd": GRACE_END,

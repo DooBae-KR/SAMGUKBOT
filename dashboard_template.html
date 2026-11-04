@@ -62,16 +62,65 @@ svg text{fill:var(--mute);font-size:11px;font-family:var(--sans)}.dot{transition
 textarea{font:13px var(--sans);padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);resize:vertical}
 .adm .btn[disabled]{opacity:.45;cursor:default}#amsg{flex-basis:100%;color:var(--mute);min-height:1.4em}#amsg.err{color:var(--verm)}#amsg.ok{color:var(--jade)}
 .live{display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:12px;color:var(--mute)}.live i{width:7px;height:7px;border-radius:50%;background:var(--ash)}.live.on i{background:var(--jade)}
+button.rk{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;background:var(--raise);color:var(--text);border:1px solid var(--line);border-left:3px solid var(--c,var(--ash));border-radius:10px;padding:6px 12px;font:500 13.5px var(--sans);cursor:pointer;text-align:left}button.rk:hover,button.rk:focus-visible{background:var(--raise2)}button.rk small{font-size:11.5px;color:var(--mute);font-weight:400}.rkgrid{display:flex;flex-wrap:wrap;gap:8px}
 #tip{position:fixed;z-index:20;pointer-events:none;max-width:340px;background:#f1ecdc;color:#17201e;border-radius:12px;padding:10px 13px;font-size:13px;line-height:1.5;box-shadow:0 12px 34px rgba(0,0,0,.45);opacity:0}
 #tip.on{opacity:1}#tip b{font:700 14px var(--serif)}#tip .t{color:#4b5a56;font-size:12px}#tip .nm{display:flex;flex-wrap:wrap;gap:3px 8px;margin-top:5px}
 #tip .kv{display:grid;grid-template-columns:auto auto;gap:1px 14px;margin-top:6px;font-size:12.5px}#tip .kv span:nth-child(odd){color:#4b5a56}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ===== 초록 라이트 · 하단 탭바 · 카드 UI ===== */
+:root{color-scheme:light;--bg:#f3f8f3;--raise:#ffffff;--raise2:#e8f3e9;--line:#d3e4d5;--text:#1a2b1f;--mute:#5a6f5e;
+--jade:#2e7d32;--gold:#b7791f;--verm:#c62828;--blue:#2f7aa3;--ash:#8a9b8d;--pri:#2e7d32;--pri2:#c8e6c9}
+body{background:var(--bg)!important}
+h1,h2,.stat b,.grade,.issue h3,.adm b{font-family:var(--sans)!important}
+header{padding:20px 0 6px}h1{font-size:clamp(22px,4.5vw,30px)!important;font-weight:800;letter-spacing:-.02em}
+.sub{font-size:12.5px}
+main{padding:10px 0 110px}
+nav{position:fixed!important;top:auto!important;bottom:0;left:0;right:0;z-index:30;background:#fff;border-top:1px solid var(--line);border-bottom:0;backdrop-filter:none;padding-bottom:env(safe-area-inset-bottom,0)}
+nav .wrap{max-width:640px;display:flex;justify-content:space-around;gap:0;overflow:visible;padding:0}
+nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:0!important;padding:8px 2px 9px;font:500 11.5px var(--sans);color:var(--mute)}
+nav button .pl{width:58px;height:30px;border-radius:15px;display:grid;place-items:center;font-size:18px;transition:background .15s}
+nav button.on{color:var(--text);font-weight:700}nav button.on .pl{background:var(--pri2)}
+.sheetbg{position:fixed;inset:0;background:rgba(0,0,0,.38);z-index:40;display:none}.sheetbg.on{display:block}
+.msheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:#fff;border-radius:24px 24px 0 0;padding:10px 18px 26px;max-width:640px;margin:auto;transform:translateY(105%);transition:transform .2s}.msheet.on{transform:none}
+.msheet .gr{width:38px;height:4px;border-radius:2px;background:#cfd8d1;margin:0 auto 12px}
+.msheet button{display:flex;align-items:center;gap:14px;width:100%;background:none;border:0;padding:14px 6px;font:600 15.5px var(--sans);color:var(--text);cursor:pointer;border-top:1px solid var(--line);text-align:left}.msheet button:first-of-type{border-top:0}
+.strip{display:grid!important;grid-template-columns:repeat(2,1fr);gap:10px!important;margin:6px 0 22px!important}
+@media(min-width:700px){.strip{grid-template-columns:repeat(4,1fr)}}
+.stat{background:#fff;border:0!important;border-radius:18px;padding:14px 16px!important;box-shadow:0 1px 3px rgba(20,60,30,.1)}
+.stat:first-child{background:var(--pri);color:#fff}.stat:first-child span{color:#d7efd8}
+.stat b{font-size:30px!important;font-weight:800}
+.tdc{display:flex;flex-direction:column;gap:8px;margin:6px 0 24px}
+.td{display:flex;align-items:center;gap:12px;background:#fff;border-radius:18px;padding:12px 14px;box-shadow:0 1px 3px rgba(20,60,30,.1);cursor:pointer;border:0;width:100%;text-align:left;font-family:var(--sans);color:var(--text)}
+.td .ic{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;font-size:20px;flex:none}
+.td .tx{flex:1;min-width:0}.td .tx b{display:block;font-size:15px}.td .tx span{font-size:12.5px;color:var(--mute)}
+.td .n{font-size:20px;font-weight:800;color:var(--pri)}.td .cv{color:var(--ash);font-size:18px}
+h2.sec{font:700 16px var(--sans)!important;margin:4px 2px 10px}
+.fchips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none}.fchips::-webkit-scrollbar{display:none}
+.fc{flex:none;padding:8px 14px;border-radius:10px;border:1px solid #bfd3c2;background:#fff;font:500 13px var(--sans);color:var(--text);cursor:pointer}.fc.on{background:var(--pri2);border-color:var(--pri2);font-weight:700}
+.issue{background:#fff;border-radius:20px;padding:14px 16px;margin-bottom:12px!important;box-shadow:0 1px 3px rgba(20,60,30,.1)}
+.issue h3{justify-content:space-between;align-items:center}.issue h3 em{background:var(--pri);color:#fff;padding:2px 11px;border-radius:10px;font-size:12px}
+.chip{background:var(--raise2);border-left:0;border-radius:99px;padding:5px 12px;font-size:13px;border:1.5px solid var(--c,var(--ash))}
+.more{background:none;border:1.5px dashed var(--ash);color:var(--mute);cursor:pointer;font-family:var(--sans)}
+.tw{box-shadow:0 1px 3px rgba(20,60,30,.1)}
+.waffle{box-shadow:0 1px 3px rgba(20,60,30,.1)}
+.seg button.on{background:var(--pri);color:#fff}
+.btn.pri{background:var(--pri)!important;color:#fff!important;border-color:var(--pri)!important}
+.rseg{display:flex;border:1px solid #bfd3c2;border-radius:20px;overflow:hidden;margin:4px 0 12px;background:#fff}
+.rseg button{flex:1;border:0;background:none;padding:10px 0;font:500 14px var(--sans);color:var(--text);cursor:pointer}.rseg button.on{background:var(--pri2);font-weight:700}
+.rl{background:#fff;border-radius:16px;padding:11px 14px;margin-bottom:8px;box-shadow:0 1px 3px rgba(20,60,30,.1);cursor:pointer}
+.rl .h{display:flex;align-items:center;gap:12px}.rl .a{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;flex:none}
+.rl .nm{flex:1;min-width:0}.rl .nm b{display:block;font-size:15px}.rl .nm span{font-size:12.5px;color:var(--mute);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rl .cv{color:var(--ash);transition:transform .15s}.rl.open .cv{transform:rotate(180deg)}
+.rl .u{display:none;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line);font-size:13.5px}.rl.open .u{display:flex}.rl .u:first-of-type{margin-top:10px}
+.rl .u b:first-child{width:44px;color:var(--pri);flex:none}.rl .u em{font-style:normal;color:var(--mute);font-size:12.5px}
+#tip{background:#1f2a22;color:#fff}#tip .t,#tip .kv span:nth-child(odd){color:#b7c8ba}
 </style>
 <header><div class="wrap"><h1>연맹 인사 상황판</h1><p class="sub"><span id="meta"></span><span class="live" id="live"><i></i><span>시트 기준</span></span></p>
 <div class="adm" id="adm" hidden><b>명단 업데이트</b><label>명단 엑셀 <input type="file" id="fr" accept=".xlsx,.xls,.csv"></label><button class="btn" id="aprev" disabled>확인</button><button class="btn pri" id="aapply" disabled>적용</button><span id="amsg"></span><label style="flex-basis:100%;display:block">톡방 참여자 <span class="lead" style="margin:0">(스프레드시트 톡방참여자 탭의 닉네임 열을 복사해 붙여넣으세요)</span><textarea id="tk" rows="3" style="display:block;width:100%;margin-top:6px"></textarea></label><button class="btn" id="atk">톡방 적용</button><span id="tmsg" style="color:var(--mute)"></span></div></div></header>
 <nav><div class="wrap" id="nav"></div></nav>
 <main><div class="wrap">
-<section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section><section class="tab" id="t5"></section>
+<section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section><section class="tab" id="t5"></section><section class="tab" id="t6"></section>
 </div></main>
 <div id="tip"></div>
 <script>
@@ -132,6 +181,7 @@ const rkTip=d=>{const k=d.rk;if(!k)return'';let h='';
   if(CFG.spy&&k.sp)h+=`<div class="t">${k.sp.lv===3?'간첩 의심':'간첩 의심 주의'} ${k.sp.s}점(신호 ${k.sp.n}개) — ${k.sp.rs.join(', ')}</div>`;
   return h};
 function tipHTML(el){
+  if(el.dataset.bk!==undefined){const d=D[+el.dataset.bk],b=d&&d.bk;if(!b)return '';return `<b>${d.n}</b> <span class="t">${b.c} · 완성 부대 ${b.n}개</span>`+(b.d.length?`<div class="kv" style="grid-template-columns:auto 1fr">${b.d.map((u,i)=>`<span>${i+1}부대</span><span><b style="font-size:13px">${u.t} ${u.n}</b><br>${u.h.join(' · ')}</span>`).join('')}</div>`:`<div class="t">${b.x?'완성 가능한 부대가 없습니다.':'도감을 입력하지 않았습니다.'}</div>`)}
   const ids=el.dataset.w?el.dataset.w.split(',').filter(x=>x!=='').map(Number):[];
   if(!ids.length)return el.dataset.t?`<b>${el.dataset.t}</b><div class="t">해당 유저 없음</div>`:'';
   if(ids.length===1){const d=D[ids[0]];
@@ -140,11 +190,12 @@ function tipHTML(el){
   return `${el.dataset.t?`<b>${el.dataset.t}</b>`:''}<div class="t">${ids.length}명 (점수 높은 순)</div><div class="nm">${L.slice(0,MAX).map(d=>`<span>${d.n}</span>`).join('')}</div>${L.length>MAX?`<div class="t" style="margin-top:4px">외 ${L.length-MAX}명</div>`:''}`;
 }
 function place(e){const w=tip.offsetWidth,h=tip.offsetHeight;let x=e.clientX+16,y=e.clientY+16;if(x+w>innerWidth-8)x=e.clientX-w-16;if(y+h>innerHeight-8)y=Math.max(8,e.clientY-h-16);tip.style.left=Math.max(8,x)+'px';tip.style.top=y+'px'}
-document.addEventListener('mouseover',e=>{const el=e.target.closest('[data-w]');if(!el){tip.classList.remove('on');return}tip.innerHTML=tipHTML(el);tip.classList.add('on');place(e)});
+document.addEventListener('mouseover',e=>{const el=e.target.closest('[data-w],[data-bk]');if(!el){tip.classList.remove('on');return}tip.innerHTML=tipHTML(el);tip.classList.add('on');place(e)});
 document.addEventListener('mousemove',e=>{if(tip.classList.contains('on'))place(e)});
 document.addEventListener('mouseleave',()=>tip.classList.remove('on'));
-document.addEventListener('focusin',e=>{const el=e.target.closest&&e.target.closest('[data-w]');if(!el)return;tip.innerHTML=tipHTML(el);tip.classList.add('on');const r=el.getBoundingClientRect();place({clientX:r.left,clientY:r.bottom})});
+document.addEventListener('focusin',e=>{const el=e.target.closest&&e.target.closest('[data-w],[data-bk]');if(!el)return;tip.innerHTML=tipHTML(el);tip.classList.add('on');const r=el.getBoundingClientRect();place({clientX:r.left,clientY:r.bottom})});
 document.addEventListener('focusout',()=>tip.classList.remove('on'));
+document.addEventListener('click',e=>{const el=e.target.closest&&e.target.closest('[data-bk]');if(!el){return}tip.innerHTML=tipHTML(el);tip.classList.add('on');const r=el.getBoundingClientRect();place({clientX:r.left,clientY:r.bottom})});
 // ---------- 현황 ----------
 let GROUP='액티브 판정';
 const groupers={'액티브 판정':{k:d=>d.ac,order:AC_ORDER,col:k=>ACC[k]},'톡방':{k:d=>d.t?'톡방 참여':'톡방 비참여',order:['톡방 참여','톡방 비참여'],col:k=>k==='톡방 참여'?'--jade':'--ash'},'직업':{k:d=>d.j,col:(k,i)=>PAL[i%PAL.length]},'조':{k:d=>d.g,col:(k,i)=>PAL[i%PAL.length]}};
@@ -159,12 +210,17 @@ function tabSummary(){
   const n=D.length,cn=k=>D.filter(d=>d.ac===k),tk=D.filter(d=>d.t),un=D.filter(d=>d.g==='미편성');
   const S=(b,l,a)=>`<div class="stat" data-w="${a?W_(a):''}" data-t="${l}"><b>${b}</b><span>${l}</span></div>`;
   const jobs=[...new Set(D.map(d=>d.j))].map(j=>[j,D.filter(d=>d.j===j)]).sort((a,b)=>b[1].length-a[1].length),mxj=jobs[0][1].length;
+  const risk=D.filter(d=>d.rk&&d.rk.r!=null&&d.rk.r>=70),imm=D.filter(d=>d.g==='미편성'&&d.c>=10000),gen=D.filter(d=>d.bk&&d.bk.c==='장군');
+  const TD=(ic,bg,ti,sub,cnt,go)=>`<button class="td" data-go="${go}"><span class="ic" style="background:${bg}">${ic}</span><span class="tx"><b>${ti}</b><span>${sub}</span></span><span class="n">${cnt}</span><span class="cv">›</span></button>`;
   document.getElementById('t0').innerHTML=`
+  <h2 class="sec">오늘 확인할 일</h2><div class="tdc">${TD('🚨','#fde7e4','쟁 미참여 · 경고',`일 무훈이 낮은 인원`,cn('쟁 미참여').length+cn('경고').length,2)}${risk.length?TD('📉','#fff1d6','이탈 위험 높음','무훈·공헌이 모두 낮아요',risk.length,2):''}${TD('🧩','#e3f3e5','즉시 편성 대상','미편성 · 공헌 1만 이상',imm.length,2)}${D.some(d=>d.bk)?TD('🎖️','#fff4cf','전투 등급 장군','도감 기준 5부대 편성',gen.length,5):''}</div>
+  <h2 class="sec">한눈에 보기</h2>
   <div class="strip">${S(n,'전체 인원',D)}${S(cn('액티브').length,'액티브',cn('액티브'))}${S(cn('저조').length,'저조',cn('저조'))}${S(cn('경고').length,'경고',cn('경고'))}${S(cn('쟁 미참여').length,'쟁 미참여',cn('쟁 미참여'))}${S(tk.length,'톡방 참여',tk)}${S(D.filter(d=>d.tok).length,'토돼지',D.filter(d=>d.tok))}${S(f(CUT.c10),'무훈 상위 10% 기준 · 천하무쌍 '+CUT.n10+'명',D.filter(d=>d.tw))}${S(f(CUT.c30),'무훈 상위 30% 기준 · 액티브 '+CUT.n30+'명',D.filter(d=>d.tz))}${S(f(CUT.c50),'무훈 상위 50% 기준 · 쟁참여자 '+CUT.n50+'명',D.filter(d=>d.tj))}${S(un.length,'미편성',un)}</div>
   <section class="blk"><h2>진영도</h2><p class="lead">네모 하나가 연맹원 한 명입니다. 묶는 기준을 바꿔 보고, 칸에 마우스를 올리면 누구인지 나옵니다. 각 묶음 안에서는 점수가 높은 사람이 앞에 옵니다.</p>
    <div class="seg" id="gseg">${Object.keys(groupers).map(k=>`<button data-g="${k}">${k}</button>`).join('')}</div><div class="waffle" id="wf"></div></section>
   <section><h2>직업</h2><p class="lead">직업별 인원입니다.</p>${jobs.map(([j,a],i)=>bar(j,a.length,mxj,PAL[i%PAL.length],W_(a))).join('')}</section>`;
   document.querySelectorAll('#gseg button').forEach(b=>b.onclick=()=>{GROUP=b.dataset.g;waffle()});
+  document.querySelectorAll('.td').forEach(b=>b.onclick=()=>show(+b.dataset.go));
   waffle();
 }
 // ---------- 명부 ----------
@@ -211,8 +267,12 @@ function tabIssues(){
    ['즉시 편성 대상','미편성이면서 공헌 1만 이상입니다.',D.filter(d=>d.g==='미편성'&&d.c>=10000)],
    ['편성 여부 확인','미편성이면서 이번 주 무훈이 없습니다. 톡방 참여자는 뺐습니다.',D.filter(d=>d.g==='미편성'&&d.m===0&&!d.t)],
    ['재기 중이지만 활동 있음','지역이 없지만 무훈이 있습니다. 이주를 안내할 대상입니다.',D.filter(d=>d.jaegi&&d.m>0)]];
-  document.getElementById('t2').innerHTML=`<h2>인사 이슈</h2><p class="lead">이름에 마우스를 올리면 상세가 나옵니다. 왼쪽 색은 액티브 판정입니다.</p>`+
-   I.map(([t,desc,rows])=>`<div class="issue"><h3>${t}<em>${rows.length}명</em></h3><p>${desc}</p><div class="chips">${rows.sort((a,b)=>b.score-a.score).map(d=>`<span class="chip" tabindex="0" data-w="${d.i}" style="--c:${cv(ACC[d.ac]||'--ash')}">${d.n}</span>`).join('')||'<span class="lead">해당하는 유저가 없습니다.</span>'}</div></div>`).join('');
+  const CH=d=>`<span class="chip" tabindex="0" data-w="${d.i}" style="--c:${cv(ACC[d.ac]||'--ash')}">${d.n}</span>`,LIM=14;
+  document.getElementById('t2').innerHTML=`<h2 class="sec">인사 이슈</h2><p class="lead" style="margin-bottom:10px">이름에 마우스를 올리거나 눌러 상세를 보세요. 칩 색은 액티브 판정입니다.</p>
+  <div class="fchips"><button class="fc on" data-k="">전체 ${I.length}</button>${I.map(([ti,,rows])=>`<button class="fc" data-k="${ti}">${ti} ${rows.length}</button>`).join('')}</div>`+
+   I.map(([ti,desc,rows])=>{const r=rows.sort((a,b)=>b.score-a.score);return `<div class="issue" data-k="${ti}"><h3>${ti}<em>${r.length}명</em></h3><p>${desc}</p><div class="chips">${r.slice(0,LIM).map(CH).join('')||'<span class="lead">해당하는 유저가 없습니다.</span>'}${r.length>LIM?`<span class="rest" hidden style="display:contents">${r.slice(LIM).map(CH).join('')}</span><button class="chip more" data-more="1">+${r.length-LIM}명 더보기</button>`:''}</div></div>`}).join('');
+  document.querySelectorAll('#t2 .fc').forEach(b=>b.onclick=()=>{document.querySelectorAll('#t2 .fc').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('#t2 .issue').forEach(x=>x.style.display=!b.dataset.k||x.dataset.k===b.dataset.k?'':'none')});
+  document.querySelectorAll('#t2 .more').forEach(b=>b.onclick=()=>{const r=b.previousElementSibling;r.hidden=false;b.remove()});
 }
 // ---------- 액티브 이력 ----------
 function tabAct(){
@@ -250,15 +310,38 @@ function tabRules(){
    <tr><td>일 공헌</td><td>${W.c}점. 무훈과 같은 방식입니다.</td></tr>
    <tr><td>톡방 참여</td><td>+${W.talk}점. 참여 여부는 점수와 별개로 항상 참여/비참여로 표시합니다.</td></tr></tbody></table></div></section>`;
 }
-function build(){derive();tabSummary();tabRoster();tabIssues();tabAct();tabRules();if(CFG.edit)tabTalk()}
+// ---------- 전투 등급(장군·소대장·일반) ----------
+let RKG='장군';
+function tabRank(){
+  const L=D.filter(d=>d.bk),G=['장군','소대장','일반'],cols=['#2e7d32','#b7791f','#2f7aa3','#7b5ea7','#c0562a','#00796b'];
+  if(!L.length){$('t5').innerHTML='<h2 class="sec">전투 등급</h2><p class="lead">보유 장수·전법(도감) 정보가 아직 없습니다.</p>';return}
+  const by=g=>L.filter(d=>d.bk.c===g).sort((a,b)=>b.bk.n-a.bk.n||String(a.n).localeCompare(String(b.n),'ko')),noDex=L.filter(d=>!d.bk.x).length;
+  const short=d=>{const n=d.bk.d.map(u=>u.n);return n.length?n.slice(0,3).join(' · ')+(n.length>3?` +${n.length-3}`:''):(d.bk.x?'완성 부대 없음':'도감 없음')};
+  const us=d=>d.bk.d.map(u=>`${u.n}(${u.h.join('·')})`);
+  const row=d=>`<div class="rl"><div class="h"><div class="a" style="background:${cols[[...d.n].reduce((s,c)=>s+c.charCodeAt(0),0)%cols.length]}">${esc([...d.n][0])}</div><div class="nm"><b>${esc(d.n)}</b><span>${short(d)}</span></div><span class="cv">⌄</span></div>${d.bk.d.map((u,i)=>`<div class="u"><b>${i+1}부대</b><span><b style="color:inherit;width:auto">${u.t} ${u.n}</b> <em>${u.h.join(' · ')}</em></span></div>`).join('')}</div>`;
+  $('t5').innerHTML=`<h2 class="sec">전투 등급</h2><p class="lead">도감의 보유 장수로 <b>장수가 겹치지 않는 0~2티어 덱을 최대 5부대</b> 짰을 때(전법은 부대당 6개 이상) 완성되는 부대 수입니다. 3개 이상 장군, 1~2개 소대장, 그 외 일반입니다. 도감 미입력 ${noDex}명은 일반입니다. 이름을 누르면 부대 편성이 펼쳐집니다.</p>
+  <div class="rseg">${G.map(g=>`<button data-g="${g}" class="${g===RKG?'on':''}">${g} ${by(g).length}</button>`).join('')}</div>
+  <p style="margin:0 0 10px"><button class="btn" id="rkcsv">⬇ 리스트 CSV</button></p><div id="rklist">${by(RKG).map(row).join('')||'<p class="lead">해당 인원이 없습니다.</p>'}</div>`;
+  document.querySelectorAll('#t5 .rseg button').forEach(b=>b.onclick=()=>{RKG=b.dataset.g;tabRank()});
+  document.querySelectorAll('#t5 .rl').forEach(r=>r.onclick=()=>r.classList.toggle('open'));
+  $('rkcsv').onclick=()=>{const q=v=>'"'+String(v).replace(/"/g,'""')+'"',rows=[['등급','이름','부대 수','부대 편성','도감']].concat(G.flatMap(g=>by(g).map(d=>[g,d.n,d.bk.n,us(d).join(' / '),d.bk.x?'입력':'없음'])));
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(q).join(',')).join('\n')],{type:'text/csv'}));a.download='전투등급.csv';a.click()}
+}
+function build(){derive();tabSummary();tabRoster();tabIssues();tabAct();tabRules();tabRank();if(CFG.edit)tabTalk()}
 const renderMeta=()=>{document.getElementById('meta').textContent=`명단 ${CFG.rosterFile}, 기준일 ${CFG.rosterDate}. 톡방 목록 ${CFG.talkFile}, 업데이트 ${CFG.talkDate}. 캐릭터 ID는 표시하지 않습니다.`};
-const NAMES=['현황','멤버 명부','인사 이슈','액티브 이력','기준표'].concat(CFG.edit?['톡방 관리']:[]);
-document.getElementById('nav').innerHTML=NAMES.map((n,i)=>`<button data-i="${i}">${n}</button>`).join('');
-function show(i){document.querySelectorAll('nav button,.tab').forEach(e=>e.classList.remove('on'));document.querySelector(`nav button[data-i="${i}"]`).classList.add('on');document.getElementById('t'+i).classList.add('on');tip.classList.remove('on')}
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(+b.dataset.i));
+const TABN={0:'현황',1:'명단',2:'이슈',3:'액티브 이력',4:'기준표',5:'전투 등급',6:'톡방 관리'};
+const NAVMAIN=[[0,'🏠','현황'],[2,'⚠️','이슈'],[1,'👥','명단'],[5,'🎖️','전투 등급'],[-1,'⋯','더보기']];
+const MORE=[[3,'📈','액티브 이력'],[4,'📋','기준표']].concat(CFG.edit?[[6,'💬','톡방 관리']]:[]);
+document.getElementById('nav').innerHTML=NAVMAIN.map(([i,ic,n])=>`<button data-i="${i}"><span class="pl">${ic}</span>${n}</button>`).join('');
+document.body.insertAdjacentHTML('beforeend','<div class="sheetbg" id="mbg"></div><div class="msheet" id="msh"><div class="gr"></div>'+MORE.map(([i,ic,n])=>`<button data-m="${i}"><span>${ic}</span>${n}</button>`).join('')+'</div>');
+let CURT=0;
+function moreOpen(on){$('mbg').classList.toggle('on',on);$('msh').classList.toggle('on',on)}
+function show(i){CURT=i;document.querySelectorAll('nav button,.tab').forEach(e=>e.classList.remove('on'));const main=NAVMAIN.some(x=>x[0]===i)?i:-1;document.querySelector(`nav button[data-i="${main}"]`).classList.add('on');document.getElementById('t'+i).classList.add('on');tip.classList.remove('on');moreOpen(false);window.scrollTo(0,0)}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(i===-1)moreOpen(!$('msh').classList.contains('on'));else show(i)});
+$('mbg').onclick=()=>moreOpen(false);document.querySelectorAll('#msh button').forEach(b=>b.onclick=()=>show(+b.dataset.m));
 prep();renderMeta();build();show(0);
 // ---------- 실시간 데이터 / 업데이트 ----------
-function refresh(){const cur=document.querySelector('nav button.on');const i=cur?+cur.dataset.i:0;prep();renderMeta();build();show(i)}
+function refresh(){const i=CURT;const y=scrollY;prep();renderMeta();build();show(i);scrollTo(0,y)}
 const nz=v=>{if(typeof v==='number')return v;const n=Number(String(v).replace(/[,\s]/g,''));return isNaN(n)?0:n};
 async function sheetRows(file){const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''})}
 function parseRoster(rows){
@@ -337,7 +420,7 @@ async function talkDo(body,ok){
 function tabTalk(){
   const have=new Set(D.map(d=>d.n)),all=[...(TALK||[])].sort((a,b)=>a.localeCompare(b,'ko')),ghost=all.filter(n=>!have.has(n));
   const list=all.filter(n=>!TQ||n.includes(TQ));
-  $('t5').innerHTML=`<section class="blk"><h2>톡방 참여자 관리</h2>
+  $('t6').innerHTML=`<section class="blk"><h2>톡방 참여자 관리</h2>
   <p class="lead">여기서 고친 목록이 곧바로 현황·명부·분석의 톡방 참여 표시에 반영됩니다. 현재 ${all.length}명이고, 명단에 없는 이름은 ${ghost.length}명입니다. 한 번 이 탭에서 저장하면 구글 시트 톡방참여자 탭 대신 여기 목록을 기준으로 합니다.</p>
   <div class="filters"><textarea id="tadd" rows="3" placeholder="추가할 닉네임을 줄바꿈이나 쉼표로 구분해 붙여넣으세요" style="flex:1;min-width:240px;font:14px var(--sans);padding:8px 11px;border:1px solid var(--line);border-radius:12px;background:var(--raise);color:var(--text)"></textarea>
    <button class="btn" id="tadd_b" style="background:var(--gold);color:#17201e;border-color:var(--gold);font-weight:700">추가</button></div>
@@ -353,9 +436,9 @@ function tabTalk(){
     talkDo({op:'add',names},j=>`✅ 추가했습니다. 현재 ${j.names.length}명`)};
   $('tclean').onclick=()=>{if(ghost.length&&confirm(`명단에 없는 ${ghost.length}명을 톡방 목록에서 지울까요?`))talkDo({op:'remove',names:ghost},j=>`✅ ${ghost.length}명을 정리했습니다. 현재 ${j.names.length}명`)};
   $('tclear').onclick=()=>{if(confirm('톡방 참여자 목록을 전부 비울까요?'))talkDo({op:'set',names:[]},()=>'✅ 목록을 비웠습니다.')};
-  document.querySelectorAll('#t5 tr[data-n]').forEach(tr=>{const n=tr.dataset.n;
+  document.querySelectorAll('#t6 tr[data-n]').forEach(tr=>{const n=tr.dataset.n;
     const b=c=>tr.querySelector(c);
-    if(b('.redit'))b('.redit').onclick=()=>{TEDIT=n;tabTalk();const i=document.querySelector('#t5 .ren');if(i){i.focus();i.select()}};
+    if(b('.redit'))b('.redit').onclick=()=>{TEDIT=n;tabTalk();const i=document.querySelector('#t6 .ren');if(i){i.focus();i.select()}};
     if(b('.rdel'))b('.rdel').onclick=()=>talkDo({op:'remove',names:[n]},j=>`✅ '${n}'을(를) 삭제했습니다. 현재 ${j.names.length}명`);
     if(b('.rcancel'))b('.rcancel').onclick=()=>{TEDIT=null;tabTalk()};
     if(b('.rsave')){const go=()=>talkDo({op:'rename',from:n,to:b('.ren').value},()=>`✅ '${n}'을(를) '${b('.ren')?b('.ren').value.trim():''}'(으)로 바꿨습니다.`);b('.rsave').onclick=go;b('.ren').onkeydown=e=>{if(e.key==='Enter')go();if(e.key==='Escape'){TEDIT=null;tabTalk()}}}
