@@ -52,6 +52,17 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
 .err{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;text-align:center}
 .eqt{display:flex;flex-direction:column;gap:6px}.eqr{display:flex;gap:6px;align-items:stretch}.eql{flex:0 0 52px;color:#fff;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 0}.eql b{font-size:22px;line-height:1}.eql span{font-size:10px;opacity:.9}.eqc{flex:1;display:flex;flex-wrap:wrap;gap:6px}.eqi{flex:1 1 150px;max-width:100%;border:1px solid;border-radius:8px;padding:6px 8px;background:var(--card,#fff);display:flex;flex-direction:column;gap:2px;font-size:12px}.eqi b{font-size:14px}.eqi small{color:#8a9a94;font-size:10.5px}
 .tg{display:inline-flex;align-items:center;gap:1px;font-size:10px;color:var(--gold,#e0b65a);margin-left:3px}.tg:before{content:"";width:9px;height:12px;background:var(--st) center/contain no-repeat}
+/* 초록 하단탭 테마 */
+:root{--bg:#f3f8f3;--card:#fff;--card2:#eef5ee;--line:#d5e2d6;--txt:#17261a;--mute:#5d7262;--gold:#9a6b00;--jade:#2e7d32}
+@media (prefers-color-scheme: dark){:root{--bg:#0d140e;--card:#1a251b;--card2:#121b13;--line:#2a3a2c;--txt:#e6f0e7;--mute:#9bb09e;--gold:#f0c75e;--jade:#66bb6a}}
+.tab.on,.sbtn.on{color:#fff}@media (prefers-color-scheme: dark){.tab.on,.sbtn.on{color:#0d1f0f}}
+.wrap{padding-bottom:84px}.mb{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0)}
+.mb button{flex:1;border:0;background:none;color:var(--mute);padding:8px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;cursor:pointer;font-family:inherit}
+.mb button i{font-style:normal;font-size:19px}.mb button.on{color:var(--jade);font-weight:700}
+.mbg{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.4);display:flex;align-items:flex-end}
+.msh{width:100%;max-height:70vh;overflow:auto;background:var(--card);border-radius:18px 18px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0));display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.msh h4{grid-column:1/-1;margin:0 0 2px;font-size:13px;color:var(--mute)}.msh button{padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt);text-align:left;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit}.msh button.on{background:var(--jade);color:#fff;border-color:var(--jade)}
+.sbar{display:flex;gap:6px;align-items:center;margin:8px 0}
 </style></head><body><div class="wrap" id="app"></div>
 <script>
 const PH='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20104%20160%22%3E%3Crect%20width%3D%22104%22%20height%3D%22160%22%20rx%3D%228%22%20fill%3D%22%231d2430%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2298%22%20height%3D%22154%22%20rx%3D%226%22%20fill%3D%22none%22%20stroke%3D%22%235b6678%22%20stroke-width%3D%222%22%20stroke-dasharray%3D%225%204%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2258%22%20r%3D%2217%22%20fill%3D%22none%22%20stroke%3D%22%237a8599%22%20stroke-width%3D%223%22%2F%3E%3Cpath%20d%3D%22M52%2050v10l7%205%22%20fill%3D%22none%22%20stroke%3D%22%237a8599%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Ctext%20x%3D%2252%22%20y%3D%22102%22%20text-anchor%3D%22middle%22%20font-family%3D%22Malgun%20Gothic%2CApple%20SD%20Gothic%20Neo%2CNoto%20Sans%20KR%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22700%22%20fill%3D%22%23c9d1de%22%3E%EC%9D%B4%EB%AF%B8%EC%A7%80%3C%2Ftext%3E%3Ctext%20x%3D%2252%22%20y%3D%22124%22%20text-anchor%3D%22middle%22%20font-family%3D%22Malgun%20Gothic%2CApple%20SD%20Gothic%20Neo%2CNoto%20Sans%20KR%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22700%22%20fill%3D%22%23c9d1de%22%3E%EC%A4%80%EB%B9%84%EC%A4%91%3C%2Ftext%3E%3C%2Fsvg%3E';const IMS=b=>!b?'':(b.startsWith('/img/')||b.startsWith('data:'))?b:'data:image/jpeg;base64,'+b;const D=__DATA__;const ERR=__ERR__;const $=s=>document.querySelector(s);
@@ -148,8 +159,8 @@ function equip(){return `<div class="m" style="margin-bottom:8px">장비 특기 
   <div class="bar"><input class="sq" placeholder="특기·이펙트 검색" value="${esc(EQ)}" oninput="EQ=this.value;document.getElementById('el').innerHTML=eqBody()"></div>
   <div id="el">${eqBody()}</div>`}
 function frame(v){return `<iframe class="fr" src="/tier?t=${encodeURIComponent(D.t)}&s=${D.season}&embed=1#${v}"></iframe>`}
-let MENU=true,LATE=true;try{MENU=sessionStorage.getItem('rmenu')!=='0';LATE=sessionStorage.getItem('rlate')!=='0'}catch(e){}
-function toggleMenu(){MENU=!MENU;try{sessionStorage.setItem('rmenu',MENU?'1':'0')}catch(e){}draw()}
+let MENU=false,LATE=true;
+function toggleMenu(){MENU=!MENU;draw()}
 function toggleLate(){LATE=!LATE;try{sessionStorage.setItem('rlate',LATE?'1':'0')}catch(e){}draw()}
 
 // ---------- 편성기 · 공유마켓 · 지략가 ----------
@@ -443,13 +454,15 @@ function draw(){
   const q=s=>`?t=${encodeURIComponent(D.t)}&s=${s}`;
   const tb=(k,l,c)=>`<button class="tab ${c||''} ${TAB===k?'on':''}" onclick="setTab('${k}')">${l}</button>`;
   const NAME={board:'자유게시판',rank:'티어덱',build:'편성기',market:'편성대요청',strat:'지략가',equip:'장비',...FR};
-  const main=tb('rank','티어덱')+tb('build','편성기')+tb('market','🙋 편성대요청')+tb('board','💬 자유게시판')+tb('strat','🧠 지략가')+tb('dogam','장수 도감')+tb('skdex','전법 도감');
-  const late=tb('equip','장비','late')+tb('chart','상성 차트','late')+tb('mx','상성표','late')+tb('fill','부족한 것 메우기','late')+tb('guide','상황 가이드','late');
-  $('#app').innerHTML=`<div class="ttl"><h1>🃏 ${esc([D.ally,D.who].filter(Boolean).join(' '))} · 덱 검색기 · 시즌${D.season}</h1><button class="sbtn on dbtn" onclick="showDon()">☕ 후원</button></div><div class="sub">티어덱을 보고, 내 보유 장수·전법으로 5부대를 짜거나 편성대요청으로 도움을 받으세요 · 한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없음</div>
-  <div class="bar"><button class="tab mt" onclick="toggleMenu()">☰ 메뉴 ${MENU?'접기 ▴':'펼치기 ▾'}</button>${MENU?'':`<span class="m">현재: <b>${esc(NAME[TAB]||'')}</b></span>`}<span class="sp"></span>
+  const NAV=[['rank','📊','티어덱'],['build','🧩','편성기'],['market','🙋','편성대요청'],['dogam','📖','장수 도감']];
+  const MORE=[['board','💬 자유게시판'],['strat','🧠 지략가'],['skdex','전법 도감'],['equip','장비'],['chart','상성 차트'],['mx','상성표'],['fill','부족한 것 메우기'],['guide','상황 가이드']];
+  const inMore=MORE.some(m=>m[0]===TAB);
+  const nav=`<nav class="mb">${NAV.map(n=>`<button class="${TAB===n[0]?'on':''}" onclick="MENU=false;setTab('${n[0]}')"><i>${n[1]}</i>${n[2]}</button>`).join('')}<button class="${inMore||MENU?'on':''}" onclick="toggleMenu()"><i>⋯</i>더보기</button></nav>`;
+  const sheet=MENU?`<div class="mbg" onclick="if(event.target===this)toggleMenu()"><div class="msh"><h4>더보기</h4>${MORE.map(m=>`<button class="${TAB===m[0]?'on':''}" onclick="MENU=false;setTab('${m[0]}')">${m[1]}</button>`).join('')}</div></div>`:'';
+  $('#app').innerHTML=`<div class="ttl"><h1>🃏 ${esc([D.ally,D.who].filter(Boolean).join(' '))} · 덱 검색기</h1><button class="sbtn on dbtn" onclick="showDon()">☕ 후원</button></div>
+  <div class="sbar"><span class="m">현재: <b>${esc(NAME[TAB]||'')}</b></span><span class="sp"></span>
   <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a><a class="sbtn ${D.season===3?'on':''}" href="${q(3)}">시즌3</a></div>
-  ${MENU?`<div class="bar">${main}<span class="vs"></span><button class="tab lt" onclick="toggleLate()">참고 ${LATE?'접기 ▴':'펼치기 ▾'}</button>${LATE?late:''}</div>`:''}
-  ${TAB==='board'?board():TAB==='build'?`<div class="bwrap">${build()}</div>`:TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}`}
+  ${TAB==='board'?board():TAB==='build'?`<div class="bwrap">${build()}</div>`:TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}${nav}${sheet}`}
 draw();
 </script></body></html>'''
 
