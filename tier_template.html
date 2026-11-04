@@ -80,6 +80,9 @@ td.win{background:#10261e}td.lose{background:#2a1714}td.neu{background:#1e2216}
 .trp .r button{width:38px;height:34px;background:#242a30;color:#fff;border:1px solid #4a525a;border-radius:5px;font-size:20px;cursor:pointer}.trp .r button:disabled{opacity:.3;cursor:default}
 .dg b{display:block;margin-top:4px;font-size:12px}.dg span{font-size:11px;color:var(--mut)}
 #tip{position:fixed;z-index:50;pointer-events:none;max-width:340px;background:#0a0f0eF2;border:1px solid var(--jade);border-radius:10px;padding:10px 12px;font-size:12.5px;display:none;box-shadow:0 8px 30px #000a}
+#tip{max-height:min(70vh,520px);overflow:auto;background:var(--bg2,#0a0f0e);color:inherit}
+#tip .tx{display:none;position:sticky;top:0;float:right;margin:-4px -4px 0 8px;width:30px;height:30px;border-radius:50%;background:var(--jade);color:#fff;text-align:center;line-height:30px;font-size:18px;cursor:pointer}
+@media (max-width:700px),(pointer:coarse){#tip{left:10px!important;right:10px!important;top:auto!important;bottom:calc(10px + env(safe-area-inset-bottom,0px));max-width:none;width:auto;pointer-events:auto;font-size:13.5px;line-height:1.5;border-radius:16px;padding:14px 16px;z-index:200}#tip .tx{display:block}#tip img.sktip{max-width:100%;height:auto}}
 #tip h4{font:700 14px var(--serif);margin-bottom:4px}
 #tip .src{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
 #tip .src small{color:var(--gold);display:block}
@@ -621,12 +624,14 @@ function tipHTML(s){
   if(k==='g'){const u=DECKS.filter(d=>d.heroes.some(h=>h.n===a)||(d.cand||[]).includes(a));return `<h4>${a}</h4>${u.map(d=>`<div>${d.menu==='pvp'?'PvP':'개척'} · ${d.name}${(d.cand||[]).includes(a)?' (후보)':''}</div>`).join('')}`}
 }
 document.addEventListener('mousemove',e=>{
+  if(e.target.closest('#tip')){if(e.target.closest('.tx'))tip.style.display='none';return}
   const t=e.target.closest('[data-tip]');
   if(!t){tip.style.display='none';return}
-  tip.innerHTML=tipHTML(t.dataset.tip);tip.style.display='block';
+  tip.innerHTML='<span class="tx">×</span>'+tipHTML(t.dataset.tip);tip.style.display='block';
   let x=e.clientX+16,y=e.clientY+16;
   if(x+tip.offsetWidth>innerWidth-8)x=e.clientX-tip.offsetWidth-16;
   if(y+tip.offsetHeight>innerHeight-8)y=innerHeight-tip.offsetHeight-8;
+  if(x<8)x=8;if(y<8)y=8;
   tip.style.left=x+'px';tip.style.top=y+'px';
 });
 /* ───── 상세 / 이동 ───── */
