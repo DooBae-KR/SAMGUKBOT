@@ -3559,6 +3559,10 @@ def season_end_work(gid):
     stats.update(no=st["no"], end=today, alli=(f"{ally.get('server')}서버 " if ally.get("server") else "") + (ally.get("name") or "동맹"))
     st["archive"] = [a for a in st["archive"] if a.get("no") != st["no"]] + [{"no": st["no"], "at": today, "stats": stats}]
     st["archive"] = st["archive"][-SEASON_KEEP:]; st["ended"] = today; season_set(st)
+    if ally.get("server"):                                           # 시즌이 끝나면 서버 번호가 바뀔 수 있으므로 비워서 /동맹등록으로 다시 받는다(동맹명은 유지)
+        store_set("alliance", ALLY_PATH, {"name": ally.get("name") or "", "server": ""})
+        try: _sb_req("PATCH", f"sam_perm?guild_id=eq.{gid}", {"game_server": None}, "return=minimal")
+        except Exception: log.warning("sam_perm 서버 번호 초기화 실패 %s", gid)
     return st, stats
 
 
@@ -3626,7 +3630,7 @@ async def cmd_season_end(it: discord.Interaction):
     if again: return await it.followup.send(f"이미 종료된 시즌입니다. 결산 링크를 다시 드립니다 ({SEASON_LINK_DAYS}일 유효)\n{url}\n새 시즌은 `/시즌시작`으로 시작하세요.", ephemeral=True)
     try: await it.channel.send(season_summary(stats) + f"\n▶ 결산 영상처럼 보기 ({SEASON_LINK_DAYS}일 유효)\n{url}")
     except Exception: log.warning("시즌 결산 게시 실패", exc_info=True)
-    await it.followup.send(f"✅ 시즌 {stats['no']} 통계를 만들어 이 채널에 올렸습니다.\n{url}\n다음 시즌은 `/시즌시작`으로 새 명단을 넣으면 시작됩니다. (그전까지 인사 기록은 그대로 쌓입니다)", ephemeral=True)
+    await it.followup.send(f"✅ 시즌 {stats['no']} 통계를 만들어 이 채널에 올렸습니다.\n{url}\n📌 시즌이 끝나 **서버 번호가 초기화**되었습니다. 새 시즌 서버 번호는 `/동맹등록`으로 다시 입력해 주세요.\n다음 시즌은 `/시즌시작`으로 새 명단을 넣으면 시작됩니다. (그전까지 인사 기록은 그대로 쌓입니다)", ephemeral=True)
 
 
 class SeasonStartView(CtxView):
