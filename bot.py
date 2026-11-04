@@ -4800,6 +4800,35 @@ async def ans_notify(uid, title, who):
 
 
 
+def _rank_of(d, cid):
+    """지략가 순위(1부터). 점수가 0이거나 기록이 없으면 None."""
+    tot = mk_scores(d); order = [c for c, v in sorted(tot.items(), key=lambda kv: (-kv[1]["score"], -kv[1]["posts"], kv[0])) if tot[c]["score"] > 0]
+    return order.index(cid) + 1 if cid in order else None
+
+
+def _adopt_notify_info(rid, aid, before):
+    """채택 직후 알릴 대상 → (답변자 디스코드 ID, 의뢰 제목, 이전 순위, 현재 순위, 현재 점수) 또는 None. 채택 취소·본인 의뢰 채택은 알리지 않는다."""
+    d = _mk_get(); r = (d.get("reqs") or {}).get(rid); a = (d.get("ans") or {}).get(aid)
+    if not r or not a or r.get("adopted") != aid or a["cid"] == r["cid"]: return None
+    tok = _CTX.set(a.get("gid") or GUILD_ID)
+    try: tgt = (db_load().get("uid") or {}).get(a["cid"])
+    finally: _CTX.reset(tok)
+    if not tgt: return None
+    return int(tgt), r.get("title", ""), before, _rank_of(d, a["cid"]), (mk_scores(d).get(a["cid"]) or {}).get("score", 0)
+
+
+async def adopt_notify(uid, title, before, now, score):
+    try:
+        u = await bot.fetch_user(uid)
+        if now is None: rk = "지략가 순위에 올라갈 점수를 얻었어요."
+        elif before is None: rk = f"지략가 순위 **{now}위**로 올라갔습니다!"
+        elif now < before: rk = f"지략가 순위가 **{before}위 → {now}위**로 올라갔습니다!"
+        else: rk = f"현재 지략가 순위는 **{now}위**입니다."
+        await u.send(f"🎉 **당신의 편성이 채택되었습니다!**\n의뢰: **{title}**\n{rk}  (점수 {score}점, 채택 +{ADOPT_BONUS})\n`/추천` 페이지의 **편성대요청** 탭에서 순위를 확인해 보세요.")
+    except Exception: log.warning("편성 채택 알림 DM 실패 uid=%s", uid)
+
+
+
 def rq_del(did, rid):
     cid = _my_cid(did)
     with _mk_lock:
@@ -5123,7 +5152,13 @@ async def web_reco_api(request):
                 ni = await asyncio.to_thread(_ans_notify_info, did, rid0)
                 if ni: asyncio.create_task(ans_notify(*ni))
         elif op == "ans_del": err = await asyncio.to_thread(ans_del, did, str(b.get("id", "")))
-        elif op == "rq_adopt": err = await asyncio.to_thread(rq_adopt, did, str(b.get("rid", "")), str(b.get("aid", "")))
+        elif op == "rq_adopt":
+            rid0, aid0 = str(b.get("rid", "")), str(b.get("aid", ""))
+            bef = await asyncio.to_thread(lambda: _rank_of(_mk_get(), ((_mk_get().get("ans") or {}).get(aid0) or {}).get("cid")))
+            err = await asyncio.to_thread(rq_adopt, did, rid0, aid0)
+            if not err:
+                ni = await asyncio.to_thread(_adopt_notify_info, rid0, aid0, bef)
+                if ni: asyncio.create_task(adopt_notify(*ni))
         elif op == "draft":
             units, err = mk_clean(b.get("units"), hd, skd, season, await asyncio.to_thread(_trmap, _my_cid(did)), await asyncio.to_thread(_trsmap, _my_cid(did))) if b.get("units") else ([], None)
             if not err: await asyncio.to_thread(pref_set, did, draft={str(season): units})
