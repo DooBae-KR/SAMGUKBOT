@@ -4779,6 +4779,27 @@ def rq_post(did, b, hd, skd):
     return None
 
 
+def _ans_notify_info(did, rid):
+    """답변이 처음 달릴 때 알릴 대상 → (의뢰자 디스코드 ID, 의뢰 제목, 답변자 이름) 또는 None. 고쳐 올린 답변·본인 답변은 알리지 않는다."""
+    d = _mk_get(); r = (d.get("reqs") or {}).get(rid)
+    if not r: return None
+    me = _my_cid(did)
+    if not me or me == r["cid"]: return None
+    tok = _CTX.set(r.get("gid") or GUILD_ID)
+    try: tgt = (db_load().get("uid") or {}).get(r["cid"])
+    finally: _CTX.reset(tok)
+    if not tgt: return None
+    return int(tgt), r.get("title", ""), (roster.by_uid.get(me) or {}).get("name") or "익명"
+
+
+async def ans_notify(uid, title, who):
+    try:
+        u = await bot.fetch_user(uid)
+        await u.send(f"🧠 **편성 의뢰에 답변이 달렸어요!**\n의뢰: **{title}**\n답변자: **{who}**\n`/추천` 페이지의 **편성대요청** 탭에서 확인하고, 마음에 들면 채택해 주세요.")
+    except Exception: log.warning("편성 답변 알림 DM 실패 uid=%s", uid)
+
+
+
 def rq_del(did, rid):
     cid = _my_cid(did)
     with _mk_lock:
@@ -5095,7 +5116,12 @@ async def web_reco_api(request):
         elif op == "bd_cdel": err = await asyncio.to_thread(bd_cdel, did, str(b.get("id", "")))
         elif op == "rq_post": err = await asyncio.to_thread(rq_post, did, b, hd, skd)
         elif op == "rq_del": err = await asyncio.to_thread(rq_del, did, str(b.get("id", "")))
-        elif op == "ans_post": err = await asyncio.to_thread(ans_post, did, b, hd, skd)
+        elif op == "ans_post":
+            rid0 = str(b.get("rid", "")); had = await asyncio.to_thread(lambda: any(a.get("rid") == rid0 and a["cid"] == _my_cid(did) for a in (_mk_get().get("ans") or {}).values()))
+            err = await asyncio.to_thread(ans_post, did, b, hd, skd)
+            if not err and not had:
+                ni = await asyncio.to_thread(_ans_notify_info, did, rid0)
+                if ni: asyncio.create_task(ans_notify(*ni))
         elif op == "ans_del": err = await asyncio.to_thread(ans_del, did, str(b.get("id", "")))
         elif op == "rq_adopt": err = await asyncio.to_thread(rq_adopt, did, str(b.get("rid", "")), str(b.get("aid", "")))
         elif op == "draft":
