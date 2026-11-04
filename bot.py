@@ -472,8 +472,8 @@ def ally_load():
 
 
 class AllyModal(CtxModal, title="동맹 등록"):
-    server = discord.ui.TextInput(label="서버 번호 (숫자만 입력)", placeholder="예: 41", min_length=1, max_length=5)
-    name = discord.ui.TextInput(label="동맹명", placeholder="예: 공성부대", min_length=1, max_length=12)
+    server = discord.ui.TextInput(label="* 서버 번호 (숫자만 입력)", placeholder="예: 41 (필수)", required=False, max_length=5)
+    name = discord.ui.TextInput(label="* 동맹명", placeholder="예: 공성부대 (필수)", required=False, max_length=12)
 
     def __init__(self):
         super().__init__(); cur = ally_load()
@@ -481,6 +481,9 @@ class AllyModal(CtxModal, title="동맹 등록"):
 
     async def on_submit(self, it: discord.Interaction):
         sv, nm = self.server.value.strip(), self.name.value.strip()
+        if not sv or not nm:
+            miss = " · ".join(x for x, v in (("서버 번호", sv), ("동맹명", nm)) if not v)
+            return await it.response.send_message(f"⚠️ **{miss}**은(는) 필수 입력입니다. `*` 표시된 칸을 모두 입력해 주세요.", ephemeral=True)
         if not (sv.isascii() and sv.isdigit()): return await it.response.send_message("❌ 서버 번호는 숫자만 입력할 수 있습니다. (예: 41)", ephemeral=True)
         if not nm: return await it.response.send_message("❌ 동맹명을 입력해 주세요.", ephemeral=True)
         dup = await asyncio.to_thread(ally_dup, it.guild_id, sv, nm)
@@ -1522,12 +1525,15 @@ async def pm_decide(it: discord.Interaction, cid):
 
 
 class AllyApplyModal(CtxModal, title="동맹 등록"):
-    server = discord.ui.TextInput(label="서버 번호 (숫자만 입력)", placeholder="예: 41", min_length=1, max_length=5)
-    name = discord.ui.TextInput(label="동맹명", placeholder="예: 공성부대", min_length=1, max_length=12)
+    server = discord.ui.TextInput(label="* 서버 번호 (숫자만 입력)", placeholder="예: 41 (필수)", required=False, max_length=5)
+    name = discord.ui.TextInput(label="* 동맹명", placeholder="예: 공성부대 (필수)", required=False, max_length=12)
     reason = discord.ui.TextInput(label="사유 (선택)", placeholder="메모(선택)", required=False, max_length=200, style=discord.TextStyle.paragraph)
 
     async def on_submit(self, it: discord.Interaction):
         sv, nm = self.server.value.strip(), self.name.value.strip()
+        if not sv or not nm:
+            miss = " · ".join(x for x, v in (("서버 번호", sv), ("동맹명", nm)) if not v)
+            return await it.response.send_message(f"⚠️ **{miss}**은(는) 필수 입력입니다. `*` 표시된 칸을 모두 입력해 주세요.", ephemeral=True)
         if not (sv.isascii() and sv.isdigit()): return await it.response.send_message("❌ 서버 번호는 숫자만 입력할 수 있습니다. (예: 41)", ephemeral=True)
         if not SB_ON: return await it.response.send_message("❌ DB(Supabase)가 연결되지 않아 신청을 받을 수 없습니다.", ephemeral=True)
         await it.response.defer(ephemeral=True); gid, uid = it.guild.id, it.user.id
