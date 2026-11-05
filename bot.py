@@ -948,6 +948,8 @@ class GuildTree(app_commands.CommandTree):
     """모든 명령 실행 전에: ① 처리할 서버를 정하고 ② 허가되지 않은 서버는 /동맹등록 외에는 막는다."""
     async def interaction_check(self, it: discord.Interaction):
         set_gid(it.guild_id)
+        if it.user.id != OWNER_ID and svbl_has(it.user.id):
+            await it.response.send_message("이용할 수 없는 계정입니다.", ephemeral=True); return False
         if it.guild_id is None:
             await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True); return False
         if it.guild_id in RECO_SERVERS and not (it.command and it.command.name in ("추천", "명령어")):
@@ -983,6 +985,10 @@ class Bot(discord.Client):
             await self.tree.sync(guild=g)
 
     async def on_guild_join(self, g: discord.Guild):
+        if g.id != GUILD_ID and svbl_has(g.owner_id):                # 차단된 유저가 주인인 서버면 바로 나간다
+            try: await svbl_purge_guild(g, "자동")
+            except Exception: log.exception("차단 서버 자동 철수 실패 %s", g.id)
+            return
         if g.id in RECO_SERVERS:                                   # 추천 전용 서버로 지정된 곳에 봇이 들어오면 채널·초대 링크를 준비
             try: await reco_server_prepare(g)
             except Exception: log.warning("추천 전용 서버 준비 실패 %s", g.id, exc_info=True)
@@ -3026,6 +3032,58 @@ async def web_owner(request):
     return web.Response(text=tpl.replace("__T__", request.query.get("t")), content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
 
+SVBL_PATH = Path(os.environ.get("SVBL_PATH", "svbl.json"))
+SB_KEEP_TABLES = ("sam_dex",)                                   # 서버 데이터를 지워도 남기는 표(장수·전법 도감)
+
+
+def svbl_get():
+    """제작자가 차단한 디스코드 유저 ID {id: {memo, at, by}} (홈 서버 저장소에 둔다)."""
+    tok = _CTX.set(GUILD_ID)
+    try: return (store_get("svbl", SVBL_PATH, {"users": {}}) or {}).get("users", {})
+    finally: _CTX.reset(tok)
+
+
+def svbl_set(users):
+    tok = _CTX.set(GUILD_ID)
+    try: store_set("svbl", SVBL_PATH, {"users": users})
+    finally: _CTX.reset(tok)
+
+
+def svbl_has(did): return str(did) in svbl_get()
+
+
+async def svbl_affected(did):
+    """차단하면 봇이 나가야 하는 서버들: 그 사람이 서버 주인이거나 동맹을 등록한(승인된) 서버. 본 서버·추천 전용 서버는 제외."""
+    did = str(did); gids = {g.id for g in bot.guilds if str(g.owner_id) == did}
+    rows = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?discord_id=eq.{did}&status=eq.approved&select=guild_id") or []
+    gids |= {int(r["guild_id"]) for r in rows}
+    out = []
+    for gid in sorted(gids - {GUILD_ID} - set(RECO_SERVERS)):
+        g = bot.get_guild(gid)
+        if g is not None: out.append(g)
+    return out
+
+
+async def svbl_purge_guild(g, by):
+    """봇 철수 + 서버 데이터 삭제. 장수·전법 도감(sam_dex, dex_* 저장 항목)은 남긴다. 편성대요청·지략가는 홈 서버 저장소라 영향 없다."""
+    gid0, gname = g.id, g.name
+    if g.owner_id == bot.user.id: await g.delete()
+    else: await g.leave()
+    LICENSED.discard(gid0)
+    for k in [k for k in list(PERM) if k[0] == gid0]: PERM.discard(k)
+    def wipe():
+        n = 0
+        for tb in SB_GUILD_TABLES:
+            if tb in SB_KEEP_TABLES: continue
+            q = f"{tb}?guild_id=eq.{gid0}" + ("&name=not.like.dex_*" if tb == "sam_store" else "")
+            try: _sb_req("DELETE", q, prefer="return=minimal"); n += 1
+            except Exception: log.exception("서버 데이터 삭제 실패 %s %s", gid0, tb)
+        return n
+    n = await asyncio.to_thread(wipe)
+    log.info("서버 차단 철수 by=%s guild=%s(%s) 표 %d개", by, gid0, gname, n)
+    return n
+
+
 async def admin_dm_targets():
     """서버별 대표 관리자(그 서버에서 가장 먼저 승인된 사람) 목록. 같은 사람이 여러 서버면 한 명으로 묶는다. 본 서버는 제외."""
     by = {}
@@ -3074,6 +3132,24 @@ async def web_owner_api(request):
         if op == "guest":                                    # 추천 전용 이용자 추가(본 서버, 추천만 쓸 수 있는 채널·역할)
             msg = await reco_guest_add(str(b.get("did", "")).strip(), str(b.get("name", "")).strip())
             return web.json_response({"ok": True, "msg": msg})
+        if op == "svbl_list":
+            return web.json_response({"ok": True, "users": [{"did": k, **v} for k, v in svbl_get().items()]})
+        if op in ("svbl_preview", "svbl_add"):
+            did = str(b.get("did", "")).strip()
+            if not re.fullmatch(r"\d{15,20}", did): raise ValueError("디스코드 유저 ID(숫자)를 입력하세요.")
+            if did == str(uid) or did == str(OWNER_ID) or did == str(bot.user.id): raise ValueError("제작자 본인과 봇은 차단할 수 없습니다.")
+            gs = await svbl_affected(did)
+            if op == "svbl_preview": return web.json_response({"ok": True, "servers": [{"id": str(g.id), "name": g.name} for g in gs]})
+            if str(b.get("confirm", "")) != did: raise ValueError("확인용 ID가 일치하지 않습니다.")
+            users = svbl_get(); users[did] = {"memo": str(b.get("memo", ""))[:100], "at": time.strftime("%Y-%m-%d %H:%M"), "by": str(uid)}; svbl_set(users)
+            done = []
+            for g in gs:
+                try: await svbl_purge_guild(g, uid); done.append(g.name)
+                except Exception: log.exception("차단 서버 철수 실패 %s", g.id)
+            return web.json_response({"ok": True, "msg": f"{did} 차단 완료. 철수한 서버 {len(done)}곳" + (": " + ", ".join(done) if done else "")})
+        if op == "svbl_del":
+            users = svbl_get(); users.pop(str(b.get("did", "")), None); svbl_set(users)
+            return web.json_response({"ok": True, "msg": "차단을 해제했습니다."})
         if op in ("admin_dm_preview", "admin_dm_send"):         # 서버별 대표 관리자(처음 등록한 사람)에게 DM
             targets = await admin_dm_targets()
             if op == "admin_dm_preview": return web.json_response({"ok": True, "targets": targets})
@@ -3084,8 +3160,15 @@ async def web_owner_api(request):
             ok, fail = await admin_dm_send(targets, msg, uid)
             return web.json_response({"ok": True, "msg": f"발송 완료: 성공 {ok}명 · 실패 {len(fail)}명" + (" (" + ", ".join(fail[:10]) + ")" if fail else "")})
         if op == "guilds":
-            gs = sorted(bot.guilds, key=lambda g: (g.id != GUILD_ID, -(g.member_count or 0)))
-            return web.json_response({"guilds": [{"id": str(g.id), "name": g.name, "n": g.member_count or 0, "icon": str(g.icon.url) if g.icon else "", "home": g.id == GUILD_ID, "lic": g.id in LICENSED} for g in gs]})
+            def usage():                                         # 서버별 봇 이용자 수(명단에 올라간 인원)
+                rows = _sb_req("GET", "sam_emp?select=guild_id&limit=5000") or []
+                c = {}
+                for r in rows: c[str(r["guild_id"])] = c.get(str(r["guild_id"]), 0) + 1
+                return c
+            try: use = await asyncio.to_thread(usage)
+            except Exception: log.exception("서버 이용자 수 집계 실패"); use = {}
+            gs = sorted(bot.guilds, key=lambda g: (g.id != GUILD_ID, -use.get(str(g.id), 0), -(g.member_count or 0)))
+            return web.json_response({"guilds": [{"id": str(g.id), "name": g.name, "n": g.member_count or 0, "u": use.get(str(g.id), 0), "icon": str(g.icon.url) if g.icon else "", "home": g.id == GUILD_ID, "lic": g.id in LICENSED} for g in gs]})
         g = bot.get_guild(int(b.get("gid") or 0))
         if not g: return web.json_response({"error": "봇이 들어가 있지 않은 서버입니다."}, status=404)
         why = f"제작자 페이지({uid})"
