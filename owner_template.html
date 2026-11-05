@@ -1,37 +1,39 @@
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>제작자 모드 · 전체 서버 채널 관리</title>
 <style>
-:root{color-scheme:dark;--bg:#0e1716;--raise:#14211f;--line:#263a36;--text:#e8e3d3;--mute:#93a49e;--jade:#5ecfb1;--gold:#e0b65a;--verm:#ea5a42}
+:root{color-scheme:light;--bg:#f3f8f3;--raise:#ffffff;--line:#d5e2d6;--text:#17261a;--mute:#5d7262;--jade:#2e7d32;--gold:#9a6b00;--verm:#c62828;--inp:#f7fbf7;--chip:#e3f3e4;--ok:#c8e6c9}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0d140e;--raise:#1a251b;--line:#2a3a2c;--text:#e6f0e7;--mute:#9bb09e;--jade:#66bb6a;--gold:#f0c75e;--verm:#ef9a9a;--inp:#121b13;--chip:#1d3320;--ok:#26442a}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 'Noto Sans KR','Malgun Gothic',sans-serif}
-header{padding:18px 16px 12px;border-bottom:1px solid var(--line)}h1{margin:0;font-size:21px}.sub{color:var(--mute);font-size:12.5px;margin-top:2px}
+header{padding:18px 16px 12px;background:var(--jade);color:#fff}header .sub{color:rgba(255,255,255,.85)}h1{margin:0;font-size:21px}.sub{color:var(--mute);font-size:12.5px;margin-top:2px}
 .lay{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 70px)}
 aside{border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - 70px);position:sticky;top:0}
 main{padding:16px 18px 80px;min-width:0}
-input,select,textarea{background:#0b1312;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;width:100%}
+input,select,textarea{background:var(--inp);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;width:100%}
 textarea{min-height:70px}
 .g{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;cursor:pointer;border:1px solid transparent;margin-top:4px}
-.g:hover{background:var(--raise)}.g.on{background:var(--raise);border-color:var(--gold)}
-.g img,.g .ph{width:34px;height:34px;border-radius:50%;background:#1d2d2a;flex:0 0 auto;display:grid;place-items:center;font-size:13px;color:var(--mute)}
+.g:hover{background:var(--chip)}.g.on{background:var(--chip);border-color:var(--jade)}
+.g img,.g .ph{width:34px;height:34px;border-radius:50%;background:var(--chip);flex:0 0 auto;display:grid;place-items:center;font-size:13px;color:var(--mute)}
 .g b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.g small{color:var(--mute);font-size:11.5px}
 .card{background:var(--raise);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
 h2{margin:0 0 8px;font-size:17px}.mute{color:var(--mute);font-size:12.5px}
 .row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1 1 140px}.row>button{flex:0 0 auto}
-button.b{background:var(--jade);color:#062;border:0;border-radius:8px;padding:8px 14px;font:600 13.5px inherit;cursor:pointer}
+button.b{background:var(--jade);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:600 13.5px inherit;cursor:pointer}
 button.s{background:none;color:var(--mute);border:1px solid var(--line);border-radius:7px;padding:3px 9px;font-size:12px;cursor:pointer}
-button.s:hover{color:var(--text);border-color:var(--mute)}button.s.d{color:var(--verm);border-color:#6b2f27}
+button.s:hover{color:var(--text);border-color:var(--mute)}button.s.d{color:var(--verm);border-color:var(--verm)}
 .cat{margin-top:14px;padding:6px 10px;color:var(--gold);font-weight:700;font-size:13px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line)}
-.ch{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid #1c2b28;flex-wrap:wrap}
+.ch{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .ch .n{flex:1 1 200px;min-width:0;word-break:break-all}.ch .n small{color:var(--mute);margin-left:6px}.ch .ac{display:flex;gap:4px;flex-wrap:wrap}
 .ic{width:20px;text-align:center;color:var(--mute)}
-#toast{white-space:pre-line;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d3a34;border:1px solid var(--jade);padding:10px 18px;border-radius:10px;display:none;max-width:90vw;z-index:9}
-#toast.err{background:#3a1d1d;border-color:var(--verm)}
-#msgs{max-height:260px;overflow:auto;font-size:13px;margin-top:8px}#msgs div{padding:4px 0;border-bottom:1px solid #1c2b28;word-break:break-all}#msgs b{color:var(--jade)}
+#toast{white-space:pre-line;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ok);color:var(--text);border:1px solid var(--jade);padding:10px 18px;border-radius:10px;display:none;max-width:90vw;z-index:9}
+#toast.err{background:var(--bad-bg,#fdeaea);border-color:var(--verm)}
+#msgs{max-height:260px;overflow:auto;font-size:13px;margin-top:8px}#msgs div{padding:4px 0;border-bottom:1px solid var(--line);word-break:break-all}#msgs b{color:var(--jade)}
 @media(max-width:760px){.lay{grid-template-columns:1fr}aside{position:static;max-height:240px;border-right:0;border-bottom:1px solid var(--line)}}
 </style></head><body>
 <header><h1>👑 제작자 모드 · 전체 서버 채널 관리</h1><div class="sub">봇이 들어가 있는 모든 서버를 관리합니다 (제작자 본인 전용 · 링크 공유 금지). 봇에 채널 관리 권한이 있어야 동작합니다.</div></header>
 <div class="lay"><aside><button class="b" id="tools" style="width:100%;margin-bottom:8px">🧰 도구·이용 현황</button><input id="gq" placeholder="서버 검색"><div id="gl"></div></aside>
 <main id="main"><div class="card"><h2>🃏 추천 전용 이용자 추가 <span class="mute">(본 서버)</span></h2><div class="mute" style="margin-bottom:8px">명단 없이 /추천만 쓸 수 있는 손님을 등록합니다. 본 서버에 #추천전용 채널과 '추천이용자' 역할이 없으면 만들어 줍니다. 상대가 서버에 들어온 뒤 한 번 더 누르면 역할이 부여됩니다.</div><div class="row"><input id="gd" placeholder="디스코드 사용자 ID (숫자 17~19자리)"><input id="gn" placeholder="표시 이름"><button class="b" id="gadd">추가</button></div></div>
 <div class="card"><h2>🔗 서버 ID 입력으로 추천 전용 지정</h2><div class="mute" style="margin-bottom:8px">봇이 이미 들어가 있는 서버의 ID(숫자)를 직접 입력하면 추천 전용 서버로 지정합니다. (본 서버 제외)</div><div class="row"><input id="rid" placeholder="서버 ID (숫자 17~19자리)"><button class="b" id="rapply">지정</button></div></div>
+<div class="card"><h2>📨 서버별 대표 관리자에게 메시지 보내기</h2><div class="mute" style="margin-bottom:8px">각 서버에서 가장 먼저 등록한 관리자 1명에게 봇이 DM을 보냅니다. (본 서버 제외, 같은 사람은 1번만)</div><textarea id="admsg" rows="4" maxlength="1800" placeholder="보낼 내용 (1800자 이내)" style="width:100%"></textarea><div class="row" style="margin-top:8px"><button class="b" id="admprev">받는 사람 확인</button><button class="b" id="admsend" disabled>발송</button></div><div id="admlist" class="mute" style="margin-top:8px"></div></div>
 <div class="card"><h2>📊 추천 전용 서버 이용 현황</h2><div id="rs" class="mute">불러오는 중…</div></div>
 <div class="card"><h2>🏠 봇이 소유한 추천 전용 서버 만들기</h2><div class="mute" style="margin-bottom:8px">봇이 직접 서버를 만들어 주인이 되고, #추천전용 채널과 영구 초대 링크를 만듭니다. 들어온 사람은 인증 없이 /추천만 쓸 수 있습니다. (봇이 들어간 서버가 10개 미만일 때만 가능)</div><div class="row"><input id="sn" placeholder="서버 이름 (비우면 '천하결전 추천덱')"><button class="b" id="snew">만들기</button></div><div id="snout" class="mute" style="margin-top:8px;word-break:break-all"></div></div><p class="mute">왼쪽에서 서버를 선택하세요.</p></main></div><div id="toast"></div>
 <script>
@@ -55,6 +57,8 @@ document.addEventListener('click',async e=>{
  const g=e.target.closest('[data-g]');if(g){GID=g.dataset.g;drawG();S=null;$('#main').innerHTML='<p class="mute">불러오는 중…</p>';loadC();return}
  if(e.target.id==='tools'){GID=null;S=null;$('#main').innerHTML=HOME_HTML;drawG();loadRS();return}
  if(e.target.id==='snew'){const j=await api({op:'newserver',name:$('#sn').value.trim()});if(j){toast('서버를 만들었습니다');$('#snout').innerHTML='공통 링크(누구나 사용): <a style="color:var(--jade)" href="'+esc(j.url)+'" target="_blank">'+esc(j.url)+'</a>';loadG()}return}
+ if(e.target.id==='admprev'){const j=await api({op:'admin_dm_preview'});if(!j)return;window._adm=j.targets;$('#admlist').innerHTML=j.targets.length?('받는 사람 '+j.targets.length+'명<br>'+j.targets.map(x=>esc(x.name)+' ('+x.guilds.map(esc).join(', ')+')').join('<br>')):'받는 사람이 없습니다.';$('#admsend').disabled=!j.targets.length;$('#admsend').textContent='발송';return}
+ if(e.target.id==='admsend'){const msg=$('#admsg').value.trim();if(!msg)return toast('보낼 내용을 입력하세요',1);const n=(window._adm||[]).length;if(e.target.dataset.sure!=='1'){e.target.dataset.sure='1';e.target.textContent='정말 '+n+'명에게 보내기';setTimeout(()=>{e.target.dataset.sure='';e.target.textContent='발송'},5000);return}e.target.dataset.sure='';e.target.disabled=true;e.target.textContent='보내는 중…';const j=await api({op:'admin_dm_send',msg,n});e.target.textContent='발송';e.target.disabled=false;if(j)toast(j.msg||'완료');return}
  if(e.target.id==='rapply'){const gid=$('#rid').value.trim();if(!/^\d{15,20}$/.test(gid))return toast('서버 ID(숫자)를 입력하세요',1);const j=await api({op:'reco_apply',gid});if(j)toast(j.msg||'완료');return}
  if(e.target.id==='gadd'){const did=$('#gd').value.trim(),name=$('#gn').value.trim();if(!did)return toast('디스코드 ID를 입력하세요',1);const j=await api({op:'guest',did,name});if(j)toast(j.msg||'완료');return}
  if(e.target.id==='leave'){const nm=(G.find(x=>x.id===GID)||{}).name;const v=prompt(`봇이 '${nm}' 에서 나가고 이 서버의 저장 데이터가 모두 삭제됩니다. 되돌릴 수 없습니다.\n계속하려면 서버 이름을 정확히 입력하세요.`);if(v===null)return;const j=await api({op:'leave',gid:GID,confirm:v});if(j){toast(j.msg||'완료');GID=null;S=null;$('#main').innerHTML='<p class="mute">철수했습니다. 왼쪽에서 서버를 선택하세요.</p>';loadG()}return}

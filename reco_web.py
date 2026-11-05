@@ -175,10 +175,17 @@ const ser=u=>({h:u.h,t:u.t.map(a=>a.filter(Boolean)),f:u.f||'',a:u.a.map((x,k)=>
 let BLD=(D.draft||[]).map(mkU);while(BLD.length<5)BLD.push(T0());
 let PK=null,PQ='',MS='like',MF=false,MT='',MN='',SVT=null;
 let ANS=null,MY=null,MKT='req',EXP=new Set(),RT='',RN='',AN='';
+/* 작성 중 임시저장 (이 기기 브라우저에만 저장) */
+const LK=k=>'rdraft:'+(D.t||'')+':'+k;
+const lsGet=k=>{try{return JSON.parse(localStorage.getItem(LK(k))||'null')}catch(e){return null}};
+const lsSet=(k,v)=>{try{v==null?localStorage.removeItem(LK(k)):localStorage.setItem(LK(k),JSON.stringify(v))}catch(e){}};
+const saveRq=()=>lsSet('rq',(RT||RN)?{t:RT,n:RN}:null);
+const saveAnsDraft=()=>{if(ANS)lsSet('ans:'+ANS.rid,{u:BLD.map(ser),n:AN})};
+{const d=lsGet('rq');if(d){RT=d.t||'';RN=d.n||''}}
 const ownH=()=>ANS?ANS.h:(OWNS?OWNS.h:new Set(D.own.h)),ownS=()=>ANS?ANS.s:(OWNS?OWNS.s:new Set(D.own.s));
 const usedH=()=>new Set(BLD.flatMap(u=>u.h).filter(Boolean)),usedS=()=>new Set(BLD.flatMap(u=>u.t.flat()).filter(Boolean));
 const imj=(b,c)=>b?`<img class="${c}" src="${IMS(b)}">`:`<img class="${c}" src="${PH}">`;
-function saveDraft(){if(ANS)return;clearTimeout(SVT);SVT=setTimeout(()=>{fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(ser):null})}).catch(()=>{})},700)}
+function saveDraft(){if(ANS){saveAnsDraft();return}clearTimeout(SVT);SVT=setTimeout(()=>{fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(ser):null})}).catch(()=>{})},700)}
 async function mpost(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return false}if(j.mk)D.mk=j.mk;return true}catch(e){alert('네트워크 오류');return false}}
 function pick(u,k,kind,j){PD=null;PK={u,k,kind,j};PQ='';draw()}
 function setPQ(v){PQ=v;const e=document.getElementById('pl');if(e)e.innerHTML=pickBody()}
@@ -382,7 +389,7 @@ function build(){const dk=D.rank.decks.slice().sort((a,b)=>a.idx-b.idx);
   const n=BLD.flatMap(u=>u.h).filter(Boolean).length;
   return `<div class="m" style="margin-bottom:8px">내가 <b>보유한</b> 장수·전법으로 5부대를 직접 짭니다. <b>한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없습니다</b>(목록에서 사라짐). 편성은 자동 저장됩니다. 보유 체크·돌은 <b>장수 도감·전법 도감</b> 탭에서 합니다.</div>
   ${ANS?`<div class="unit ansb"><div class="uh"><b>✍ 의뢰 답변 작성 중</b><span class="m">‘${esc(ANS.title)}’ · 의뢰자 <b>${esc(ANS.by)}</b>의 보유 장수 ${ANS.h.size}명·전법 ${ANS.s.size}개로만 편성할 수 있습니다</span></div></div>`:''}${picker()}<div class="bar"><button class="sbtn on" onclick="if(confirm('내 보유 장수·전법에 맞춰 티어 순서대로 5부대를 자동 편성합니다. 지금 편성은 덮어씁니다.'))autoCompose()">✨ 자동 편성</button>${ANS?'':`<button class="sbtn" onclick="setTab('market');MKT='req';draw()">🙋 편성대요청</button>`}<button class="sbtn" onclick="shareWin()">🖥 창모드</button></div>${units}${ANS?`<div class="unit"><div class="uh"><b>답변 제출</b><span class="m">장수 ${n}명 · 같은 의뢰에는 한 번만 답변할 수 있고, 다시 제출하면 내 답변이 교체됩니다</span></div>
-  <div class="bar"><input class="sq" style="flex:1;min-width:180px" maxlength="120" placeholder="한 줄 설명 (선택: 이 편성의 포인트)" value="${esc(AN)}" oninput="AN=this.value"></div>
+  <div class="bar"><input class="sq" style="flex:1;min-width:180px" maxlength="120" placeholder="한 줄 설명 (선택: 이 편성의 포인트)" value="${esc(AN)}" oninput="AN=this.value;saveAnsDraft()"></div>
   <div class="bar"><button class="sbtn on" onclick="submitAns()">✍ 답변 올리기</button><button class="sbtn" onclick="endAns()">취소(내 편성기로 복귀)</button></div></div>`:''}`}
 async function postMk(){if(!BLD.some(u=>u.h.some(Boolean))){alert('장수를 한 명 이상 넣어 주세요');return}if(!MT.trim()){alert('제목을 입력해 주세요');return}
   if(await mpost({op:'mk_post',title:MT,note:MN,units:BLD.map(ser)})){MT='';MN='';alert('완성 편성 공유에 올렸습니다');setTab('market')}}
@@ -404,16 +411,17 @@ function loadMk(id){const p=D.mk.posts.find(x=>x.id===id);if(p)loadFrom(p.units)
 function loadAns(rid,aid){const r=D.mk.reqs.find(x=>x.id===rid),a=r&&r.ans.find(x=>x.id===aid);if(a)loadFrom(a.units)}
 const sb=p=>p.strat?' <span class="strat">🧠 지략가</span>':'';
 function mkTabs(){return `<div class="bar"><button class="sbtn ${MKT==='req'?'on':''}" onclick="MKT='req';draw()">🙋 편성 의뢰 <span class="m">(${D.mk.reqs.filter(r=>r.season===D.season).length})</span></button><button class="sbtn ${MKT==='done'?'on':''}" onclick="MKT='done';draw()">🛒 완성 편성 공유 <span class="m">(${D.mk.posts.filter(p=>p.season===D.season).length})</span></button></div>`}
-async function postReq(){if(await mpost({op:'rq_post',title:RT,note:RN})){RT='';RN='';alert('의뢰를 올렸습니다. 다른 동맹원들이 내 보유 장수·전법으로 5부대를 짜 줍니다');draw()}}
+async function postReq(){if(await mpost({op:'rq_post',title:RT,note:RN})){RT='';RN='';saveRq();alert('의뢰를 올렸습니다. 다른 동맹원들이 내 보유 장수·전법으로 5부대를 짜 줍니다');draw()}}
 async function delReq(id){if(!confirm('이 의뢰와 달린 답변을 모두 삭제할까요?'))return;if(await mpost({op:'rq_del',id}))draw()}
 async function delAns(id){if(!confirm('내 답변을 삭제할까요?'))return;if(await mpost({op:'ans_del',id}))draw()}
 async function adopt(rid,aid){if(await mpost({op:'rq_adopt',rid,aid})){const y=scrollY;draw();scrollTo(0,y)}}
 function togReq(id){EXP.has(id)?EXP.delete(id):EXP.add(id);const y=scrollY;draw();scrollTo(0,y)}
 function startAns(rid){const r=D.mk.reqs.find(x=>x.id===rid);if(!r)return;MY=BLD;const old=r.ans.find(a=>a.mine);
-  ANS={rid,title:r.title,by:r.by,h:new Set(r.own.h),s:new Set(r.own.s),tr:r.own.tr||{},trs:r.own.trs||{}};BLD=(old?old.units:[]).map(mkU);while(BLD.length<5)BLD.push(T0());BLD.forEach(fixA);AN=old?old.note:'';PK=null;setTab('build')}
-function endAns(){ANS=null;BLD=MY||BLD;MY=null;PK=null;draw()}
+  ANS={rid,title:r.title,by:r.by,h:new Set(r.own.h),s:new Set(r.own.s),tr:r.own.tr||{},trs:r.own.trs||{}};BLD=(old?old.units:[]).map(mkU);while(BLD.length<5)BLD.push(T0());const dr=lsGet('ans:'+rid);if(dr&&dr.u){BLD=dr.u.map(mkU);while(BLD.length<5)BLD.push(T0());AN=dr.n||''}
+  BLD.forEach(fixA);if(!dr)AN=old?old.note:'';PK=null;setTab('build');if(dr)setTimeout(()=>{const e=document.createElement('div');e.textContent='임시저장된 작성 내용을 불러왔습니다';e.style.cssText='position:fixed;left:12px;right:12px;bottom:80px;z-index:99;background:#1b2b1d;color:#fff;padding:10px 14px;border-radius:12px;text-align:center';document.body.appendChild(e);setTimeout(()=>e.remove(),2200)},50)}
+function endAns(){if(ANS)lsSet('ans:'+ANS.rid,null);ANS=null;BLD=MY||BLD;MY=null;PK=null;draw()}
 async function submitAns(){if(!BLD.some(u=>u.h.some(Boolean))){alert('장수를 한 명 이상 넣어 주세요');return}
-  if(await mpost({op:'ans_post',rid:ANS.rid,note:AN,units:BLD.map(ser)})){alert('답변을 올렸습니다. 의뢰자가 추천·채택하면 지략가 점수가 올라갑니다');AN='';ANS=null;BLD=MY||BLD;MY=null;MKT='req';setTab('market')}}
+  if(await mpost({op:'ans_post',rid:ANS.rid,note:AN,units:BLD.map(ser)})){alert('답변을 올렸습니다. 의뢰자가 추천·채택하면 지략가 점수가 올라갑니다');lsSet('ans:'+ANS.rid,null);AN='';ANS=null;BLD=MY||BLD;MY=null;MKT='req';setTab('market')}}
 function reqCard(r){const open=EXP.has(r.id),n=r.ans.length,hs=r.own.h.map(h=>`<span class="hchip" data-tip="${esc(h)}${(r.own.tr||{})[h]?' · 돌 '+r.own.tr[h]:''}">${imj((HM[h]||{}).img,'th')}${(r.own.tr||{})[h]?`<i class="ct">${r.own.tr[h]}</i>`:''}</span>`).join('');
   return `<div class="unit mk ${r.done?'done':''}"><div class="uh"><span class="nm">${r.done?'✅ ':''}${esc(r.title)}</span><span class="m">의뢰 <b>${esc(r.by)}</b>${sb(r)}</span>
     <div class="votes"><span class="m">보유 장수 ${r.own.h.length} · 전법 ${r.own.s.length} · 답변 ${n}</span>${r.mine?`<button class="vb d" onclick="delReq('${r.id}')">삭제</button>`:''}${r.done?'':`<button class="sbtn on" onclick="startAns('${r.id}')">✍ ${r.ans.some(a=>a.mine)?'내 답변 수정':(r.mine?'내가 직접 편성':'편성해주기')}</button>`}<button class="sbtn" onclick="togReq('${r.id}')">${open?'접기 ▴':`답변 보기 ▾`}</button></div></div>
@@ -446,7 +454,7 @@ function board(){const l=D.mk.board||[];
 function market(){const body=MKT==='req'?reqView():doneView();return `<div class="m" style="margin-bottom:8px">덱을 짜기 어려우면 <b>내 보유 장수·전법을 올려 의뢰</b>하세요. 다른 동맹원이 그 보유로만 5부대를 짜 주고, 의뢰자가 <b>👍·채택</b>하면 짜 준 사람이 <b>🧠 지략가</b> 점수를 얻습니다(모든 서버 공유).</div>${mkTabs()}${body}`}
 function reqView(){const l=D.mk.reqs.filter(r=>r.season===D.season);const mine=l.some(r=>r.mine&&!r.done);
   return `<div class="unit"><div class="uh"><b>🙋 내 보유로 편성 의뢰하기</b><span class="m">내 보유 장수 ${D.own.h.length}명 · 전법 ${D.own.s.length}개(돌 포함)가 자동 첨부됩니다 · 시즌${D.season}</span></div>
-  <div class="bar"><input class="sq" style="flex:1;min-width:140px" maxlength="24" placeholder="제목 (예: PvP 5부대 짜 주세요)" value="${esc(RT)}" oninput="RT=this.value"><input class="sq" style="flex:2;min-width:180px" maxlength="160" placeholder="요청 사항 (선택: 도트딜 위주, 병기 싫음 등)" value="${esc(RN)}" oninput="RN=this.value"><button class="sbtn on" onclick="postReq()">🙋 의뢰 올리기</button></div>
+  <div class="bar"><input class="sq" style="flex:1;min-width:140px" maxlength="24" placeholder="제목 (예: PvP 5부대 짜 주세요)" value="${esc(RT)}" oninput="RT=this.value;saveRq()"><input class="sq" style="flex:2;min-width:180px" maxlength="160" placeholder="요청 사항 (선택: 도트딜 위주, 병기 싫음 등)" value="${esc(RN)}" oninput="RN=this.value;saveRq()"><button class="sbtn on" onclick="postReq()">🙋 의뢰 올리기</button></div>
   <div class="m">보유 목록·돌을 바꾸고 싶으면 <b>장수 도감</b>·<b>전법 도감</b> 탭에서 먼저 수정하세요. 의뢰를 올린 시점의 보유가 첨부됩니다.</div></div>
   ${l.map(reqCard).join('')||'<div class="m">아직 올라온 의뢰가 없습니다.</div>'}`}
 function doneView(){let l=D.mk.posts.filter(p=>p.season===D.season);if(MF)l=l.filter(p=>{const[a,b]=mkStat(p);return a===b});l=l.slice().sort((a,b)=>MS==='like'?((b.likes-(b.dis||0))-(a.likes-(a.dis||0))||b.ts-a.ts):(b.ts-a.ts));

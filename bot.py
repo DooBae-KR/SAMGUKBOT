@@ -3,7 +3,7 @@
 - UID를 엑셀 명단과 대조해 검증 → 별명을 [직업]닉네임 으로 변경 → 역할(동맹원/간부) 부여
 """
 import urllib.parse, urllib.error, urllib.request, hmac, hashlib, unicodedata
-import uuid, base64, tempfile, os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue, contextvars
+import gzip, uuid, base64, tempfile, os, json, re, csv, io, shutil, logging, urllib.request, datetime, asyncio, time, copy, threading, queue, contextvars
 from aiohttp import web
 from pathlib import Path
 from typing import Optional
@@ -357,8 +357,11 @@ def store_get(name, path, default):
         return copy.deepcopy(_cache[key])
 
 
+_DATA_VER = [0]
+
+
 def store_set(name, path, data):
-    gid = cur_gid(); path = _lpath(path, gid)
+    gid = cur_gid(); path = _lpath(path, gid); _DATA_VER[0] += 1
     with _lock: _cache[(gid, name)] = copy.deepcopy(data)
     try: path.parent.mkdir(parents=True, exist_ok=True); path.write_text(json.dumps(data, ensure_ascii=False, indent=1), "utf-8")
     except Exception: pass                                 # 읽기 전용 디스크여도 원격 저장은 계속
@@ -2725,8 +2728,8 @@ async def web_tier(request):
     cfg = await asyncio.to_thread(tier_sheet_cfg)
     cfg |= {"embed": request.query.get("embed") == "1", "season": int(request.query["s"]) if request.query.get("s") in ("1", "2", "3") else 0, "t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {}), "trs": dex.get("trs", {}), "hs": {k: [v["atk"], v["intl"], v["lead"], v["init"]] for k, v in hero_stats().items()}}
     import reco_img
-    tpl = await asyncio.to_thread(reco_img.tier_html)
-    return web.Response(text=tpl.replace("__CFG__", json.dumps(cfg, ensure_ascii=False)), content_type="text/html", headers={"Cache-Control": "no-store"})
+    tpl = await asyncio.to_thread(reco_img.tier_html); cj = json.dumps(cfg, ensure_ascii=False)
+    return gz_html_response(request, tpl.replace("__CFG__", cj), ("tier", cj))
 
 
 async def web_dex_save(request):
@@ -3023,6 +3026,32 @@ async def web_owner(request):
     return web.Response(text=tpl.replace("__T__", request.query.get("t")), content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
 
+async def admin_dm_targets():
+    """서버별 대표 관리자(그 서버에서 가장 먼저 승인된 사람) 목록. 같은 사람이 여러 서버면 한 명으로 묶는다. 본 서버는 제외."""
+    by = {}
+    for gid in sorted(LICENSED - {GUILD_ID}):
+        g = bot.get_guild(gid)
+        if g is None: continue
+        rows = await asyncio.to_thread(_sb_req, "GET", f"sam_perm?guild_id=eq.{gid}&status=eq.approved&select=discord_id,user_name&order=requested_at.asc&limit=1") or []
+        if not rows: continue
+        d = str(rows[0]["discord_id"]); e = by.setdefault(d, {"did": d, "name": rows[0].get("user_name") or d, "guilds": []}); e["guilds"].append(g.name)
+    return list(by.values())
+
+
+async def admin_dm_send(targets, msg, by):
+    ok, fail = 0, []
+    for t in targets:
+        try:
+            u = await bot.fetch_user(int(t["did"]))
+            await u.send(f"📢 [삼국지 봇 공지] {', '.join(t['guilds'])}\n\n{msg}")
+            ok += 1
+        except Exception:
+            fail.append(t["name"])
+        await asyncio.sleep(1.2)                                  # 디스코드 속도 제한 여유
+    log.info("관리자 DM 발송 by=%s 성공=%d 실패=%d", by, ok, len(fail))
+    return ok, fail
+
+
 async def web_owner_api(request):
     uid = await own_parse(request.query.get("t"))
     if not uid: return web.json_response({"error": "링크가 만료되었거나 권한이 없습니다. 디스코드에서 /제작자모드 를 다시 입력해 주세요."}, status=403)
@@ -3045,6 +3074,15 @@ async def web_owner_api(request):
         if op == "guest":                                    # 추천 전용 이용자 추가(본 서버, 추천만 쓸 수 있는 채널·역할)
             msg = await reco_guest_add(str(b.get("did", "")).strip(), str(b.get("name", "")).strip())
             return web.json_response({"ok": True, "msg": msg})
+        if op in ("admin_dm_preview", "admin_dm_send"):         # 서버별 대표 관리자(처음 등록한 사람)에게 DM
+            targets = await admin_dm_targets()
+            if op == "admin_dm_preview": return web.json_response({"ok": True, "targets": targets})
+            msg = str(b.get("msg", "")).strip()
+            if not msg: raise ValueError("보낼 내용을 입력하세요.")
+            if len(msg) > 1800: raise ValueError("내용은 1800자 이내로 입력하세요.")
+            if b.get("n") != len(targets): raise ValueError("받는 사람 목록이 바뀌었습니다. '받는 사람 확인'을 다시 눌러 주세요.")
+            ok, fail = await admin_dm_send(targets, msg, uid)
+            return web.json_response({"ok": True, "msg": f"발송 완료: 성공 {ok}명 · 실패 {len(fail)}명" + (" (" + ", ".join(fail[:10]) + ")" if fail else "")})
         if op == "guilds":
             gs = sorted(bot.guilds, key=lambda g: (g.id != GUILD_ID, -(g.member_count or 0)))
             return web.json_response({"guilds": [{"id": str(g.id), "name": g.name, "n": g.member_count or 0, "icon": str(g.icon.url) if g.icon else "", "home": g.id == GUILD_ID, "lic": g.id in LICENSED} for g in gs]})
@@ -4657,13 +4695,32 @@ def reco_page_data(did, season, token, units=True):
     return r
 
 
+_GZC = {}
+
+
+def gz_html_response(request, html, key=None):
+    """HTML을 gzip 한 덩어리로 보낸다. key가 같으면(같은 사람이 새로고침 등) 압축 결과를 재사용해 CPU를 아낀다."""
+    h = {"Cache-Control": "no-store", "Vary": "Accept-Encoding"}
+    if "gzip" not in request.headers.get("Accept-Encoding", ""):
+        return web.Response(text=html, content_type="text/html", headers=h)
+    body = _GZC.get(key) if key is not None else None
+    if body is None:
+        body = gzip.compress(html.encode("utf-8"), 4, mtime=0)
+        if key is not None:
+            _GZC[key] = body
+            while len(_GZC) > 24: _GZC.pop(next(iter(_GZC)))
+    h["Content-Encoding"] = "gzip"
+    return web.Response(body=body, content_type="text/html", charset="utf-8", headers=h)
+
+
 @web.middleware
 async def gzip_mw(request, handler):
     """큰 HTML·JSON 응답은 gzip으로 압축해 전송량을 줄인다."""
     resp = await handler(request)
     try:
         if (isinstance(resp, web.Response) and not resp.prepared and resp.content_type in ("text/html", "application/json", "text/css", "application/javascript")
-                and resp.body is not None and len(resp.body) > 1024 and "gzip" in request.headers.get("Accept-Encoding", "")): resp.enable_compression()
+                and resp.body is not None and len(resp.body) > 1024 and "gzip" in request.headers.get("Accept-Encoding", "")
+                and "Content-Encoding" not in resp.headers): resp.enable_compression()
     except Exception: pass
     return resp
 
@@ -4685,6 +4742,9 @@ async def web_guide(request):
     return web.Response(body=f.read_bytes(), content_type="image/png", headers={"Cache-Control": "public, max-age=86400", "X-Robots-Tag": "noindex"})
 
 
+_RECO_C = {}; RECO_TTL = 20; RECO_CAP = 12     # /추천 데이터 짧은 캐시(저장이 일어나면 자동 무효화)
+
+
 async def web_reco(request):
     pr = tier_parse(request.query.get("t"))
     if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /추천 으로 새 링크를 받으세요.")
@@ -4692,9 +4752,13 @@ async def web_reco(request):
     if not did: return web.Response(status=403, text="인증 정보를 찾지 못했습니다. 디스코드에서 /인증 후 다시 시도하세요.")
     sv = request.query.get("s"); season = int(sv) if sv in ("1", "2", "3") else (pref_get(did).get("season") if pref_get(did).get("season") in (1, 2, 3) else 1)
     try:
+        ck = (pr[0], did, season, request.query["t"], _DATA_VER[0]); hit = _RECO_C.get(ck)
+        if hit and time.time() - hit[0] < RECO_TTL: return gz_html_response(request, hit[1], ("reco",) + ck)
         data, err = await asyncio.to_thread(reco_page_data, did, season, request.query["t"], False)
         import reco_web
-        return web.Response(text=reco_web.render(data, err), content_type="text/html", headers={"Cache-Control": "no-store"})
+        html = reco_web.render(data, err); _RECO_C[ck] = (time.time(), html)
+        while len(_RECO_C) > RECO_CAP: _RECO_C.pop(next(iter(_RECO_C)))
+        return gz_html_response(request, html, ("reco",) + ck)
     except Exception:
         log.exception("/reco 처리 실패 (gid=%s cid=%s)", pr[0], cid)
         return web.Response(status=500, text="추천 페이지를 만드는 중 오류가 났습니다. 잠시 후 새로고침하거나 디스코드에서 /추천 으로 새 링크를 받아 주세요.")
