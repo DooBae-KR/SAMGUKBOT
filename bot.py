@@ -801,6 +801,52 @@ def cmd_stats_view():
 OWNER_FEED_CH = "전체명령어로그"
 
 
+def roster_counts():
+    """서버별 봇 명단 등록 인원 {guild_id: 수}."""
+    rows = _sb_req("GET", "sam_emp?select=guild_id&limit=5000") or []
+    c = {}
+    for r in rows: c[str(r["guild_id"])] = c.get(str(r["guild_id"]), 0) + 1
+    return c
+
+
+OWNER_SUM_NAME = "ownsum"
+
+
+async def owner_summary_update():
+    """제작자 로그 채널(#전체명령어로그)에 서버별 '서버번호/동맹명 · 명단 N명 · 멤버 N명'을 한 메시지로 모아 두고 주기적으로 고쳐 쓴다."""
+    home = bot.get_guild(GUILD_ID)
+    if home is None: return
+    ch = await priv_channel(home, OWNER_FEED_CH, "모든 서버의 명령어 사용 기록 (제작자·관리자만 볼 수 있습니다)")
+    if ch is None: return
+    use = await asyncio.to_thread(roster_counts)
+    perms = await asyncio.to_thread(_sb_req, "GET", "sam_perm?status=eq.approved&select=guild_id,game_server,ally_name") or []
+    pm = {str(r["guild_id"]): r for r in perms}
+    lines, tot_r, tot_m = [], 0, 0
+    for g in sorted(bot.guilds, key=lambda g: (g.id != GUILD_ID, -use.get(str(g.id), 0), -(g.member_count or 0))):
+        r = pm.get(str(g.id)); ru = use.get(str(g.id), 0); tot_r += ru; tot_m += g.member_count or 0
+        tag = f"{r.get('game_server') or '?'}서버/{r.get('ally_name') or '-'}" if r else ("🏠 홈서버" if g.id == GUILD_ID else "미등록")
+        lines.append(f"**{discord.utils.escape_markdown(tag)}** · 명단 {ru}명 · 멤버 {g.member_count or 0}명 · {discord.utils.escape_markdown(g.name)} (`{g.id}`)")
+    text = f"📋 **서버별 현황** · 갱신 <t:{int(time.time())}:f>\n" + "\n".join(lines) + f"\n\n합계 서버 {len(lines)}곳 · 명단 {tot_r}명 · 멤버 {tot_m}명"
+    text = text[:1990]
+    tok = _CTX.set(GUILD_ID)
+    try:
+        st = store_get(OWNER_SUM_NAME, Path("ownsum.json"), {}) or {}
+        msg = None
+        if st.get("id"):
+            try: msg = await ch.fetch_message(int(st["id"]))
+            except Exception: msg = None
+        if msg: await msg.edit(content=text, allowed_mentions=discord.AllowedMentions.none())
+        else:
+            m = await ch.send(text, allowed_mentions=discord.AllowedMentions.none()); store_set(OWNER_SUM_NAME, Path("ownsum.json"), {"id": m.id})
+    finally: _CTX.reset(tok)
+
+
+@tasks.loop(minutes=30)
+async def owner_sum_loop():
+    try: await owner_summary_update()
+    except Exception: log.exception("서버별 현황 갱신 실패")
+
+
 async def owner_feed(it):
     """제작자용: 다른 모든 서버에서 쓰인 명령어를 홈 서버의 #전체명령어로그에 모아 남긴다(서버명·ID 포함)."""
     home = bot.get_guild(GUILD_ID)
@@ -1000,6 +1046,7 @@ class Bot(discord.Client):
         log.info("로그인: %s", self.user)
         if SYNC_MINUTES and not sync_loop.is_running(): sync_loop.start()
         if not jc_loop.is_running(): jc_loop.start()
+        if not owner_sum_loop.is_running(): owner_sum_loop.start()
         if not donate_loop.is_running(): donate_loop.start()
         if not idle_loop.is_running(): idle_loop.start()
         if not purge_loop.is_running(): purge_loop.start()
@@ -3160,12 +3207,7 @@ async def web_owner_api(request):
             ok, fail = await admin_dm_send(targets, msg, uid)
             return web.json_response({"ok": True, "msg": f"발송 완료: 성공 {ok}명 · 실패 {len(fail)}명" + (" (" + ", ".join(fail[:10]) + ")" if fail else "")})
         if op == "guilds":
-            def usage():                                         # 서버별 봇 이용자 수(명단에 올라간 인원)
-                rows = _sb_req("GET", "sam_emp?select=guild_id&limit=5000") or []
-                c = {}
-                for r in rows: c[str(r["guild_id"])] = c.get(str(r["guild_id"]), 0) + 1
-                return c
-            try: use = await asyncio.to_thread(usage)
+            try: use = await asyncio.to_thread(roster_counts)
             except Exception: log.exception("서버 이용자 수 집계 실패"); use = {}
             gs = sorted(bot.guilds, key=lambda g: (g.id != GUILD_ID, -use.get(str(g.id), 0), -(g.member_count or 0)))
             return web.json_response({"guilds": [{"id": str(g.id), "name": g.name, "n": g.member_count or 0, "u": use.get(str(g.id), 0), "icon": str(g.icon.url) if g.icon else "", "home": g.id == GUILD_ID, "lic": g.id in LICENSED} for g in gs]})
