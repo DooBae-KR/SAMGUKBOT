@@ -332,10 +332,17 @@ def _lpath(path, gid):
     return path if gid == GUILD_ID else path.parent / f"g{gid}" / path.name      # 홈 서버 외에는 서버별 폴더
 
 
+_key_locks = {}                                   # 키별 로딩 잠금: 느린 네트워크 조회 동안 전역 _lock을 쥐지 않는다(이벤트 루프 정지 방지)
+
+
 def store_get(name, path, default):
     gid = cur_gid(); path = _lpath(path, gid); key = (gid, name)
     with _lock:
         if key in _cache: return copy.deepcopy(_cache[key])
+        kl = _key_locks.setdefault(key, threading.Lock())
+    with kl:
+        with _lock:
+            if key in _cache: return copy.deepcopy(_cache[key])      # 기다리는 사이 다른 스레드가 이미 불러왔거나 저장함
         data, migrate = None, False
         if SB_ON:
             for attempt in range(3):
@@ -353,8 +360,9 @@ def store_get(name, path, default):
             try: data = json.loads(path.read_text("utf-8"))
             except Exception: pass
         if migrate and data is not None: _outq.put((gid, name, copy.deepcopy(data))); log.info("Supabase로 이전: %s/%s", gid, name)
-        _cache[key] = data if data is not None else default
-        return copy.deepcopy(_cache[key])
+        with _lock:
+            if key not in _cache: _cache[key] = data if data is not None else default    # 불러오는 사이 store_set 된 값이 있으면 그대로 둔다
+            return copy.deepcopy(_cache[key])
 
 
 _DATA_VER = [0]
