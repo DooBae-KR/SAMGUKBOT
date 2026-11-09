@@ -4727,7 +4727,7 @@ async def reco_deliver(it, did, season, first_edit=False, note=""):
     else: auto_delete(it, await it.followup.send(head[:1990], view=view, ephemeral=True))
 
 
-def _reco_page_core(did, season, token, with_units=True):
+def _reco_page_core(did, season, token, with_units=True, only_units=False):
     """추천덱 HTML 페이지에 쓸 데이터(장수 카드·전법·돌·턴 순서·평가 수·랭킹)."""
     if with_units:
         err, res, who, deal, hd, skd, tr = reco_run(did, season)
@@ -4758,6 +4758,7 @@ def _reco_page_core(did, season, token, with_units=True):
             u |= {"tier": deck.get("tier", ""), "name": deck["name"], "form": deck.get("form", ""), "note": deck.get("note", ""), "hk": vote_key(season, deck["name"]), "tk": tvote_key(season, deck["name"], tset), "tset": tset,
                   "hv": vt(vote_key(season, deck["name"])), "tv": vt(tvote_key(season, deck["name"], tset))}
         units.append(u)
+    if only_units: return {"units": units}, None
     pins = set(reco_pins(did, season)); decks = reco_decks(season); score = reco_scores(season)
     skn_ = {_nk(k): k for k in skd}
 
@@ -5368,6 +5369,24 @@ async def web_reco_api(request):
     set_gid(pr[0]); did = (db_load()["uid"] or {}).get(pr[1])
     if not did: return web.json_response({"ok": False, "error": "인증 필요"}, status=403)
     op = b.get("op"); season = b.get("season") if b.get("season") in (2, 3) else 1
+    if op == "recommend":
+        mode = b.get("mode")
+        if mode not in ("pvp", "dev"): return web.json_response({"ok": False, "error": "추천 모드를 선택해 주세요."}, status=400)
+        key = ("recommend", pr[0], did, season, mode, _DATA_VER[0])
+        cached = _RECO_C.get(key)
+        if cached and time.time() - cached[0] < RECO_TTL: return web.json_response(cached[1])
+        ctx = RECO_MODE.set(mode)
+        try:
+            data, err = await asyncio.to_thread(_reco_page_core, did, season, None, only_units=True)
+        except Exception:
+            log.exception("추천 계산 실패 (%s)", mode)
+            return web.json_response({"ok": False, "error": "추천 계산 중 오류가 났습니다. 다시 시도해 주세요."}, status=500)
+        finally:
+            RECO_MODE.reset(ctx)
+        payload = {"ok": True, "units": data["units"] if data else [], "notice": err}
+        _RECO_C[key] = (time.time(), payload)
+        while len(_RECO_C) > RECO_CAP: _RECO_C.pop(next(iter(_RECO_C)))
+        return web.json_response(payload)
     if op == "vote":
         key, kind = str(b.get("key", ""))[:300], b.get("kind")
         if kind not in ("u", "d") or not (key.startswith(f"S{season}|") or key.startswith(f"T{season}|")): return web.json_response({"ok": False, "error": "잘못된 요청"}, status=400)
