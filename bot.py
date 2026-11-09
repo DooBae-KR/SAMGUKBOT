@@ -2301,16 +2301,38 @@ def _med(a):
     return 0 if not n else (a[n // 2] if n % 2 else (a[n // 2 - 1] + a[n // 2]) / 2)
 
 
+def activity_comparison(rows, as_of):
+    """같은 스냅샷 시점의 총값과 이번 주 값. 누적 차분에는 직전 일요일 기록만 사용한다."""
+    as_of = datetime.date.fromisoformat(as_of)
+    monday = as_of - datetime.timedelta(days=as_of.weekday())
+    baseline_date = (monday - datetime.timedelta(days=1)).isoformat()
+    latest_date = as_of.isoformat()
+    baseline = {r["cid"]: r for r in rows if r["snap_date"] == baseline_date}
+    values = {}
+    for row in rows:
+        if row["snap_date"] != latest_date: continue
+        previous = baseline.get(row["cid"], {})
+        weekly, total = [], []
+        for wk, tk in (("war_merit", "total_merit"), ("contribution", "total_contribution")):
+            current, start = row.get(tk), previous.get(tk)
+            total.append(current)
+            weekly.append(row.get(wk) if current is None else
+                          current - start if start is not None and current >= start else None)
+        values[row["cid"]] = weekly + total + [row.get("siege_count")]
+    return {"date": latest_date, "weekStart": monday.isoformat(), "values": values}
+
+
 def activity_calc(gid, members, tset, skip=(), upto=None):
     """sam_emp_stat 날짜별 주간 누적값 → 일 증가분(주 리셋 시 값 자체) → 제외일/경고/쟁 미참여/점수. members 순서대로 dict 목록(없으면 None)."""
     if not SB_ON: return None
     base = datetime.date.fromisoformat(upto) if upto else (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
     since = (base - datetime.timedelta(days=ACT_DAYS + 7)).isoformat()
-    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}" + (f"&snap_date=lte.{upto}" if upto else "") + "&select=cid,snap_date,war_merit,contribution,prosperity,total_merit,total_contribution&order=snap_date.asc&limit=100000") or []
+    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}" + (f"&snap_date=lte.{upto}" if upto else "") + "&select=cid,snap_date,war_merit,contribution,prosperity,total_merit,total_contribution,siege_count&order=snap_date.asc&limit=100000") or []
     by = {}
     for r in rows: by.setdefault(r["cid"], []).append(r)
     D = datetime.date.fromisoformat
     delta = {}                                   # date -> {cid: (무훈, 공헌, 간격일)}
+    war_evidence = set()
     for cid, L in by.items():
         for a, b in zip(L, L[1:]):
             gap = max(1, (D(b["snap_date"]) - D(a["snap_date"])).days)
@@ -2326,14 +2348,23 @@ def activity_calc(gid, members, tset, skip=(), upto=None):
                 dc = (b["contribution"] or 0) - (a["contribution"] or 0)
                 if dc < 0 or mon: dc = b["contribution"] or 0
             delta.setdefault(b["snap_date"], {})[cid] = (dm / gap, dc / gap, gap)
+            # 형식이 다른 누적·주간 값의 차이는 전쟁 판정에 사용하지 않는다.
+            same_basis = (a.get("total_merit") is None) == (b.get("total_merit") is None)
+            if cid not in skip and gap == 1 and dm > 0 and (same_basis or mon and b.get("total_merit") is None):
+                war_evidence.add(b["snap_date"])
+    latest = upto or max((r["snap_date"] for r in rows), default=base.isoformat())
+    comparison = activity_comparison(rows, latest)
     dates = sorted(delta)[-ACT_DAYS:]
-    if not dates: return {"dates": [], "rows": [None] * len(members), "quiet": [], "n": 0}
+    if not dates: return {"dates": [], "rows": [None] * len(members), "quiet": [], "n": 0,
+                          "comparison": comparison, "warObserved": False}
     meds = {d: _med([v[0] for c, v in delta[d].items() if c not in skip]) for d in dates}
     quiet = []
     for i, d in enumerate(dates):                          # 직전 최대 14일 중앙값들의 평균과 비교(기준이 없으면 제외 안 함)
         base = [meds[x] for x in dates[:i] if x not in quiet][-14:]
         if len(base) >= 3 and meds[d] < ACT_QUIET * (sum(base) / len(base)): quiet.append(d)
     valid = [d for d in dates if d not in quiet]
+    # 기록된 일 무훈 증가가 있는 날만 전쟁 참여 경고를 판정한다.
+    war_days = {d[5:] for d in valid if d >= comparison["weekStart"] and d in war_evidence}
     stat = {}                                              # date -> (mu, sd) 상위 3명 제외 / 상위 3명은 z 상한 처리 위해 같은 값 사용
     for kind in (0, 1):
         for d in valid:
@@ -2360,13 +2391,14 @@ def activity_calc(gid, members, tset, skip=(), upto=None):
         if not vd: out.append({"days": days, "st": "집계 중", "sc": None, "b": None, "warn": 0, "pg": pg}); continue
         streak = 0
         for x in reversed(vd):
-            if x["m"] <= ACT_WARN: streak += 1
+            if x["d"] in war_days and x["g"] == 1 and x["m"] <= ACT_WARN: streak += 1
             else: break
         k = lambda L: sum(L[-7:]) / len(L[-7:])
         base = round(k(zm) * .55 + k(zc) * .35, 1); sc = round(base + (10 if m["n"] in tset else 0), 1)
         st = "쟁 미참여" if streak >= 2 else "경고" if streak == 1 else "액티브" if sc >= ACT_ACTIVE else "저조"
         out.append({"days": days, "st": st, "sc": sc, "b": base, "warn": streak, "pg": pg, "zm": round(k(zm), 1), "zc": round(k(zc), 1)})
-    return {"dates": [d[5:] for d in dates], "quiet": [d[5:] for d in quiet], "rows": out, "n": len(valid)}
+    return {"dates": [d[5:] for d in dates], "quiet": [d[5:] for d in quiet], "rows": out, "n": len(valid),
+            "comparison": comparison, "warObserved": bool(war_days)}
 
 
 # ---------- 이탈 위험(R) · 간첩 의심(S) · 공성위탁설정 필요 ----------
@@ -2610,10 +2642,18 @@ def render_html(tok=None, snap=None):
             x = rd.get(d.get("_c"))
             if x: d["bk"] = {"c": x["cl"], "n": x["n"], "d": x["d"], "x": 1 if x["dex"] else 0}
     except Exception: log.exception("전투 등급(장군·소대장) 계산 실패")
-    for d in D: d.pop("_c", None)
+    comparison = act["comparison"] if act else None
+    for d in D:
+        if comparison:
+            d["cmp"] = comparison["values"].get(d.get("_c"))
+        elif not SB_ON:
+            d["cmp"] = [d.get("m"), d.get("c"), d.get("tm"), None, d.get("s")]
+        d.pop("_c", None)
     cfg = {"spy": spy_ok, "rosterFile": roster.src or "명단", "rosterDate": snap or roster_snap_date(gid) or today,
            "talkFile": ("대시보드 톡방 관리" if managed else "구글 시트 톡방참여자 탭") if names else "없음", "talkDate": tdate or today, "graceEnd": GRACE_END,
-           "act": ({"dates": act["dates"], "quiet": act["quiet"], "n": act["n"], "warn": ACT_WARN, "need": ACT_ACTIVE} if act and act["n"] else None)}
+           "comparison": {k: comparison[k] for k in ("date", "weekStart")} if comparison else None,
+           "act": ({"dates": act["dates"], "quiet": act["quiet"], "n": act["n"], "warn": ACT_WARN,
+                    "need": ACT_ACTIVE, "warObserved": act["warObserved"]} if act and act["n"] else None)}
     if tok: cfg.update(edit=True, tok=tok, talkNames=sorted(names))
     body = tpl.replace("__D__", json.dumps(D, ensure_ascii=False)).replace("__CFG__", json.dumps(cfg, ensure_ascii=False))
     return '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + body + "</html>"
@@ -3507,9 +3547,8 @@ def _merit_cols(g, mh, m_tot, ch, c_tot, base):
     out = {}
     for h, tot, wk, tk, bk in ((mh, m_tot, "war_merit", "total_merit", "total_merit"), (ch, c_tot, "contribution", "total_contribution", "total_contribution")):
         v = _num(g.get(h)) if h else 0
-        if tot:
-            out[tk] = v; out[wk] = max(0, v - ((base or {}).get(bk) or 0)) if base else v
-        else: out[wk] = v
+        out[tk] = v if tot else None
+        out[wk] = max(0, v - ((base or {}).get(bk) or 0)) if tot and base else v
     return out
 
 

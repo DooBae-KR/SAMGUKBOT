@@ -115,13 +115,35 @@ h2.sec{font:700 16px var(--sans)!important;margin:4px 2px 10px}
 .rl .u{display:none;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line);font-size:13.5px}.rl.open .u{display:flex}.rl .u:first-of-type{margin-top:10px}
 .rl .u b:first-child{width:44px;color:var(--pri);flex:none}.rl .u em{font-style:normal;color:var(--mute);font-size:12.5px}
 #tip{background:#1f2a22;color:#fff}#tip .t,#tip .kv span:nth-child(odd){color:#b7c8ba}
+
+/* 운영 관제실과 주간·누적 비교 */
+body>header>.wrap{padding-top:14px;padding-bottom:14px;border-radius:14px;background:linear-gradient(115deg,#173c30,#285240);color:#eef5ef}
+body>header .sub{color:#d5e7dc}
+.ops-layout{min-width:0}.activity-heading{margin-bottom:12px}.activity-heading .lead{margin-bottom:0}
+.activity-period,.activity-coverage{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+.activity-period button{padding:7px 11px;min-height:44px}
+.activity-period button[aria-pressed="true"]{background:var(--raise2);border-color:var(--jade);color:var(--text);font-weight:700}
+.activity-coverage>span{padding:7px 9px;background:var(--raise);border:1px solid var(--line);border-radius:9px}
+.activity-rank,.activity-source{display:block;font-size:11.5px;color:var(--mute)}
+.activity-rank{color:var(--jade);font-weight:650}.activity-table td{vertical-align:top}
+.activity-history{margin-top:14px}.activity-history summary{padding:8px 0;cursor:pointer}
+@media(min-width:900px){
+  .ops-layout{max-width:1180px;display:grid;grid-template-columns:148px minmax(0,1fr);align-items:start;gap:12px;margin:0 auto;padding:0 16px}
+  .ops-layout nav{position:sticky!important;top:10px!important;left:auto;right:auto;bottom:auto;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--raise);z-index:5}
+  .ops-layout nav .wrap{display:grid;justify-content:stretch;gap:3px}
+  .ops-layout nav button{flex-direction:row;gap:7px;padding:6px;text-align:left;border-radius:8px;font-size:13px}
+  .ops-layout nav button .pl{width:30px;height:27px;font-size:15px}
+  .ops-layout nav button.on{background:var(--raise2)}
+  .ops-layout main{min-width:0;padding:8px 0 40px}.ops-layout main>.wrap{padding:0}
+}
+@media(max-width:899px){body>header{padding-left:10px;padding-right:10px}.ops-layout nav button .pl{max-width:100%}}
 </style>
 <header><div class="wrap"><h1>연맹 인사 상황판</h1><p class="sub"><span id="meta"></span><span class="live" id="live"><i></i><span>시트 기준</span></span></p>
 <div class="adm" id="adm" hidden><b>명단 업데이트</b><label>명단 엑셀 <input type="file" id="fr" accept=".xlsx,.xls,.csv"></label><button class="btn" id="aprev" disabled>확인</button><button class="btn pri" id="aapply" disabled>적용</button><span id="amsg"></span><label style="flex-basis:100%;display:block">톡방 참여자 <span class="lead" style="margin:0">(스프레드시트 톡방참여자 탭의 닉네임 열을 복사해 붙여넣으세요)</span><textarea id="tk" rows="3" style="display:block;width:100%;margin-top:6px"></textarea></label><button class="btn" id="atk">톡방 적용</button><span id="tmsg" style="color:var(--mute)"></span></div></div></header>
-<nav><div class="wrap" id="nav"></div></nav>
+<div class="ops-layout"><nav aria-label="인사 상황판 메뉴"><div class="wrap" id="nav"></div></nav>
 <main><div class="wrap">
 <section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section><section class="tab" id="t5"></section><section class="tab" id="t6"></section>
-</div></main>
+</div></main></div>
 <div id="tip"></div>
 <script>
 let D=__D__, CFG=__CFG__;
@@ -213,7 +235,7 @@ function tabSummary(){
   const risk=D.filter(d=>d.rk&&d.rk.r!=null&&d.rk.r>=70),imm=D.filter(d=>d.g==='미편성'&&d.c>=10000),gen=D.filter(d=>d.bk&&d.bk.c==='장군');
   const TD=(ic,bg,ti,sub,cnt,go)=>`<button class="td" data-go="${go}"><span class="ic" style="background:${bg}">${ic}</span><span class="tx"><b>${ti}</b><span>${sub}</span></span><span class="n">${cnt}</span><span class="cv">›</span></button>`;
   document.getElementById('t0').innerHTML=`
-  <h2 class="sec">오늘 확인할 일</h2><div class="tdc">${TD('🚨','#fde7e4','쟁 미참여 · 경고',`일 무훈이 낮은 인원`,cn('쟁 미참여').length+cn('경고').length,2)}${risk.length?TD('📉','#fff1d6','이탈 위험 높음','무훈·공헌이 모두 낮아요',risk.length,2):''}${TD('🧩','#e3f3e5','즉시 편성 대상','미편성 · 공헌 1만 이상',imm.length,2)}${D.some(d=>d.bk)?TD('🎖️','#fff4cf','전투 등급 장군','도감 기준 5부대 편성',gen.length,5):''}</div>
+  <h2 class="sec">오늘 확인할 일</h2><div class="tdc">${CFG.act?.warObserved?TD('🚨','#fde7e4','쟁 미참여 · 경고',`전쟁 판정일 무훈이 낮은 인원`,cn('쟁 미참여').length+cn('경고').length,2):''}${risk.length?TD('📉','#fff1d6','이탈 위험 높음','무훈·공헌이 모두 낮아요',risk.length,2):''}${TD('🧩','#e3f3e5','즉시 편성 대상','미편성 · 공헌 1만 이상',imm.length,2)}${D.some(d=>d.bk)?TD('🎖️','#fff4cf','전투 등급 장군','도감 기준 5부대 편성',gen.length,5):''}</div>
   <h2 class="sec">한눈에 보기</h2>
   <div class="strip">${S(n,'전체 인원',D)}${S(cn('액티브').length,'액티브',cn('액티브'))}${S(cn('저조').length,'저조',cn('저조'))}${S(cn('경고').length,'경고',cn('경고'))}${S(cn('쟁 미참여').length,'쟁 미참여',cn('쟁 미참여'))}${S(tk.length,'톡방 참여',tk)}${S(D.filter(d=>d.tok).length,'토돼지',D.filter(d=>d.tok))}${S(f(CUT.c10),'무훈 상위 10% 기준 · 천하무쌍 '+CUT.n10+'명',D.filter(d=>d.tw))}${S(f(CUT.c30),'무훈 상위 30% 기준 · 액티브 '+CUT.n30+'명',D.filter(d=>d.tz))}${S(f(CUT.c50),'무훈 상위 50% 기준 · 쟁참여자 '+CUT.n50+'명',D.filter(d=>d.tj))}${S(un.length,'미편성',un)}</div>
   <section class="blk"><h2>진영도</h2><p class="lead">네모 하나가 연맹원 한 명입니다. 묶는 기준을 바꿔 보고, 칸에 마우스를 올리면 누구인지 나옵니다. 각 묶음 안에서는 점수가 높은 사람이 앞에 옵니다.</p>
@@ -259,7 +281,7 @@ function tabRoster(){
 // ---------- 인사 이슈 ----------
 function tabIssues(){
   const A=CFG.act,I=[
-   ...(A?[['쟁 미참여 인원',`판정일 연속 2일 일 무훈 ${f(A.warn)} 이하입니다. 상대가 없던 날은 뺐습니다.`,D.filter(d=>d.ac==='쟁 미참여')],['경고',`가장 최근 판정일 일 무훈이 ${f(A.warn)} 이하입니다. 하루 더 이어지면 쟁 미참여입니다.`,D.filter(d=>d.ac==='경고')]]:[]),
+   ...(A?.warObserved?[['쟁 미참여 인원',`이번 주 무훈 증가가 관측된 판정일에 연속 2일 일 무훈 ${f(A.warn)} 이하입니다. 무훈 증가가 관측된 날을 기준으로 판정합니다.`,D.filter(d=>d.ac==='쟁 미참여')],['경고',`가장 최근 판정일 일 무훈이 ${f(A.warn)} 이하입니다. 하루 더 이어지면 쟁 미참여입니다.`,D.filter(d=>d.ac==='경고')]]:[]),
    ['천하무쌍',`${CUT.basis} 상위 10%입니다(${f(CUT.c10)} 이상).`,D.filter(d=>d.tw)],['토돼지',`${CUT.basis} 상위 50%에 들지 못했고 번영이 ${f(TOK_P)} 이상인 인원입니다(예비 제외).`,D.filter(d=>d.tok)],
    ...(D.some(d=>d.rk&&d.rk.r!=null)?[['이탈 위험 높음','이탈 위험 점수 70 이상입니다. 무훈(전쟁 참여)과 공헌(적 토지 뒤집기·보급 운송)이 모두 낮거나 최근 활동이 크게 떨어진 인원입니다. 이름에 마우스를 올리면 사유가 나옵니다.',D.filter(d=>d.rk&&d.rk.r>=70)],['이탈 위험 주의','이탈 위험 점수 50~69입니다. 한쪽(무훈 또는 공헌)만 낮은 전투형·기여형은 점수가 낮게 나옵니다.',D.filter(d=>d.rk&&d.rk.r>=50&&d.rk.r<70)]]:[]),
    ...(D.some(d=>d.rk&&d.rk.sgv&&d.rk.sgv.length)?[['공성위탁설정 필요','공성은 자동 집결이라 점수에는 쓰지 않습니다. 대신 최근 2주 연속 주 공성 횟수가 동맹 중앙값의 30% 미만인 인원입니다(가입 2주 이내·부계·예비 제외). 공성 위탁 설정을 안내해 주세요.',D.filter(d=>d.rk&&d.rk.sg===2)],['공성위탁 관찰','지난주 공성 횟수만 낮은 인원입니다. 2주 연속이면 필요 목록으로 올라갑니다.',D.filter(d=>d.rk&&d.rk.sg===1)]]:[]),
@@ -275,25 +297,67 @@ function tabIssues(){
   document.querySelectorAll('#t2 .more').forEach(b=>b.onclick=()=>{const r=b.previousElementSibling;r.hidden=false;b.remove()});
 }
 // ---------- 액티브 이력 ----------
+let ACT_SCOPE='week';
+function activityRanks(rows,index){
+  const values=rows.map(row=>row.cmp?.[index]).filter(Number.isFinite);
+  const counts=new Map();
+  for(const value of values)counts.set(value,(counts.get(value)||0)+1);
+  const ordered=[...counts].sort(([a],[b])=>b-a);
+  const labels=new Map();
+  let rank=1;
+  for(const [value,count] of ordered){
+    labels.set(value,values.length===1?'비교 대상 부족':
+      ordered.length===1?`전원 동일 · ${values.length}명`:
+      `${count>1?'공동 ':''}${rank}위 / ${values.length}명`);
+    rank+=count;
+  }
+  return {size:values.length,labels};
+}
+function activityHistory(){
+  const dates=CFG.act?.dates?.slice(-7)||[];
+  if(!dates.length)return '';
+  const headers=dates.map(date=>`<th scope="col">${esc(date)}</th>`).join('');
+  const rows=D.filter(row=>row.a?.days?.length).map(row=>{
+    const days=new Map(row.a.days.map(day=>[day.d,day]));
+    return `<tr><th scope="row">${esc(row.n)}</th>${dates.map(date=>{
+      const day=days.get(date);
+      return `<td>${day?`${f(day.m)} / ${f(day.c)}${day.g>1?`<small class="activity-source">${day.g}일 평균</small>`:''}`:'—'}</td>`;
+    }).join('')}</tr>`;
+  }).join('');
+  return `<details class="activity-history"><summary>일별 무훈·공헌 기록</summary><p class="lead">무훈 / 공헌 순서입니다. 날짜 사이 기록이 빠진 경우 일평균을 표시합니다.</p><div class="tw"><table><thead><tr><th scope="col">닉네임</th>${headers}</tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
 function tabAct(){
-  const A=CFG.act;if(!A){$('t3').innerHTML='<h2>액티브 이력</h2><p class="lead">일 단위 이력이 아직 없습니다. 인사파일을 이틀 이상 올리면 표시됩니다. 그동안은 주간 무훈·공헌 순위로 임시 점수를 매깁니다.</p>';return}
-  const cnt=k=>D.filter(d=>d.ac===k).length,tk=D.filter(d=>d.t),nt=D.filter(d=>!d.t);
-  const avg=a=>a.length?(a.reduce((x,d)=>x+(d.score||0),0)/a.length).toFixed(1):'-';
-  const rows=[...D].filter(d=>d.a).sort((a,b)=>AC_ORDER.indexOf(a.ac)-AC_ORDER.indexOf(b.ac)||b.score-a.score);
-  const cell=x=>!x?'<td class="n">-</td>':x.x?'<td class="n" style="color:var(--ash)" title="상대 없음 제외일">제외</td>':`<td class="n" style="${x.m<=A.warn?'color:var(--verm);font-weight:700':''}">${f(x.m)}</td>`;
-  const ds=A.dates.slice(-7);
-  $('t3').innerHTML=`<h2>액티브 이력</h2><p class="lead">주간 누적 인사파일의 날짜별 차이로 일 무훈을 구합니다. 주가 바뀌어 값이 줄면 새 값을 그날 증가분으로 봅니다. 판정일 ${A.n}일${A.quiet.length?`, 상대 없음 제외일 ${A.quiet.join(', ')}`:''}.</p>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">${['액티브','저조','경고','쟁 미참여'].map(k=>`<div class="blk" style="padding:10px 16px">${acTag(k)}<div style="font-size:22px;font-weight:700">${cnt(k)}명</div></div>`).join('')}
-   <div class="blk" style="padding:10px 16px">톡방 참여 ${tk.length}명 · 평균 점수 ${avg(tk)}<br>톡방 비참여 ${nt.length}명 · 평균 점수 ${avg(nt)}</div></div>
-  <div class="tw"><table><thead><tr><th>닉네임</th><th>판정</th><th class="n">점수</th><th>톡방</th><th>토돼지</th>${ds.map(x=>`<th class="n">${x}</th>`).join('')}</tr></thead><tbody>${rows.map(d=>{const m=Object.fromEntries(d.a.days.map(x=>[x.d,x]));return `<tr><td><b>${d.n}</b>${d.alts?` <span class="lead" style="margin:0">부 ${d.alts.join(', ')}</span>`:''}</td><td>${acTag(d.ac)}</td><td class="n">${d.score.toFixed(1)}</td><td>${d.t?'참여':'비참여'}</td><td>${d.tok?'●':''}</td>${ds.map(x=>cell(m[x])).join('')}</tr>`}).join('')}</tbody></table></div>`;
+  const root=$('t3'),historyOpen=root.querySelector('.activity-history')?.open;
+  const weekly=ACT_SCOPE==='week',offset=weekly?0:2;
+  const merit=activityRanks(D,offset),contribution=activityRanks(D,offset+1);
+  const date=CFG.comparison?.date||CFG.rosterDate;
+  const period=weekly&&CFG.comparison?`${CFG.comparison.weekStart} ~ ${date}`:`${date} 기준`;
+  const title=weekly?'주간':'총';
+  const cell=(row,index,ranks)=>{
+    const value=row.cmp?.[index];
+    if(!Number.isFinite(value))return `<td class="n">—<span class="activity-source">집계 자료 부족</span></td>`;
+    const source=weekly?(Number.isFinite(row.cmp[index+2])?'총 누적 차이':'주간 원본'):'총 누적 원본';
+    return `<td class="n"><b>${f(value)}</b><span class="activity-rank">${ranks.labels.get(value)}</span><span class="activity-source">${source}</span></td>`;
+  };
+  const sortBy=merit.labels.size>1?offset:offset+1;
+  const rows=[...D].sort((a,b)=>(b.cmp?.[sortBy]??-1)-(a.cmp?.[sortBy]??-1)||String(a.n).localeCompare(String(b.n),'ko'));
+  root.innerHTML=`<div class="activity-heading"><h2>연맹 활동 기록</h2><p class="lead">${esc(period)} · 동일 기간의 실적과 연맹 내 순위</p></div>
+    <div class="activity-period" role="group" aria-label="활동 집계 범위"><button type="button" class="btn" data-activity="week" aria-pressed="${weekly}">이번 주</button><button type="button" class="btn" data-activity="total" aria-pressed="${!weekly}">총 누적</button></div>
+    <div class="activity-coverage"><span>무훈 비교 가능 <b>${merit.size}/${D.length}명</b></span><span>공헌 비교 가능 <b>${contribution.size}/${D.length}명</b></span></div>
+    <div class="tw activity-table"><table><thead><tr><th scope="col">닉네임</th><th scope="col" class="n">${title} 무훈</th><th scope="col" class="n">${title} 공헌</th><th scope="col" class="n">주간 공성<span class="activity-source">위탁 포함</span></th></tr></thead><tbody>${rows.map(row=>
+      `<tr><th scope="row">${esc(row.n)}</th>${cell(row,offset,merit)}${cell(row,offset+1,contribution)}<td class="n">${Number.isFinite(row.cmp?.[4])?f(row.cmp[4])+'회':'—'}</td></tr>`).join('')}</tbody></table></div>${activityHistory()}`;
+  if(historyOpen&&root.querySelector('.activity-history'))root.querySelector('.activity-history').open=true;
+  root.querySelectorAll('[data-activity]').forEach(button=>button.onclick=()=>{
+    ACT_SCOPE=button.dataset.activity;tabAct();root.querySelector(`[data-activity="${ACT_SCOPE}"]`)?.focus({preventScroll:true});
+  });
 }
 // ---------- 기준표 ----------
 function tabRules(){
   const A=CFG.act||{warn:50000,need:30};
   document.getElementById('t4').innerHTML=`<h2>기준표</h2><p class="lead">판정 기준을 숨기지 않고 그대로 적었습니다. 공성 횟수는 자동 집결이라 어디에도 쓰지 않습니다. 부계정(/부캐로 연결)은 인원·평균·표준편차에서 빼고, 본계 줄에 이름만 붙여 본계 판정을 따라갑니다.</p>
   <section class="blk"><h2 style="font-size:17px">액티브 판정</h2><div class="tw"><table class="rules"><tbody>
-   <tr><td>${acTag('쟁 미참여')}</td><td>판정일 연속 2일 일 무훈 ${f(A.warn)} 이하</td></tr>
-   <tr><td>${acTag('경고')}</td><td>가장 최근 판정일 일 무훈 ${f(A.warn)} 이하</td></tr>
+   <tr><td>${acTag('쟁 미참여')}</td><td>이번 주 무훈 증가가 관측된 판정일에 연속 2일 일 무훈 ${f(A.warn)} 이하</td></tr>
+   <tr><td>${acTag('경고')}</td><td>가장 최근 판정일에 무훈 증가가 관측되고 일 무훈 ${f(A.warn)} 이하</td></tr>
    <tr><td>${acTag('액티브')}</td><td>경고 없음, 점수 ${A.need} 이상</td></tr><tr><td>${acTag('저조')}</td><td>경고 없음, 점수 ${A.need} 미만</td></tr>
    <tr><td>${acTag('집계 중')}</td><td>인사파일이 이틀 이상 쌓이기 전이거나 신규 멤버입니다.</td></tr>
    <tr><td>무훈 등급</td><td>${CUT.basis} 순위로 매깁니다. 상위 10% 천하무쌍(${f(CUT.c10)} 이상), 상위 30% 액티브(${f(CUT.c30)} 이상, 판정이 저조·집계 중이면 액티브로 올립니다), 상위 50% 쟁참여자(${f(CUT.c50)} 이상). 무훈 0은 포함하지 않습니다.</td></tr>
@@ -329,9 +393,9 @@ function tabRank(){
 }
 function build(){derive();tabSummary();tabRoster();tabIssues();tabAct();tabRules();tabRank();if(CFG.edit)tabTalk()}
 const renderMeta=()=>{document.getElementById('meta').textContent=`명단 ${CFG.rosterFile}, 기준일 ${CFG.rosterDate}. 톡방 목록 ${CFG.talkFile}, 업데이트 ${CFG.talkDate}. 캐릭터 ID는 표시하지 않습니다.`};
-const TABN={0:'현황',1:'명단',2:'이슈',3:'액티브 이력',4:'기준표',5:'전투 등급',6:'톡방 관리'};
-const NAVMAIN=[[0,'🏠','현황'],[2,'⚠️','이슈'],[1,'👥','명단'],[5,'🎖️','전투 등급'],[-1,'⋯','더보기']];
-const MORE=[[3,'📈','액티브 이력'],[4,'📋','기준표']].concat(CFG.edit?[[6,'💬','톡방 관리']]:[]);
+const TABN={0:'현황',1:'명단',2:'이슈',3:'활동 기록',4:'기준표',5:'전투 등급',6:'톡방 관리'};
+const NAVMAIN=[[0,'🏠','현황'],[2,'⚠️','이슈'],[1,'👥','명단'],[3,'📈','활동 기록'],[-1,'⋯','더보기']];
+const MORE=[[5,'🎖️','전투 등급'],[4,'📋','기준표']].concat(CFG.edit?[[6,'💬','톡방 관리']]:[]);
 document.getElementById('nav').innerHTML=NAVMAIN.map(([i,ic,n])=>`<button data-i="${i}"><span class="pl">${ic}</span>${n}</button>`).join('');
 document.body.insertAdjacentHTML('beforeend','<div class="sheetbg" id="mbg"></div><div class="msheet" id="msh"><div class="gr"></div>'+MORE.map(([i,ic,n])=>`<button data-m="${i}"><span>${ic}</span>${n}</button>`).join('')+'</div>');
 let CURT=0;
