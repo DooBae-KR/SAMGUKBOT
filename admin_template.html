@@ -21,14 +21,95 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
 .tag{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}.tag.w{color:var(--gold);border-color:var(--gold)}.tag.o{color:var(--jade);border-color:var(--jade)}
 #toast{white-space:pre-line;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d3a34;border:1px solid var(--jade);padding:10px 18px;border-radius:10px;display:none;max-width:90vw;z-index:9}
 #toast.err{background:#3a1d1d;border-color:var(--verm)}.mute{color:var(--mute);font-size:12.5px}
+
+/* Grouped admin navigation and task layout. */
+:root{--admin-input:#0b1312;--admin-action-text:#103027;--admin-accent:#244238}
+@media(prefers-color-scheme:light){
+  :root{color-scheme:light;--bg:#f4f7f2;--raise:#fff;--line:#d6e1d5;--text:#1c2d23;--mute:#4d6256;--jade:#1a654b;--gold:#82571c;--verm:#a23730;--admin-input:#f8faf7;--admin-action-text:#fff;--admin-accent:#e1eee4}
+}
+header .wrap,.admin-layout{max-width:1160px}
+.admin-layout{display:grid;grid-template-columns:172px minmax(0,1fr);gap:16px;align-items:start;margin:0 auto;padding:0 16px}
+.admin-layout nav{top:12px;background:var(--raise);border:1px solid var(--line);border-radius:12px}
+.admin-menu{padding:8px}
+.admin-menu-group{display:grid;gap:3px;padding:4px 0}
+.admin-menu-group span{color:var(--mute);font-size:12px;font-weight:650;padding:3px 7px}
+.admin-menu-group button{border:1px solid transparent;border-radius:7px;color:var(--text);font:inherit;font-size:13px;padding:6px 7px;text-align:left}
+.admin-menu-group button.on{border-color:var(--line);background:var(--admin-accent);color:var(--jade);font-weight:650}
+.admin-mobile-menu{display:none}
+.admin-layout main{min-width:0;padding:0 0 64px}
+.admin-layout main>.wrap{max-width:none;padding:0}
+.admin-layout :is(input,textarea,select){background:var(--admin-input);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}
+.admin-layout button.b:not(.d):not(.g){color:var(--admin-action-text)}
+#toast{color:#f0f6f2}
+#talk.on{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:10px;align-items:start}
+#sea .card:nth-child(2){border-inline-start:3px solid var(--gold)}
+@media(max-width:760px){
+  .admin-layout{grid-template-columns:minmax(0,1fr);gap:10px;padding:0 12px}
+  .admin-layout nav{top:0}
+  .admin-menu{display:none}
+  .admin-mobile-menu{display:flex;align-items:center;gap:8px;padding:6px 9px;font-size:13px;color:var(--mute)}
+  .admin-mobile-menu select{flex:1;min-width:0;padding:7px;font-size:16px}
+  #talk.on{grid-template-columns:minmax(0,1fr);gap:0}
+  .admin-layout li{flex-wrap:wrap}
+}
+@media(pointer:coarse){
+  .admin-layout :is(button,select){min-height:44px}
+  .admin-layout :is(input,textarea){font-size:16px}
+}
 </style></head><body>
 <header><div class="wrap"><h1>🛠️ 관리 페이지</h1><div class="sub"><span id="dot" class="live"></span><span id="ally">불러오는 중…</span> · DB와 4초마다 자동 동기화</div></div></header>
-<nav><div class="wrap"><button data-t="talk" class="on">톡방 참여자</button><button data-t="mem">동맹원 추가</button><button data-t="alt">부캐</button><button data-t="adm">관리자 권한</button><button data-t="cmd">명령어 권한</button><button data-t="rsv">예비</button><button data-t="blk">블랙리스트</button><button data-t="spy">간첩 의심 열람</button><button data-t="sea">시즌</button><button data-t="stat">명령어 통계</button><button data-t="try">인증 횟수 제한</button></div></nav>
+<div class="admin-layout">
+<nav aria-label="동맹 관리 메뉴">
+  <div class="admin-menu">
+    <div class="admin-menu-group"><span>인원 관리</span>
+      <button type="button" data-t="talk" aria-controls="talk" class="on" aria-current="page">톡방 참여자</button>
+      <button type="button" data-t="mem" aria-controls="mem">동맹원 추가</button>
+      <button type="button" data-t="alt" aria-controls="alt">부캐</button>
+      <button type="button" data-t="rsv" aria-controls="rsv">예비</button>
+    </div>
+    <div class="admin-menu-group"><span>권한 관리</span>
+      <button type="button" data-t="adm" aria-controls="adm">관리자 권한</button>
+      <button type="button" data-t="cmd" aria-controls="cmd">명령어 권한</button>
+      <button type="button" data-t="spy" aria-controls="spy">간첩 의심 열람</button>
+    </div>
+    <div class="admin-menu-group"><span>인증·보안</span>
+      <button type="button" data-t="try" aria-controls="try">인증 횟수 제한</button>
+      <button type="button" data-t="blk" aria-controls="blk">블랙리스트</button>
+    </div>
+    <div class="admin-menu-group"><span>시즌·통계</span>
+      <button type="button" data-t="sea" aria-controls="sea">시즌</button>
+      <button type="button" data-t="stat" aria-controls="stat">명령어 통계</button>
+    </div>
+  </div>
+  <label class="admin-mobile-menu">관리 작업
+    <select id="admin-tab">
+      <optgroup label="인원 관리">
+        <option value="talk">톡방 참여자</option>
+        <option value="mem">동맹원 추가</option>
+        <option value="alt">부캐</option>
+        <option value="rsv">예비</option>
+      </optgroup>
+      <optgroup label="권한 관리">
+        <option value="adm">관리자 권한</option>
+        <option value="cmd">명령어 권한</option>
+        <option value="spy">간첩 의심 열람</option>
+      </optgroup>
+      <optgroup label="인증·보안">
+        <option value="try">인증 횟수 제한</option>
+        <option value="blk">블랙리스트</option>
+      </optgroup>
+      <optgroup label="시즌·통계">
+        <option value="sea">시즌</option>
+        <option value="stat">명령어 통계</option>
+      </optgroup>
+    </select>
+  </label>
+</nav>
 <main><div class="wrap">
 <div class="tab on" id="talk">
+ <div class="card"><input id="tq" placeholder="이름 검색"><ul id="tlist"></ul></div>
  <div class="card"><h2>톡방 참여자 <span class="mute" id="tcnt"></span></h2><p class="lead">여러 명은 줄바꿈이나 쉼표로 구분해 한 번에 추가할 수 있습니다. 명단에 없는 이름은 ⚠️로 표시됩니다.</p>
   <textarea id="tadd" placeholder="닉네임1, 닉네임2&#10;닉네임3"></textarea><div class="row" style="margin-top:8px"><button class="b" id="tbtn">추가</button></div></div>
- <div class="card"><input id="tq" placeholder="이름 검색"><ul id="tlist"></ul></div>
 </div>
 <div class="tab" id="mem">
  <div class="card"><h2>동맹원 직접 추가</h2><p class="lead">게임 엑셀(매일 오전 8시 반영)에 아직 없는 사람을 넣습니다. 엑셀에 나타나기 전까지 3일간 명단에 유지됩니다.</p>
@@ -85,7 +166,7 @@ ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items
   <div class="row"><input id="ti" inputmode="numeric" placeholder="CID 또는 디스코드 ID"><button class="b" id="tbtn2">실패 횟수 초기화</button></div></div>
  <div class="card"><ul id="trlist"></ul></div>
 </div>
-</div></main><div id="toast"></div>
+</div></main></div><div id="toast" role="status"></div>
 <script>
 const T="__T__",$=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let S=null,busy=false;
@@ -94,7 +175,20 @@ async function api(body,quiet){busy=true;try{const r=await fetch("/api/admin?t="
  const j=await r.json();$("#dot").className="live"+(r.ok?"":" off");
  if(!r.ok){if(!quiet)toast(j.error||"오류",1);return null}
  S=j;render();if(j.msg)toast(j.msg.replace(/\*\*/g,""));return j}catch(e){$("#dot").className="live off";if(!quiet)toast("서버에 연결할 수 없습니다",1);return null}finally{busy=false}}
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll("nav button,.tab").forEach(x=>x.classList.remove("on"));b.classList.add("on");$("#"+b.dataset.t).classList.add("on")});
+const tabMenu=$("#admin-tab"),tabButtons=[...document.querySelectorAll(".admin-menu button[data-t]")];
+function showAdminTab(id){
+  if(!tabButtons.some(button=>button.dataset.t===id))return;
+  for(const button of tabButtons){
+    const selected=button.dataset.t===id;
+    button.classList.toggle("on",selected);
+    if(selected)button.setAttribute("aria-current","page");else button.removeAttribute("aria-current");
+  }
+  document.querySelectorAll(".tab").forEach(tab=>tab.classList.toggle("on",tab.id===id));
+  tabMenu.value=id;
+  window.scrollTo(0,0);
+}
+tabButtons.forEach(button=>button.onclick=()=>showAdminTab(button.dataset.t));
+tabMenu.onchange=()=>showAdminTab(tabMenu.value);
 function render(){if(!S)return;const a=S.ally||{};$("#ally").textContent=(a.server?a.server+"서버 · ":"")+(a.name||"동맹 미등록");
  const names=new Set(S.members.map(m=>m.n)),q=$("#tq").value.trim();
  $("#tcnt").textContent="("+S.talk.length+"명)";
