@@ -66,6 +66,48 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
 @media(max-width:699px){#pdet{max-height:120px;overflow-y:auto;-webkit-overflow-scrolling:touch}}
 @media(min-width:700px){.picker.pt{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,34%);grid-template-rows:auto minmax(0,1fr);column-gap:12px;max-height:72vh}.picker.pt>.bar{grid-column:1/-1}.picker.pt #pl{grid-column:1;grid-row:2;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));align-content:start;gap:6px}.picker.pt #pl .gh{grid-column:1/-1}.picker.pt #pdet{grid-column:2;grid-row:2;overflow-y:auto;align-self:start;max-height:100%}.picker.pt .pdet{margin:0;padding:12px}}
 .stb{touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+
+/* 5부대 편성기 */
+.builder-hero{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:16px;border-radius:12px;color:#eef5ef;background:repeating-radial-gradient(ellipse at 105% 110%,transparent 0 12px,#b6dcac24 13px 14px,transparent 15px 22px),linear-gradient(115deg,#173c30,#234c3e)}
+.builder-hero h2{margin:2px 0 4px;color:inherit;font-size:clamp(22px,4vw,30px);letter-spacing:-.045em}.builder-hero p{margin:0;color:#d5e7dc;font-size:12px}.builder-kicker{font-size:11px;letter-spacing:.14em;color:#d5e7dc}
+.builder-hero .sbtn.on{color:#f3f7ee;background:#254c3e;border-color:#8fae9d}
+.builder-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:10px 0}
+.builder-board .sbtn{min-width:0;min-height:46px;padding:5px;text-align:center}.builder-board small{display:block;font-size:11px}
+.builder-tools{margin:8px 0}.builder-tools .sbtn{padding:6px 9px}
+.builder-unit .uh{margin-bottom:6px}.builder-unit .uh h3{margin:0;font-size:16px}.builder-unit .fmr{display:flex;flex-wrap:wrap}
+.builder-unit select.sq{min-width:0;max-width:100%}.builder-form{display:flex;align-items:center;gap:6px}
+.builder-slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.builder-card{min-width:0;display:flex;flex-direction:column;gap:5px;border:1px solid var(--line);border-radius:9px;padding:6px;background:var(--card2)}
+.builder-cell{position:relative;min-width:0}.builder-card .bs{width:100%;font:inherit;color:var(--txt);text-align:left;margin:0;background:var(--card);padding:5px 24px 5px 6px}
+.builder-card .bs.empty{padding:5px 6px;color:var(--mute)}.builder-card .bs.t span{white-space:normal;overflow-wrap:anywhere}
+.builder-card .builder-hero-slot{flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px 24px}
+.builder-card .builder-hero-slot .th{width:62px;height:94px;object-fit:contain}
+.builder-card .builder-clear{position:absolute;top:4px;right:4px;border:0;background:transparent;color:var(--mute);padding:3px;font-size:13px;cursor:pointer}
+.builder-skills{display:grid;gap:5px;align-content:start}
+.builder-card .sbs{min-height:44px}
+.builder-editor{grid-column:1/-1;margin-top:1px}.builder-editor .sbx{margin:0}
+.builder-editor .sbr{flex-wrap:wrap}.builder-editor .sl,.builder-editor .sv{min-width:0}
+.builder-editor .builder-stat-input{width:57px;min-height:34px;background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit}
+.builder-editor .stb{background:var(--card);color:var(--jade)}
+.builder-slots .picker{grid-column:1/-1;position:static;margin:0;scroll-margin-block-end:84px}
+.builder-slots .picker .sq{width:min(100%,310px);min-width:0}
+.builder-slots .picker h4{font-size:14px;margin:0}
+@media(min-width:601px){.builder-card{grid-row:1}}
+@media(max-width:600px){
+  .builder-hero{padding:12px}.builder-board{gap:4px}.builder-board .sbtn{font-size:12px;padding:3px}
+  .builder-slots{grid-template-columns:minmax(0,1fr);gap:6px}
+  .builder-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);align-items:stretch}
+  .builder-card .builder-hero-slot{flex-direction:row;justify-content:flex-start;min-height:100%;padding-left:5px}
+  .builder-card .builder-hero-slot .th{width:38px;height:57px;flex:none}
+  .builder-card .bs.t{flex-direction:row;align-items:center}.builder-card .bs.t .ts{width:22px;height:22px;flex:none}
+  .builder-card .sbs{grid-column:1/-1}
+  .builder-editor .sic{display:none}.builder-editor .sbr{gap:4px}.builder-editor .builder-stat-input{width:52px}
+}
+@media(pointer:coarse){
+  .builder-editor .builder-stat-input{min-height:44px;font-size:16px}
+  .builder-editor .stb{height:44px;width:38px}
+  .builder-card .builder-clear{min-width:28px;min-height:32px}
+}
 </style></head><body><div class="wrap" id="app"></div>
 <script>
 const PH='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20104%20160%22%3E%3Crect%20width%3D%22104%22%20height%3D%22160%22%20rx%3D%228%22%20fill%3D%22%231d2430%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2298%22%20height%3D%22154%22%20rx%3D%226%22%20fill%3D%22none%22%20stroke%3D%22%235b6678%22%20stroke-width%3D%222%22%20stroke-dasharray%3D%225%204%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2258%22%20r%3D%2217%22%20fill%3D%22none%22%20stroke%3D%22%237a8599%22%20stroke-width%3D%223%22%2F%3E%3Cpath%20d%3D%22M52%2050v10l7%205%22%20fill%3D%22none%22%20stroke%3D%22%237a8599%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Ctext%20x%3D%2252%22%20y%3D%22102%22%20text-anchor%3D%22middle%22%20font-family%3D%22Malgun%20Gothic%2CApple%20SD%20Gothic%20Neo%2CNoto%20Sans%20KR%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22700%22%20fill%3D%22%23c9d1de%22%3E%EC%9D%B4%EB%AF%B8%EC%A7%80%3C%2Ftext%3E%3Ctext%20x%3D%2252%22%20y%3D%22124%22%20text-anchor%3D%22middle%22%20font-family%3D%22Malgun%20Gothic%2CApple%20SD%20Gothic%20Neo%2CNoto%20Sans%20KR%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22700%22%20fill%3D%22%23c9d1de%22%3E%EC%A4%80%EB%B9%84%EC%A4%91%3C%2Ftext%3E%3C%2Fsvg%3E';const IMS=b=>!b?'':(b.startsWith('/img/')||b.startsWith('data:'))?b:'data:image/jpeg;base64,'+b;const D=__DATA__;const ERR=__ERR__;const $=s=>document.querySelector(s);
@@ -185,22 +227,49 @@ const saveAnsDraft=()=>{if(ANS)lsSet('ans:'+ANS.rid,{u:BLD.map(ser),n:AN})};
 const ownH=()=>ANS?ANS.h:(OWNS?OWNS.h:new Set(D.own.h)),ownS=()=>ANS?ANS.s:(OWNS?OWNS.s:new Set(D.own.s));
 const usedH=()=>new Set(BLD.flatMap(u=>u.h).filter(Boolean)),usedS=()=>new Set(BLD.flatMap(u=>u.t.flat()).filter(Boolean));
 const imj=(b,c)=>b?`<img class="${c}" src="${IMS(b)}">`:`<img class="${c}" src="${PH}">`;
-function saveDraft(){if(ANS){saveAnsDraft();return}clearTimeout(SVT);SVT=setTimeout(()=>{fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(ser):null})}).catch(()=>{})},700)}
+let draftWrite=Promise.resolve();
+function saveDraft() {
+  if(ANS){saveAnsDraft();return}
+  clearTimeout(SVT);
+  const body=JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(ser):null});
+  SVT=setTimeout(()=>{
+    draftWrite=draftWrite.then(()=>fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body})).catch(()=>{});
+  },700);
+}
 async function mpost(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return false}if(j.mk)D.mk=j.mk;return true}catch(e){alert('네트워크 오류');return false}}
-function pick(u,k,kind,j){PD=null;PK={u,k,kind,j};PQ='';draw()}
+function focusBuildSlot(p) {
+  if(!p)return;
+  const selector=p.kind==='h'?`[data-du="${p.u}"][data-dk="${p.k}"]`:`[data-tu="${p.u}"][data-tk="${p.k}"][data-tj="${p.j}"]`;
+  document.querySelector(selector)?.focus({preventScroll:true});
+}
+function pick(u,k,kind,j) {
+  PD=null;SOP=null;PK={u,k,kind,j};PQ='';draw();
+  const title=document.getElementById('builder-picker-title');
+  title?.focus({preventScroll:true});
+  title?.closest('.picker').scrollIntoView({block:'nearest'});
+}
+function closePicker() {
+  const previous=PK;
+  PK=null;PD=null;draw();focusBuildSlot(previous);
+}
 function setPQ(v){PQ=v;const e=document.getElementById('pl');if(e)e.innerHTML=pickBody()}
-function assign(name){PD=null;const p=PK;if(!p)return;const u=BLD[p.u];if(p.kind==='h'){u.h[p.k]=name;u.a[p.k]=Z4();fixA(u)}else u.t[p.k][p.j]=name;PK=null;saveDraft();const y=scrollY;draw();scrollTo(0,y)}
+function assign(name){PD=null;const p=PK;if(!p)return;const u=BLD[p.u];if(p.kind==='h'){u.h[p.k]=name;u.a[p.k]=Z4();fixA(u)}else u.t[p.k][p.j]=name;PK=null;saveDraft();const y=scrollY;draw();scrollTo(0,y);focusBuildSlot(p)}
 function clr(u,k,kind,j){if(kind==='h'){BLD[u].h[k]='';BLD[u].t[k]=['',''];BLD[u].a[k]=Z4()}else BLD[u].t[k][j]='';PK=null;saveDraft();draw()}
 function clearAll(){if(!confirm('5부대를 모두 비울까요?'))return;BLD=[0,1,2,3,4].map(T0);PK=null;saveDraft();draw()}
 function fillTier(u,name){const d=D.rank.decks.find(x=>x.name===name);if(!d)return;const o=BLD[u];BLD[u]=T0();BLD[u].src=name;BLD[u].f=(d.form||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진'}[x.trim()]||x.trim())).find(x=>D.forms[x])||'';const uh=usedH(),us=usedS(),oh=ownH(),os=ownS();
   d.slots.forEach((slot,k)=>{const h=slot.split('/').find(x=>oh.has(x)&&!uh.has(x)&&HM[x]&&(HM[x].season||1)<=D.season);if(!h)return;BLD[u].h[k]=h;uh.add(h);
     ((d.tc||[])[k]||[]).slice(0,2).forEach((cell,j)=>{const t=cell.split(/[>\/]/).map(x=>SNK[x.trim().replace(/[\s·\-]/g,'')]).find(x=>x&&os.has(x)&&!us.has(x)&&(SM[x].season||1)<=D.season);if(t){BLD[u].t[k][j]=t;us.add(t)}})});
   recA(u,true);fixA(BLD[u]);saveDraft();draw()}
-function slotH(u,k){const n=BLD[u].h[k],on=PK&&PK.u===u&&PK.k===k&&PK.kind==='h';
-  return n?`<div class="bs ${on?'sel':''}" data-du="${u}" data-dk="${k}" onclick="pick(${u},${k},'h')">${imj((HM[n]||{}).img,'th')}<b>${esc(n)}</b><i class="x" onclick="event.stopPropagation();clr(${u},${k},'h')">✕</i></div>`:`<div class="bs empty ${on?'sel':''}" data-du="${u}" data-dk="${k}" onclick="pick(${u},${k},'h')">＋ 장수</div>`}
-function slotT(u,k,j){const n=BLD[u].t[k][j],on=PK&&PK.u===u&&PK.k===k&&PK.kind==='t'&&PK.j===j,hh=BLD[u].h[k];
-  if(!hh)return`<div class="bs empty dis">전법${j+1}</div>`;
-  return n?`<div class="bs t ${on?'sel':''}" data-tu="${u}" data-tk="${k}" data-tj="${j}" onclick="pick(${u},${k},'t',${j})">${imj((SM[n]||{}).img,'ts')}<span>${esc(n)}</span>${tgm(tsOf(n))}<i class="x" onclick="event.stopPropagation();clr(${u},${k},'t',${j})">✕</i></div>`:`<div class="bs empty ${on?'sel':''}" data-tu="${u}" data-tk="${k}" data-tj="${j}" onclick="pick(${u},${k},'t',${j})">＋ 전법${j+1}</div>`}
+function slotH(u,k) {
+  const n=BLD[u].h[k],on=PK?.u===u&&PK.k===k&&PK.kind==='h',h=HM[n]||{};
+  return `<div class="builder-cell"><button type="button" class="bs builder-hero-slot ${n?'':'empty'} ${on?'sel':''}" data-du="${u}" data-dk="${k}" aria-expanded="${!!on}" aria-label="장수 ${k+1}${n?', '+esc(n)+' 교체':' 선택'}" onclick="pick(${u},${k},'h')">${n?imj(h.img2||h.img,'th')+'<b>'+esc(n)+'</b>':'＋ 장수'}</button>${n?`<button type="button" class="builder-clear" aria-label="${esc(n)} 빼기" onclick="clr(${u},${k},'h')">×</button>`:''}</div>`;
+}
+function slotT(u,k,j) {
+  const n=BLD[u].t[k][j],on=PK?.u===u&&PK.k===k&&PK.kind==='t'&&PK.j===j;
+  if(!BLD[u].h[k])return `<div class="bs empty dis">전법 ${j+1}</div>`;
+  return `<div class="builder-cell"><button type="button" class="bs t ${n?'':'empty'} ${on?'sel':''}" data-tu="${u}" data-tk="${k}" data-tj="${j}" aria-expanded="${!!on}" aria-label="장수 ${k+1} 전법 ${j+1}${n?', '+esc(n)+' 교체':' 선택'}" onclick="pick(${u},${k},'t',${j})">${n?imj((SM[n]||{}).img,'ts')+'<span>'+esc(n)+'</span>'+tgm(tsOf(n)):'＋ 전법 '+(j+1)}</button>${n?`<button type="button" class="builder-clear" aria-label="${esc(n)} 빼기" onclick="clr(${u},${k},'t',${j})">×</button>`:''}</div>`;
+}
+
 
 const CAN_HOVER=window.matchMedia&&matchMedia('(hover:hover) and (pointer:fine)').matches;let PD=null;
 const tipOf=x=>`${x.n} · ${x.grade}·${x.type}·${x.trait}${(x.kw||[]).length?'\n키워드: '+x.kw.join(', '):''}\n${x.desc||''}`;
@@ -232,7 +301,10 @@ function pickBody(){const q=PQ.replace(/\s/g,''),GR={'전설':0,'영웅':1};let 
     const rc=recTac(PK.u,PK.k).filter(r=>l.some(x=>x.n===r.n)),recH=rc.length&&!q?`<div class="gh rec">⭐ 추천 전법 — ${esc(BLD[PK.u].h[PK.k])} (티어덱 기준 · ${rc.length})</div>`+rc.map(r=>l.find(x=>x.n===r.n)._c.replace('</button>',`<span class="kw rc">${esc(r.tier)} ${esc(r.deck)}</span></button>`)).join(''):'';
     body=recH+(grp(l,x=>x.trait||'기타',['책략','병기','방어','치유','보조','문무'],k=>k)||'')||'<span class="m">쓸 수 있는 보유 전법이 없습니다 (이미 다른 부대에서 썼거나 미보유)</span>'}
   return body}
-function picker(){if(!PK)return'';return `<div class="picker${PK.kind==='t'?' pt':''}"><div class="bar"><b>${PK.u+1}부대 ${PK.kind==='h'?'장수':'전법'} 고르기</b><input id="pq" class="sq" placeholder="${PK.kind==='h'?'이름·나라·병종 검색':'이름·계열·키워드 검색 (예: 위협, 치유, 홍수)'}" value="${esc(PQ)}" oninput="setPQ(this.value)"><button class="sbtn" onclick="PK=null;draw()">닫기</button></div><div id="pdet">${pdetBody()}</div><div class="ocs" id="pl">${pickBody()}</div></div>`}
+function picker() {
+  if(!PK)return '';
+  return `<section class="picker${PK.kind==='t'?' pt':''}" aria-labelledby="builder-picker-title"><div class="bar"><h4 id="builder-picker-title" tabindex="-1">${PK.u+1}부대 · 장수 ${PK.k+1} ${PK.kind==='h'?'교체':'전법 '+(PK.j+1)}</h4><input id="pq" class="sq" aria-label="보유 ${PK.kind==='h'?'장수':'전법'} 검색" placeholder="${PK.kind==='h'?'이름·나라·병종 검색':'이름·계열·키워드 검색'}" value="${esc(PQ)}" oninput="setPQ(this.value)"><button type="button" class="sbtn" onclick="closePicker()">닫기</button></div><div id="pdet">${pdetBody()}</div><div class="ocs" id="pl">${pickBody()}</div></section>`;
+}
 
 // ---------- 내 상황 맞춤: 부족한 것 메우기 + 티어순 자동 편성 ----------
 const tierNum=t=>{const m=String(t||'').match(/T?(\d+(?:\.\d+)?)([+-]?)/);return m?parseFloat(m[1])+(m[2]==='+'?-.1:m[2]==='-'?.1:0):99};
@@ -268,16 +340,42 @@ const capOf=h=>50+10*trOf(h);
 function defA(h){if(ANS)return Z4();const x=((D.own.tra||{})[h]||[]).slice(0,4).map(v=>+v||0);while(x.length<4)x.push(0);return clampA(x,h)}
 function clampA(x,h){let c=capOf(h);return x.map(v=>{v=Math.max(0,Math.min(v,c));c-=v;return v})}
 function fixA(u){[0,1,2].forEach(k=>{const h=u.h[k];if(!h)u.a[k]=Z4();else if(!u.a[k].some(Boolean))u.a[k]=defA(h);else u.a[k]=clampA(u.a[k],h)})}
-function setA(i,k,q,v,rel){const h=BLD[i].h[k];if(!h)return;const a=BLD[i].a[k],oth=a.reduce((p,c,j)=>j===q?p:p+c,0);let n=rel?a[q]+v:(parseInt(v)||0);n=Math.max(0,Math.min(n,capOf(h)-oth));a[q]=n;saveDraft();const y=scrollY;draw();scrollTo(0,y)}
+function setA(i,k,q,v,rel) {
+  const h=BLD[i].h[k];if(!h)return;
+  const a=BLD[i].a[k],other=a.reduce((sum,n,j)=>sum+(j===q?0:n),0);
+  const amount=Math.trunc(Number(v))||0;
+  const next=Math.max(0,Math.min(rel?a[q]+amount:amount,capOf(h)-other));
+  if(next!==a[q]){a[q]=next;saveDraft()}
+  refreshStatBox(i,k);
+}
+function refreshStatBox(i,k) {
+  const key=i+'-'+k,box=document.querySelector(`[data-builder-stat="${key}"]`),sum=document.querySelector(`[data-builder-sum="${key}"]`);
+  const h=BLD[i].h[k],a=BLD[i].a[k],left=capOf(h)-a.reduce((s,n)=>s+n,0),bs=(HM[h]||{}).bs;
+  if(box){
+    const remaining=box.querySelector('[data-stat-left]');
+    remaining.textContent=left;remaining.classList.toggle('full',left===0);
+    box.querySelectorAll('[data-stat-input]').forEach((input,q)=>{
+      input.max=a[q]+left;input.value=a[q];
+      const row=input.closest('.sbr');
+      row.querySelector('[data-stat-total]').textContent=bs?'총 '+(bs[q]+a[q]):'';
+      row.querySelector('[data-stat-step="-1"]').disabled=a[q]===0;
+      row.querySelector('[data-stat-step="1"]').disabled=left===0;
+    });
+  }
+  if(sum)sum.innerHTML=statSummary(i,k);
+}
 const stones=n=>n>0?`<span class="sts" style="--st:url(${D.stone})">${[1,2,3,4,5].map(k=>`<i class="sg ${k<=n?'on':''}"></i>`).join('')}</span>`:'';
 const tsOf=t=>ANS?((ANS.trs||{})[t]||0):(((D.own||{}).trs||{})[t]||0);
 const tgm=n=>n>0?`<b class="tg" style="--st:url(${D.stone})">${n}</b>`:'';
 const SI=['⚔','🔥','🛡','➤'];
-function statBox(i,k){const h=BLD[i].h[k];if(!h)return'<div></div>';const a=BLD[i].a[k],n=trOf(h),cap=capOf(h),used=a.reduce((p,c)=>p+c,0),bs=(HM[h]||{}).bs;
+function statBox(i,k) {
+  const h=BLD[i].h[k];if(!h)return '';
+  const a=BLD[i].a[k],n=trOf(h),cap=capOf(h),left=cap-a.reduce((s,x)=>s+x,0),bs=(HM[h]||{}).bs;
   const dk=BLD[i].src&&D.rank.decks.find(x=>x.name===BLD[i].src),rec=((dk&&dk.ts||[])[k]||[]).join(' ');
-  return `<div class="sbx ${SOP===i+'-'+k?'op':''}"><div class="sbh"><b class="sbn">${esc(h)}</b><span class="m">돌</span>${stones(n)||'<span class="m">0단계</span>'}</div>
-  <div class="sbt"><button class="sbtn" onclick="resetA(${i},${k})">↺ 초기화</button><span class="avl">사용 가능 <b class="${used>=cap?'full':''}">${cap-used}</b><i>/${cap}</i></span></div>
-  ${SL.map((l,q)=>`<div class="sbr"><span class="sic">${SI[q]}</span><span class="sl">${l}</span>${rec.includes(l)?'<span class="rcm">추천</span>':''}<span class="sv">${bs?bs[q]+a[q]:a[q]}${a[q]&&bs?`<em>(+${a[q]})</em>`:''}</span><button class="stb" ${a[q]?'':'disabled'} data-st="${i},${k},${q},-1">−</button><button class="stb" ${used>=cap?'disabled':''} data-st="${i},${k},${q},1">＋</button></div>`).join('')}</div>`}
+  return `<div class="sbx" id="builder-stat-${i}-${k}" data-builder-stat="${i}-${k}"><div class="sbh"><b class="sbn">${esc(h)} · 스탯 배분</b><span class="m">돌 ${n}단계</span>${stones(n)}</div>
+    <div class="sbt"><button type="button" class="sbtn" onclick="resetA(${i},${k})">배분 초기화</button><span class="avl">남은 포인트 <b data-stat-left class="${left===0?'full':''}" aria-live="polite">${left}</b><i> / ${cap}</i></span></div>
+    ${SL.map((label,q)=>`<div class="sbr"><span class="sic" aria-hidden="true">${SI[q]}</span><label class="sl" for="builder-point-${i}-${k}-${q}">${label}</label>${rec.includes(label)?'<span class="rcm">추천</span>':''}<span class="sv" data-stat-total>${bs?'총 '+(bs[q]+a[q]):''}</span><button type="button" class="stb" ${a[q]?'':'disabled'} data-stat-step="-1" data-st="${i},${k},${q},-1" aria-label="${label} 1 감소">−</button><input id="builder-point-${i}-${k}-${q}" class="builder-stat-input" data-stat-input type="number" inputmode="numeric" min="0" max="${a[q]+left}" step="1" value="${a[q]}" onchange="setA(${i},${k},${q},this.value,false)"><button type="button" class="stb" ${left?'':'disabled'} data-stat-step="1" data-st="${i},${k},${q},1" aria-label="${label} 1 증가">＋</button></div>`).join('')}</div>`;
+}
 function boostOf(i,k){return (BLD[i].t[k]||[]).filter(Boolean).reduce((p,t)=>{const m=((SM[t]||{}).desc||'').match(/자신의 선공이\s*[\d.]+\s*→\s*([\d.]+)\s*포인트\s*(?:증가|상승)/);return p+(m?parseFloat(m[1]):(t==='신속전개'?30:0))},0)}
 function recA(i,quiet){const u=BLD[i],dk=u.src&&D.rank.decks.find(x=>x.name===u.src);const notes=[];
   const ks=[0,1,2].filter(k=>u.h[k]);
@@ -306,10 +404,24 @@ let SOP=null;
   document.addEventListener('contextmenu',e=>{if(e.target.closest&&e.target.closest('.stb[data-st]'))e.preventDefault()});
   document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('.stb[data-st]')){e.preventDefault();step(e.target.dataset.st)}});
 })();
-function togS(i,k){const key=i+'-'+k;SOP=SOP===key?null:key;const y=scrollY;draw();scrollTo(0,y)}
-function statSum(i,k){const h=BLD[i].h[k];if(!h)return'<div class="sbs0"></div>';const a=BLD[i].a[k],bs=(HM[h]||{}).bs,cap=capOf(h),left=cap-a.reduce((p,c)=>p+c,0),op=SOP===i+'-'+k;
-  return `<button class="sbs ${op?'op':''}" onclick="togS(${i},${k})"><span class="sn">${SL.map((l,q)=>`<span><i>${l[0]}</i>${bs?bs[q]+a[q]:a[q]}</span>`).join('')}</span><span class="sm">스탯 조절 · 남은 ${left} ${op?'▴':'▾'}</span></button>`}
-function resetA(i,k){BLD[i].a[k]=Z4();saveDraft();const y=scrollY;draw();scrollTo(0,y)}
+function togS(i,k) {
+  const key=i+'-'+k,y=scrollY;
+  SOP=SOP===key?null:key;PK=null;PD=null;draw();scrollTo(0,y);
+  document.querySelector(`[data-builder-sum="${key}"]`)?.focus({preventScroll:true});
+}
+function statSummary(i,k) {
+  const h=BLD[i].h[k],a=BLD[i].a[k],bs=(HM[h]||{}).bs,cap=capOf(h);
+  const left=cap-a.reduce((sum,n)=>sum+n,0);
+  return `<span class="sn">${SL.map((label,q)=>`<span><i>${label}</i>${bs?bs[q]+a[q]:'+'+a[q]}</span>`).join('')}</span><span class="sm">스탯 배분 · 남은 ${left} / ${cap} ${SOP===i+'-'+k?'▴':'▾'}</span>`;
+}
+function statSum(i,k) {
+  if(!BLD[i].h[k])return '';
+  const op=SOP===i+'-'+k;
+  return `<button type="button" class="sbs ${op?'op':''}" data-builder-sum="${i}-${k}" aria-expanded="${op}" ${op?`aria-controls="builder-stat-${i}-${k}"`:''} onclick="togS(${i},${k})">${statSummary(i,k)}</button>`;
+}
+function resetA(i,k) {
+  BLD[i].a[k]=Z4();saveDraft();refreshStatBox(i,k);
+}
 const aTxt=a=>SL.map((l,q)=>a&&a[q]?l[0]+a[q]:'').filter(Boolean).join(' ');
 function setF(i,v){BLD[i].f=v;saveDraft();draw()}
 function resetUnit(i){if(!BLD[i].h.some(Boolean)||confirm(`${i+1}부대를 초기화할까요?`)){BLD[i]=T0();PK=null;saveDraft();draw()}}
@@ -382,15 +494,42 @@ async function drawWin(){$('#app').innerHTML=`<div class="bar"><b>🖥 ${esc(D.w
   if(!BLD.some(u=>u.h.some(Boolean))){$('#wmsg').textContent='저장된 편성이 없습니다. 디스코드의 편성기에서 장수를 넣은 뒤 다시 열어 주세요. (편성은 자동 저장됩니다)';return}
   const url=await winURL();$('#wimg').src=url;$('#wsave').href=url;$('#wmsg').textContent='게임 옆에 띄워 놓고 따라 하세요. 편성기에서 바꿨다면 새로고침을 누르세요.'}
 function rr(x,a,b,w,h,r){x.beginPath();x.moveTo(a+r,b);x.arcTo(a+w,b,a+w,b+h,r);x.arcTo(a+w,b+h,a,b+h,r);x.arcTo(a,b+h,a,b,r);x.arcTo(a,b,a+w,b,r);x.closePath()}
-function build(){const dk=D.rank.decks.slice().sort((a,b)=>a.idx-b.idx);
-  const units=BLD.map((u,i)=>`<div class="unit"><div class="uh"><span class="badge">${i+1}부대</span>${BLD[i].src?`<span class="m">${esc((D.rank.decks.find(x=>x.name===BLD[i].src)||{}).tier||'')} <b>${esc(BLD[i].src)}</b> 기준</span>`:''}<select class="sq" onchange="if(this.value){fillTier(${i},this.value);}this.value=''"><option value="">티어덱 불러오기…</option>${dk.map(d=>`<option value="${esc(d.name)}">${esc(d.tier)} ${esc(d.name)}</option>`).join('')}</select><button class="sbtn" onclick="resetUnit(${i})">↺ 부대 초기화</button><button class="sbtn on" onclick="recA(${i})">✨ 추천 속성치</button><span class="m dh">⠿ 장수·전법을 끌어서 옮기기(모바일은 길게 누르기)</span></div>
-    <div class="hs fmr"><span class="m">진형</span><select class="sq" onchange="setF(${i},this.value)"><option value="">진형 선택…</option>${Object.keys(D.forms).map(n=>`<option ${u.f===n?'selected':''}>${esc(n)}</option>`).join('')}</select>${u.f?fm(u.f):''}</div>
-    ${(u.rn||[]).length?`<div class="m rn">💡 ${u.rn.map(esc).join(' · ')}</div>`:''}<div class="hcols">${[0,1,2].map(k=>`<div class="hblk"><div class="hcol"><div class="gi r1 c${k}">${slotH(i,k)}</div><div class="gi r3 c${k}">${slotT(i,k,0)}</div><div class="gi r4 c${k}">${slotT(i,k,1)}</div></div><div class="hst"><div class="gi r2 c${k} sumw">${statSum(i,k)}</div><div class="gi r5 stw ${SOP===i+'-'+k?'op':''}">${statBox(i,k)}</div></div></div>`).join('')}</div></div>`).join('');
+let BUILDER_UNIT=0,BUILDER_ALL=false;
+function selectBuilderUnit(i) {
+  BUILDER_UNIT=i;BUILDER_ALL=false;PK=null;PD=null;draw();
+  document.querySelector(`[data-builder-unit="${i}"]`)?.focus({preventScroll:true});
+}
+function toggleBuilderAll() {
+  BUILDER_ALL=!BUILDER_ALL;PK=null;PD=null;draw();
+  document.getElementById('builder-all')?.focus({preventScroll:true});
+}
+function buildUnit(u,i,decks) {
+  const source=D.rank.decks.find(deck=>deck.name===u.src);
+  const slots=[0,1,2].map(k=>`<div class="builder-card">${slotH(i,k)}<div class="builder-skills">${slotT(i,k,0)}${slotT(i,k,1)}</div>${statSum(i,k)}</div>
+    ${PK?.u===i&&PK.k===k?picker():''}${SOP===i+'-'+k&&u.h[k]?`<div class="builder-editor">${statBox(i,k)}</div>`:''}`).join('');
+  return `<section class="unit builder-unit" aria-labelledby="builder-unit-${i}"><div class="uh"><h3 id="builder-unit-${i}">${i+1}부대 편집</h3>${u.src?`<span class="m">${esc(source?.tier||'')} <b>${esc(u.src)}</b> 기준</span>`:''}</div>
+    <div class="bar builder-tools"><label class="builder-form"><span class="m">티어덱</span><select class="sq" onchange="if(this.value){fillTier(${i},this.value);}this.value=''"><option value="">불러오기…</option>${decks.map(d=>`<option value="${esc(d.name)}">${esc(d.tier)} ${esc(d.name)}</option>`).join('')}</select></label><button type="button" class="sbtn" onclick="recA(${i})">추천 속성치</button><button type="button" class="sbtn" onclick="resetUnit(${i})">부대 초기화</button></div>
+    <div class="fmr"><label class="builder-form"><span class="m">진형</span><select class="sq" onchange="setF(${i},this.value)"><option value="">선택…</option>${Object.keys(D.forms).map(name=>`<option ${u.f===name?'selected':''}>${esc(name)}</option>`).join('')}</select></label>${u.f?fm(u.f):''}</div>
+    ${(u.rn||[]).length?`<p class="m rn">${u.rn.map(esc).join(' · ')}</p>`:''}
+    <div class="builder-slots">${slots}</div></section>`;
+}
+function build() {
+  const decks=D.rank.decks.slice().sort((a,b)=>a.idx-b.idx);
+  const board=BLD.map((u,i)=>{
+    const heroes=u.h.filter(Boolean).length,tactics=u.t.flat().filter(Boolean).length;
+    const selected=!BUILDER_ALL&&i===BUILDER_UNIT;
+    return `<button type="button" class="sbtn ${selected?'on':''}" data-builder-unit="${i}" aria-pressed="${selected}" onclick="selectBuilderUnit(${i})"><b>${i+1}부대</b><small>${heroes===3&&tactics===6?'편성 완료':`장수 ${heroes}/3 · 전법 ${tactics}/6`}</small></button>`;
+  }).join('');
+  const units=BUILDER_ALL?BLD.map((u,i)=>buildUnit(u,i,decks)).join(''):buildUnit(BLD[BUILDER_UNIT],BUILDER_UNIT,decks);
   const n=BLD.flatMap(u=>u.h).filter(Boolean).length;
-  return `<div class="m" style="margin-bottom:8px">내가 <b>보유한</b> 장수·전법으로 5부대를 직접 짭니다. <b>한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없습니다</b>(목록에서 사라짐). 편성은 자동 저장됩니다. 보유 체크·돌은 <b>장수 도감·전법 도감</b> 탭에서 합니다.</div>
-  ${ANS?`<div class="unit ansb"><div class="uh"><b>✍ 의뢰 답변 작성 중</b><span class="m">‘${esc(ANS.title)}’ · 의뢰자 <b>${esc(ANS.by)}</b>의 보유 장수 ${ANS.h.size}명·전법 ${ANS.s.size}개로만 편성할 수 있습니다</span></div></div>`:''}${picker()}<div class="bar"><button class="sbtn on" onclick="if(confirm('내 보유 장수·전법에 맞춰 티어 순서대로 5부대를 자동 편성합니다. 지금 편성은 덮어씁니다.'))autoCompose()">✨ 자동 편성</button>${ANS?'':`<button class="sbtn" onclick="setTab('market');MKT='req';draw()">🙋 편성대요청</button>`}<button class="sbtn" onclick="shareWin()">🖥 창모드</button></div>${units}${ANS?`<div class="unit"><div class="uh"><b>답변 제출</b><span class="m">장수 ${n}명 · 같은 의뢰에는 한 번만 답변할 수 있고, 다시 제출하면 내 답변이 교체됩니다</span></div>
-  <div class="bar"><input class="sq" style="flex:1;min-width:180px" maxlength="120" placeholder="한 줄 설명 (선택: 이 편성의 포인트)" value="${esc(AN)}" oninput="AN=this.value;saveAnsDraft()"></div>
-  <div class="bar"><button class="sbtn on" onclick="submitAns()">✍ 답변 올리기</button><button class="sbtn" onclick="endAns()">취소(내 편성기로 복귀)</button></div></div>`:''}`}
+  return `<section class="builder-hero"><div><span class="builder-kicker">SAMGUKBOT · 시즌 ${D.season}</span><h2>5부대 편성기</h2><p>보유 장수·전법으로 편성 · 자동 저장</p></div><button type="button" class="sbtn on" onclick="if(confirm('보유 장수·전법에 맞춰 티어 순서대로 5부대를 자동 편성합니다. 지금 편성은 덮어씁니다.'))autoCompose()">자동 편성</button></section>
+    ${ANS?`<div class="unit ansb"><div class="uh"><b>✍ 의뢰 답변 작성 중</b><span class="m">‘${esc(ANS.title)}’ · 의뢰자 <b>${esc(ANS.by)}</b>의 보유 장수 ${ANS.h.size}명·전법 ${ANS.s.size}개로만 편성할 수 있습니다</span></div></div>`:''}
+    <div class="builder-board" role="group" aria-label="편성할 부대">${board}</div>
+    <div class="bar builder-tools"><button id="builder-all" type="button" class="sbtn" aria-pressed="${BUILDER_ALL}" onclick="toggleBuilderAll()">전체 보기</button>${ANS?'':`<button type="button" class="sbtn" onclick="MKT='req';setTab('market')">편성대요청</button>`}<button type="button" class="sbtn" onclick="shareWin()">창모드</button><span class="m">${BUILDER_ALL?'부대 간 이동은 끌어서 놓기 · 모바일은 길게 누르기':'장수·전법은 5부대에서 각각 한 번만 사용'}</span></div>
+    ${units}${ANS?`<div class="unit"><div class="uh"><b>답변 제출</b><span class="m">장수 ${n}명 · 다시 제출하면 내 답변이 교체됩니다</span></div>
+    <div class="bar"><input class="sq" style="flex:1;min-width:180px" maxlength="120" placeholder="한 줄 설명 (선택: 이 편성의 포인트)" value="${esc(AN)}" oninput="AN=this.value;saveAnsDraft()"></div>
+    <div class="bar"><button class="sbtn on" onclick="submitAns()">✍ 답변 올리기</button><button class="sbtn" onclick="endAns()">취소(내 편성기로 복귀)</button></div></div>`:''}`;
+}
 async function postMk(){if(!BLD.some(u=>u.h.some(Boolean))){alert('장수를 한 명 이상 넣어 주세요');return}if(!MT.trim()){alert('제목을 입력해 주세요');return}
   if(await mpost({op:'mk_post',title:MT,note:MN,units:BLD.map(ser)})){MT='';MN='';alert('완성 편성 공유에 올렸습니다');setTab('market')}}
 async function disMk(id){if(await mpost({op:'mk_dis',id})){const y=scrollY;draw();scrollTo(0,y)}}
