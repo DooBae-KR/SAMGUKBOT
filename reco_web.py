@@ -108,17 +108,39 @@ h2{font-size:15px;color:var(--gold);margin:18px 0 8px}.chip{display:inline-block
   .builder-editor .stb{height:44px;width:38px}
   .builder-card .builder-clear{min-width:28px;min-height:32px}
 }
+
+/* 개인 추천 편성 */
+.reco-head{padding:16px;border-radius:12px;color:#eef5ef;background:repeating-radial-gradient(ellipse at 105% 110%,transparent 0 12px,#b6dcac24 13px 14px,transparent 15px 22px),linear-gradient(115deg,#173c30,#234c3e)}
+.reco-head h2{color:inherit;font-size:clamp(22px,4vw,30px);margin:3px 0;letter-spacing:-.04em}
+.reco-head .m{color:#d5e7dc}.reco-layout{display:grid;grid-template-columns:164px minmax(0,1fr);gap:8px;align-items:start}
+.reco-list{display:grid;gap:5px}.reco-list .sbtn{text-align:left;padding:7px 8px;min-width:0}.reco-list small{display:block}
+.reco-list .sbtn:disabled{opacity:.65;cursor:default}.reco-detail{min-width:0}
+.reco-heroes{grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}
+.reco-hero-card{min-width:0}.reco-hero-card .h{flex-direction:column;gap:5px}
+.reco-hero-card .pic{width:min(100%,88px);height:auto;aspect-ratio:2/3;margin-inline:auto}
+.reco-hero-card .pic img.p{object-fit:contain}.reco-hero-card .tc{margin-top:4px;overflow-wrap:anywhere}
+.reco-detail .tinfo .flow{margin-top:0}
+@media(max-width:699px){
+  .reco-layout{grid-template-columns:minmax(0,1fr)}.reco-list{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .reco-list .sbtn{font-size:12px;text-align:center;padding:5px 2px;min-height:44px}.reco-list small{display:none}
+  .reco-heroes{grid-template-columns:minmax(0,1fr)}
+  .reco-hero-card{padding:5px;border:1px solid var(--line);border-radius:8px;background:var(--card2)}
+  .reco-hero-card .h{flex-direction:row;border:0;padding:3px}
+  .reco-hero-card .pic{width:50px;margin:0}.reco-hero-card .tac .t{overflow-wrap:anywhere}
+  .reco-detail .votes{margin-left:0}
+}
 </style></head><body><div class="wrap" id="app"></div>
 <script>
 const PH='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20104%20160%22%3E%3Crect%20width%3D%22104%22%20height%3D%22160%22%20rx%3D%228%22%20fill%3D%22%231d2430%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%223%22%20width%3D%2298%22%20height%3D%22154%22%20rx%3D%226%22%20fill%3D%22none%22%20stroke%3D%22%235b6678%22%20stroke-width%3D%222%22%20stroke-dasharray%3D%225%204%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2258%22%20r%3D%2217%22%20fill%3D%22none%22%20stroke%3D%22%237a8599%22%20stroke-width%3D%223%22%2F%3E%3Cpath%20d%3D%22M52%2050v10l7%205%22%20fill%3D%22none%22%20stroke%3D%22%237a8599%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3Ctext%20x%3D%2252%22%20y%3D%22102%22%20text-anchor%3D%22middle%22%20font-family%3D%22Malgun%20Gothic%2CApple%20SD%20Gothic%20Neo%2CNoto%20Sans%20KR%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22700%22%20fill%3D%22%23c9d1de%22%3E%EC%9D%B4%EB%AF%B8%EC%A7%80%3C%2Ftext%3E%3Ctext%20x%3D%2252%22%20y%3D%22124%22%20text-anchor%3D%22middle%22%20font-family%3D%22Malgun%20Gothic%2CApple%20SD%20Gothic%20Neo%2CNoto%20Sans%20KR%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22700%22%20fill%3D%22%23c9d1de%22%3E%EC%A4%80%EB%B9%84%EC%A4%91%3C%2Ftext%3E%3C%2Fsvg%3E';const IMS=b=>!b?'':(b.startsWith('/img/')||b.startsWith('data:'))?b:'data:image/jpeg;base64,'+b;const D=__DATA__;const ERR=__ERR__;const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const NAT={'촉':'#50aa6e','위':'#648cdc','오':'#dc645a','군':'#aaaaaa'};const KC={'한방딜':'burst','도트딜':'dot','일반딜':'norm','회복':'heal','지원':'sup'};
-let MODE='pvp';try{MODE=sessionStorage.getItem('rmode')||'pvp'}catch(e){}
+let MODE='pvp';try{if(sessionStorage.getItem('rmode')==='dev')MODE='dev'}catch(e){}
+const RECOMMEND={pvp:{},dev:{}};
 const FR={dogam:'장수 도감',skdex:'전법 도감',chart:'상성 차트',mx:'상성표',fill:'부족한 것 메우기',guide:'상황 가이드'};
-const POPWIN=/[?&]pop=1/.test(location.search);const WINMODE=/[?&]win=1/.test(location.search);let EQ='';let TAB='rank';try{TAB=sessionStorage.getItem('rtab')||'rank';if(TAB==='mine'||TAB==='own')TAB='rank'}catch(e){}
+const POPWIN=/[?&]pop=1/.test(location.search);const WINMODE=/[?&]win=1/.test(location.search);let EQ='';let TAB='mine';try{TAB=sessionStorage.getItem('rtab')||'mine';if(TAB==='own')TAB='mine'}catch(e){}
 async function post(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok)alert(j.error||'실패');else location.reload()}catch(e){alert('네트워크 오류')}}
-function US(){return MODE==='dev'&&D.dev?D.dev.units:D.units}
-function setMode(m){MODE=m;try{sessionStorage.setItem('rmode',m)}catch(e){}draw()}
+function US(){return RECOMMEND[MODE].units||[]}
+function setMode(m){MODE=m;try{sessionStorage.setItem('rmode',m)}catch(e){}draw();document.querySelector(`[data-reco-mode="${m}"]`)?.focus({preventScroll:true})}
 function vote(i,scope,kind){const u=US()[i];if(scope==='h')post({op:'vote',scope:'h',key:u.hk,kind,heroes:u.heroes.filter(h=>h.n).map(h=>h.n)});else post({op:'vote',scope:'t',key:u.tk,kind,pairs:u.heroes.flatMap(h=>h.n?h.tac.map(t=>[h.n,t.n]):[]),tset:u.tset})}
 function tg(k){const e=document.getElementById('dt'+k),a=document.getElementById('ar'+k);const o=e.style.display==='none';e.style.display=o?'':'none';a.textContent=o?'▾':'▸'}
 let TRS=null,OWNS=null,OQ='',OF='all',DIRTY=false;
@@ -137,7 +159,7 @@ function showDon(){const m=document.createElement('div');m.className='shm';m.inn
 function openDon(){const l=(D.don||{}).link;if(!l)return;const mob=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);location.href=l;if(!mob)setTimeout(()=>alert('토스 앱이 설치된 휴대폰에서 송금 페이지가 열립니다.\n휴대폰 카메라로 QR을 스캔해 주세요.'),600)}
 function donate(){const d=D.don||{};return `<div><div style="margin:8px 0;line-height:1.6">${esc(d.text||'봇 제작자의 커피타임을 만들어주시면 더욱 좋은 기능으로 찾아뵙겠습니다!')}</div>${d.img?`<img alt="후원 QR" src="data:image/${esc(d.ext||'png')};base64,${d.img}" style="max-width:260px;width:80%;border-radius:12px;border:1px solid var(--line);cursor:pointer" ondblclick="openDon()" title="더블클릭하면 송금 페이지로 이동">`:'<div class="m">QR 이미지를 준비 중입니다.</div>'}${d.link?`<div style="margin-top:10px"><button class="sbtn on" ondblclick="openDon()" onclick="this.nextElementSibling.style.display='block'">💸 송금하기 (더블클릭)</button><div class="m" style="display:none;margin-top:4px">QR 또는 이 버튼을 더블클릭하면 송금 페이지로 이동합니다.</div></div>`:''}<div class="m" style="margin-top:8px">후원은 자율이며, 모든 기능은 후원 없이 이용할 수 있습니다. 디스코드 <b>/후원</b> 명령이나 <b>#후원</b> 채널에서도 볼 수 있습니다.</div></div>`}
 window.addEventListener('message',e=>{if(e.data&&e.data.dexSaved)DIRTY=true});
-function setTab(t){if(DIRTY&&(t==='build'||t==='market')){DIRTY=false;try{sessionStorage.setItem('rtab',t)}catch(e){}location.reload();return}TAB=t;try{sessionStorage.setItem('rtab',t)}catch(e){}draw()}
+function setTab(t){if(DIRTY&&(t==='build'||t==='market'||t==='mine')){DIRTY=false;try{sessionStorage.setItem('rtab',t)}catch(e){}location.reload();return}TAB=t;try{sessionStorage.setItem('rtab',t)}catch(e){}draw()}
 function vg(label,v,i,scope){return `<span class="vg">${label}<button class="vb u ${v.m==='u'?'on':''}" onclick="vote(${i},'${scope}','u')">👍 ${v.u}</button><button class="vb d ${v.m==='d'?'on':''}" onclick="vote(${i},'${scope}','d')">👎 ${v.d}</button></span>`}
 function tcell(t){return `<div class="tac" data-tip="${esc(tipHtml(t.n))}">${t.img?`<img src="${IMS(t.img)}">`:`<img src="${PH}">`}<div><div class="t">${esc(t.n)}</div><div class="k"><span class="${KC[t.kind]||''}">${esc(t.kind)}</span> <span class="m">${esc(t.type)}·${esc(t.trait)}</span></div></div></div>`}
 function hero(h){
@@ -154,13 +176,65 @@ function unit(u,i){
   const fl=u.flow,s=fl.start;
   const lines=[`<div><b>전투 시작</b><span>지휘 ${esc(s['지휘'].join(' · ')||'-')} → 패시브 ${esc(s['패시브'].join(' · ')||'-')}</span></div>`].concat(fl.turn.map((t,k)=>`<div><b>턴 ${k+1}번째</b><span>${esc(t[0])}${t[1]!=null?`(${t[1]})`:''} 액티브 ${esc(t[2].join(' · ')||'-')} → 평타${t[3].length?` → 추격 ${esc(t[3].join(' · '))}`:''}</span></div>`));
   if(u.status.g.length)lines.push(`<div><b>이상상태</b><span class="m">부여 ${esc(u.status.g.join(', '))}${u.status.miss.length?` · 부족 ${esc(u.status.miss.join(', '))}`:''}</span></div>`);
-  return `<div class="unit"><div class="uh"><span class="badge">${u.i}부대</span>${u.name?`<span class="m">${esc(u.tier)}</span><span class="nm">${esc(u.name)}</span><span class="tr">${fm(u.form)}</span>`:'<span class="nm">자유 편성</span>'}
+  return `<div class="unit reco-detail"><div class="uh"><span class="badge">${u.i}부대</span>${u.name?`<span class="m">${esc(u.tier)}</span><span class="nm">${esc(u.name)}</span><span class="tr">${fm(u.form)}</span>`:'<span class="nm">자유 편성</span>'}
   ${u.name?`<div class="votes">${vg('장수 조합',u.hv,i,'h')}${u.tset.length?vg('전법 조합',u.tv,i,'t'):''}</div>`:''}</div>
-  <div class="hs">${u.heroes.map(hero).join('')}</div>${[0,1].map(k=>`<div class="hs trow"><div class="rl">전법${k+1}</div>${u.heroes.map(h=>`<div class="tc">${h.n&&h.tac[k]?tcell(h.tac[k]):'<span class="m">-</span>'}</div>`).join('')}</div>`).join('')}${tinfo(u)}<div class="flow">${lines.join('')}</div></div>`}
+  <div class="hs reco-heroes">${u.heroes.map(h=>`<div class="reco-hero-card">${hero(h)}${h.n?[0,1].map(k=>`<div class="tc">${h.tac[k]?tcell(h.tac[k]):'<span class="m">전법 부족</span>'}</div>`).join(''):''}</div>`).join('')}</div>${tinfo(u)}<details class="tinfo"><summary>행동 순서와 이상상태</summary><div class="flow">${lines.join('')}</div></details></div>`}
 function tinfo(u){if(!u.name||!u.heroes.some(h=>h.ti&&(h.ti['스탯']||[]).length))return'';
   const LB={'스탯':'스탯 투자','병법':'병법','장비':'장비 스탯'};
   return `<details class="tinfo"><summary>📋 티어덱 정보 — 스탯·병법·장비${u.note?` <span class="m">${esc(u.note)}</span>`:''}</summary>`+['스탯','병법','장비'].map(k=>`<div class="hs trow"><div class="rl">${LB[k]}</div>${u.heroes.map(h=>`<div class="tc"><span class="m"><b>${LB[k]}</b> ${esc(((h.ti||{})[k]||[]).join(' · ')||'-')}</span></div>`).join('')}</div>`).join('')+`</details>`}
-function mine(){const dv=MODE==='dev';return `<div class="bar"><button class="sbtn mo ${!dv?'on':''}" onclick="setMode('pvp')">PvP 추천</button><button class="sbtn mo ${dv?'on':''}" onclick="setMode('dev')">개척 추천</button><span class="m">${dv?'개척덱 기준':'PvP 티어덱 기준'} · 내 보유 장수·전법으로 5부대</span></div>`+US().map(unit).join('')+`<div class="m">티어덱을 완성하지 못한 부대는 같은 역할의 보유 장수로 채웁니다. 장수 👎는 그 덱을 빼고, 전법 👎는 전법만 다시 고릅니다. 모든 서버의 평가가 합산됩니다.</div>`}
+async function loadRecommendation(mode,retry=false) {
+  const state=RECOMMEND[mode];
+  if(state.status&&!retry)return;
+  state.status='loading';
+  try{
+    const response=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({t:D.t,season:D.season,op:'recommend',mode})});
+    const data=await response.json();
+    if(!response.ok||!data.ok)throw new Error(data.error||'추천을 불러오지 못했습니다.');
+    state.units=Array.isArray(data.units)?data.units.slice(0,5):[];
+    state.notice=data.notice;
+    state.status='ready';
+  }catch(error){
+    state.status='error';
+    state.notice=error.message||'추천을 불러오지 못했습니다.';
+  }
+  if(TAB==='mine'&&MODE===mode)draw();
+}
+function retryRecommendation() {
+  loadRecommendation(MODE,true);
+  draw();
+}
+function selectRecommendation(index) {
+  if(!US()[index])return;
+  RECOMMEND[MODE].selected=index;
+  draw();
+  document.querySelector(`[data-reco-unit="${index}"]`)?.focus({preventScroll:true});
+}
+function useRecommendation() {
+  if(ANS||!US().length)return;
+  loadFrom(US().map(unit=>{
+    const form=(unit.form||'').split(/[\/·,]/).map(name=>name.trim())
+      .map(name=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진'}[name]||name))
+      .find(name=>Object.hasOwn(D.forms,name))||'';
+    return {h:unit.heroes.map(hero=>hero.n||''),t:unit.heroes.map(hero=>(hero.tac||[]).slice(0,2).map(tactic=>tactic.n)),
+      a:unit.heroes.map(hero=>hero.add||Z4()),f:form};
+  }));
+}
+function mine() {
+  const state=RECOMMEND[MODE];
+  if(!state.status)loadRecommendation(MODE);
+  const title=`<section class="reco-head"><div class="m">SAMGUKBOT · 시즌 ${D.season}</div><h2>내 추천 편성</h2><p class="m">보유 장수와 전법에 맞춘 5부대</p></section>`;
+  const modes=`<div class="bar"><button type="button" class="sbtn ${MODE==='pvp'?'on':''}" data-reco-mode="pvp" aria-pressed="${MODE==='pvp'}" onclick="setMode('pvp')">PvP</button><button type="button" class="sbtn ${MODE==='dev'?'on':''}" data-reco-mode="dev" aria-pressed="${MODE==='dev'}" onclick="setMode('dev')">개척</button><span class="sp"></span>${US().length&&!ANS?'<button type="button" class="sbtn" onclick="useRecommendation()">편성기에 가져오기</button>':''}</div>`;
+  if(state.status==='loading')return title+modes+'<p class="m" role="status">보유 목록을 바탕으로 추천을 계산하는 중입니다…</p>';
+  if(state.status==='error')return title+modes+`<p class="m" role="status">${esc(state.notice)}</p><button class="sbtn" type="button" onclick="retryRecommendation()">다시 시도</button>`;
+  if(!US().length)return title+modes+`<div class="unit"><p>${esc(state.notice||'현재 보유 목록으로 만들 수 있는 추천 부대가 없습니다.')}</p><div class="bar"><button type="button" class="sbtn" onclick="setTab('dogam')">장수 도감</button><button type="button" class="sbtn" onclick="setTab('skdex')">전법 도감</button></div></div>`;
+  const active=state.selected||0;
+  const buttons=Array.from({length:5},(_,index)=>{
+    const u=US()[index];
+    return `<button type="button" class="sbtn ${index===active?'on':''}" data-reco-unit="${index}" aria-pressed="${index===active}" onclick="selectRecommendation(${index})" ${u?'':'disabled'}><b>${index+1}부대</b><small>${u?esc(u.name||'자유 편성'):'미편성'}</small></button>`;
+  }).join('');
+  return title+modes+`<div class="reco-layout"><div class="reco-list" role="group" aria-label="추천 부대 선택">${buttons}</div>${unit(US()[active],active)}</div>`;
+}
 function rank(){const R=D.rank;
   const own=new Set(D.ownsk||[]),nk=s=>s.replace(/[\s·\-]/g,'');
   const rhero=h=>`<div class="h"><div class="pic">${h.img?`<img class="p" src="${IMS(h.img)}">`:`<img class="p" src="${PH}">`}<div class="lb">50 ${esc(h.n)}</div></div><div class="hi">
@@ -611,16 +685,16 @@ function draw(){
   if(ERR){$('#app').innerHTML=`<div class="err"><h1>추천덱</h1><p>${esc(ERR)}</p></div>`;return}
   const q=s=>`?t=${encodeURIComponent(D.t)}&s=${s}`;
   const tb=(k,l,c)=>`<button class="tab ${c||''} ${TAB===k?'on':''}" onclick="setTab('${k}')">${l}</button>`;
-  const NAME={board:'자유게시판',rank:'티어덱',build:'편성기',market:'편성대요청',strat:'지략가',equip:'장비',...FR};
-  const NAV=[['rank','📊','티어덱'],['build','🧩','편성기'],['market','🙋','편성대요청'],['dogam','📖','장수 도감']];
-  const MORE=[['board','💬 자유게시판'],['strat','🧠 지략가'],['skdex','전법 도감'],['equip','장비'],['chart','상성 차트'],['mx','상성표'],['fill','부족한 것 메우기'],['guide','상황 가이드']];
+  const NAME={mine:'내 추천',board:'자유게시판',rank:'티어덱',build:'편성기',market:'편성대요청',strat:'지략가',equip:'장비',...FR};
+  const NAV=[['mine','🃏','내 추천'],['rank','📊','티어덱'],['build','🧩','편성기'],['market','🙋','편성대요청']];
+  const MORE=[['dogam','장수 도감'],['board','💬 자유게시판'],['strat','🧠 지략가'],['skdex','전법 도감'],['equip','장비'],['chart','상성 차트'],['mx','상성표'],['fill','부족한 것 메우기'],['guide','상황 가이드']];
   const inMore=MORE.some(m=>m[0]===TAB);
   const nav=`<nav class="mb">${NAV.map(n=>`<button class="${TAB===n[0]?'on':''}" onclick="MENU=false;setTab('${n[0]}')"><i>${n[1]}</i>${n[2]}</button>`).join('')}<button class="${inMore||MENU?'on':''}" onclick="toggleMenu()"><i>⋯</i>더보기</button></nav>`;
   const sheet=MENU?`<div class="mbg" onclick="if(event.target===this)toggleMenu()"><div class="msh"><h4>더보기</h4>${MORE.map(m=>`<button class="${TAB===m[0]?'on':''}" onclick="MENU=false;setTab('${m[0]}')">${m[1]}</button>`).join('')}</div></div>`:'';
   $('#app').innerHTML=`<div class="ttl"><h1>🃏 ${esc([D.ally,D.who].filter(Boolean).join(' '))} · 덱 검색기</h1><button class="sbtn on dbtn" onclick="showDon()">☕ 후원</button></div>
   <div class="sbar"><span class="m">현재: <b>${esc(NAME[TAB]||'')}</b></span><span class="sp"></span>
   <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a><a class="sbtn ${D.season===3?'on':''}" href="${q(3)}">시즌3</a></div>
-  ${TAB==='board'?board():TAB==='build'?`<div class="bwrap">${build()}</div>`:TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}${nav}${sheet}`}
+  ${TAB==='mine'?mine():TAB==='board'?board():TAB==='build'?`<div class="bwrap">${build()}</div>`:TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}${nav}${sheet}`}
 draw();
 </script></body></html>'''
 
