@@ -3030,7 +3030,14 @@ def adm_state(gid):
         r["dn"] = str(m) if m else ""; r["ok"] = bool(r["d"])
     reserve = sorted(rsv.values(), key=lambda x: (x["ok"], x["n"]))
     blk = sorted(({"c": c, "n": v.get("name", ""), "memo": v.get("memo", ""), "t": v.get("t", ""), "ok": bool(did_of.get(c))} for c, v in (db.get("bl") or {}).items()), key=lambda x: x["c"])
-    return {"blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "spy": [{"id": str(i), "name": (lambda m: str(m) if m else "")((bot.get_guild(gid).get_member(i) if bot.get_guild(gid) else None))} for i in sorted(spy_ids(gid))], "season": (lambda sn: {"no": sn["no"], "start": sn["start"], "ended": sn["ended"], "links": [{"no": a["no"], "at": a.get("at", ""), "url": ss_url(gid, a["no"])} for a in sn["archive"]][::-1]})(season_get()), "now": int(time.time())}
+    left = []
+    try:
+        for r in _sb_req("GET", f"sam_emp_left?guild_id=eq.{gid}&select=cid,name,job,left_date,last_stat&order=left_date.desc&limit=5000") or []:
+            ls = r.get("last_stat") or {}
+            left.append({"c": r["cid"], "n": r.get("name") or "", "j": r.get("job") or "", "d": r.get("left_date") or "", "t": ls.get("title") or "", "p": ls.get("prosperity") or 0,
+                         "w": ls.get("war_merit") or 0, "g": ls.get("contribution") or 0, "s": ls.get("siege_count") or 0, "sd": ls.get("snap_date") or ""})
+    except Exception: log.exception("이탈자 목록 조회 실패")
+    return {"left": left, "blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "spy": [{"id": str(i), "name": (lambda m: str(m) if m else "")((bot.get_guild(gid).get_member(i) if bot.get_guild(gid) else None))} for i in sorted(spy_ids(gid))], "season": (lambda sn: {"no": sn["no"], "start": sn["start"], "ended": sn["ended"], "links": [{"no": a["no"], "at": a.get("at", ""), "url": ss_url(gid, a["no"])} for a in sn["archive"]][::-1]})(season_get()), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
