@@ -4980,7 +4980,7 @@ def _reco_page_core(did, season, token, with_units=True, only_units=False):
     stone = ""
     try: stone = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "stone.png").read_bytes()).decode()
     except Exception: pass
-    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "ally": ally_label(cur_gid()), "don": _don_page(), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}, "trs": {k: int(v) for k, v in (dx.get("trs") or {}).items() if str(v).isdigit() and int(v) > 0}}, "stone": stone}, None
+    return {"who": who, "season": season, "t": token, "units": units, "rank": {"decks": rk, "tacs": tacs[:20], "syn": sy}, "forms": {n: formations.cells(n) for n in formations.FORMS}, "equip": {"traits": equipment.TRAITS, "effects": equipment.EFFECTS}, "ski": {}, "ownsk": [_nk(x) for x in (dx.get("ownsk") or [])], "all": allx, "nu": sorted(NOT_USED), "ally": ally_label(cur_gid()), "don": _don_page(), "mk": mk_data(cid2 or ""), "draft": ((pref_get(did).get("draft") or {}).get(f"{season}:{RECO_CID.get()}" if RECO_CID.get() else str(season)) or []), "own": {"h": sorted(dx.get("own") or []), "s": sorted(dx.get("ownsk") or []), "tr": {k: int((v or {}).get("n", 0)) for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict)}, "tra": {k: (v or {}).get("a") or [] for k, v in (dx.get("tr") or {}).items() if isinstance(v, dict) and (v or {}).get("a")}, "trs": {k: int(v) for k, v in (dx.get("trs") or {}).items() if str(v).isdigit() and int(v) > 0}}, "stone": stone}, None
 
 
 def reco_page_data(did, season, token, units=True):
@@ -5642,7 +5642,9 @@ async def web_reco_api(request):
                 if ni: asyncio.create_task(adopt_notify(*ni))
         elif op == "draft":
             units, err = mk_clean(b.get("units"), hd, skd, season, await asyncio.to_thread(_trmap, _my_cid(did)), await asyncio.to_thread(_trsmap, _my_cid(did))) if b.get("units") else ([], None)
-            if not err: await asyncio.to_thread(pref_set, did, draft={str(season): units})
+            if not err:
+                dk = f"{season}:{RECO_CID.get()}" if RECO_CID.get() else str(season)       # 부계는 본계와 별도 편성 초안
+                await asyncio.to_thread(lambda: pref_set(did, draft={**(pref_get(did).get("draft") or {}), dk: units}))
         else: err = None
         if err: return web.json_response({"ok": False, "error": err}, status=400)
         if op in ("mk_post", "mk_like", "mk_del", "ans_post", "ans_del", "rq_adopt", "rq_del"): asyncio.create_task(strat_sync())
