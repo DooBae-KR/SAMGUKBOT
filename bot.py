@@ -2886,6 +2886,16 @@ def tier_sheet_cfg():
     return cfg
 
 
+def notice_page(title, msg, status=403):
+    """티어덱 페이지 테마(짙은 녹색·옥색)에 맞춘 안내 페이지 — 403 원문 텍스트 대신 사용"""
+    h = (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>'
+         '<style>body{margin:0;background:#0c1311;color:#e8efe9;font:15px/1.6 "Noto Sans KR","Malgun Gothic",system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}'
+         '.c{max-width:420px;background:#16221f;border:1px solid #273934;border-radius:14px;padding:26px 24px;text-align:center}'
+         'h1{margin:0 0 10px;font-size:18px;color:#e3b95a}p{margin:0;color:#8fa59b}</style></head><body>'
+         f'<div class="c"><h1>{title}</h1><p>{msg}</p></div></body></html>')
+    return web.Response(status=status, text=h, content_type="text/html")
+
+
 def my_alts(gid, main_cid):
     """내가 등록한 부계 [(alt_cid, alt_name)]"""
     if not SB_ON: return []
@@ -2896,7 +2906,7 @@ def my_alts(gid, main_cid):
 
 async def web_tier(request):
     pr = tier_parse(request.query.get("t"))
-    if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /추천 으로 새 링크를 받으세요.")
+    if not pr: return notice_page("링크가 올바르지 않습니다", "디스코드에서 /추천 으로 새 링크를 받으세요.")
     set_gid(pr[0]); cid = pr[1]
     info = roster.by_uid.get(cid) or {}
     dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
@@ -2944,7 +2954,7 @@ async def web_dex_save(request):
     acct = str(b.get("acct") or "")
     if acct and acct != cid:   # 부계 저장: 내 부계로 등록된 계정만 허용
         if acct not in {a for a, _ in await asyncio.to_thread(my_alts, pr[0], cid)}:
-            return web.json_response({"ok": False, "error": "등록된 부계가 아닙니다"}, status=403)
+            return web.json_response({"ok": False, "code": "noalt", "error": "등록되지 않은 부계입니다. 관리자에게 부계정 등록을 요청해 주세요."}, status=403)
         cid = acct
     info = roster.by_uid.get(cid) or {}
     data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")), "tr": clean_tr(b.get("tr")), "trs": clean_trs(b.get("trs")),
@@ -5028,7 +5038,7 @@ _RECO_C = {}; RECO_TTL = 20; RECO_CAP = 12     # /추천 데이터 짧은 캐시
 
 async def web_reco(request):
     pr = tier_parse(request.query.get("t"))
-    if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /추천 으로 새 링크를 받으세요.")
+    if not pr: return notice_page("링크가 올바르지 않습니다", "디스코드에서 /추천 으로 새 링크를 받으세요.")
     set_gid(pr[0]); cid = pr[1]; did = (db_load()["uid"] or {}).get(cid)
     if not did: return web.Response(status=403, text="인증 정보를 찾지 못했습니다. 디스코드에서 /인증 후 다시 시도하세요.")
     sv = request.query.get("s"); season = int(sv) if sv in ("1", "2", "3") else (pref_get(did).get("season") if pref_get(did).get("season") in (1, 2, 3) else 1)

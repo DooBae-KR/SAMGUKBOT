@@ -353,6 +353,7 @@ function miniSk(d){
   return `<table class="sk mini2"><tr><th></th>${d.heroes.map(h=>`<th>${h.n}</th>`).join('')}</tr>`+Array.from({length:n},(_,i)=>`<tr><th>전법${i+1}</th>${d.heroes.map((h,k)=>{const x=i===0?EXCL[h.n]:cols[k][i-1];return `<td>${i===0&&x?`<span class="ex" data-tip="x|${h.n}">${esc(x)}</span>`:x?skTag(x):'—'}</td>`}).join('')}</tr>`).join('')+`</table>`;
 }
 function recHTML(){
+  if(ACCT&&(!OWN.size||!OWNSK.size))return '<div class="sec">내 덱 추천</div><p class="note">부계의 장수 도감과 전법 도감을 둘 다 체크하면 이 부계 기준 추천 덱이 나옵니다.</p>';
   if(!OWN.size)return '<div class="sec">내 덱 추천</div><p class="note">위에서 가지고 있는 장수를 누르면 여기에 추천 덱이 나옵니다.</p>';
   const seen=new Set(),rows=DECKS.map(d=>({d,s:stat(d)})).sort((a,b)=>b.s.tp-a.s.tp||(b.s.sp||0)-(a.s.sp||0)||(a.d.menu==='pvp'?-1:1)).filter(({d})=>{const k=key(d);if(seen.has(k))return false;seen.add(k);return true});
   const top=rows.filter(r=>r.s.tp>0).slice(0,3);
@@ -390,16 +391,20 @@ const saveOwn=()=>{
   if(!CFG.t){try{localStorage.setItem('own',JSON.stringify([...OWN]));localStorage.setItem('ownsk',JSON.stringify([...OWNSK]));localStorage.setItem('tr',JSON.stringify(TR));localStorage.setItem('trs',JSON.stringify(TRS))}catch(e){}return}
   _status('저장 중…');clearTimeout(_tm);
   _fl=()=>{_fl=null;return fetch(CFG.api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:CFG.t,acct:ACCT,own:[...OWN],ownsk:[...OWNSK],tr:TR,trs:TRS})}).then(r=>{try{parent!==window&&parent.postMessage({dexSaved:1},'*')}catch(e){}return r})
-    .then(r=>r.json()).then(j=>_status(j.ok?'시트에 저장됨 ✓':'저장 실패: '+(j.error||''),!!j.ok)).catch(()=>_status('저장 실패(네트워크)',false))};
+    .then(r=>r.json()).then(j=>{if(j.code==='noalt')_noalt(j.error);_status(j.ok?'시트에 저장됨 ✓':'저장 실패: '+(j.error||''),!!j.ok)}).catch(()=>_status('저장 실패(네트워크)',false))};
   _tm=setTimeout(()=>_fl&&_fl(),900);
 };
 let ACCT='';const _AC={};
+function _noalt(m){if(document.getElementById('noalt'))return;const d=document.createElement('div');d.id='noalt';d.style.cssText='position:fixed;inset:0;z-index:200;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px';
+  d.innerHTML='<div style="max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;text-align:center"><h3 style="color:var(--gold);margin-bottom:8px">부계정 등록이 필요해요</h3><p style="color:var(--mut)">'+m+'</p><button style="margin-top:16px;padding:8px 22px;border-radius:8px;border:0;background:var(--jade);color:#0c1311;font-weight:700;cursor:pointer">확인</button></div>';
+  d.querySelector('button').onclick=()=>{d.remove();const s=document.getElementById('acctsel');if(s){s.value='';acctSwitch('')}};document.body.appendChild(d)}
 function acctSwitch(v){
   _AC[ACCT]={own:[...OWN],ownsk:[...OWNSK],tr:TR,trs:TRS};
   const a=(CFG.accts||[]).find(x=>x.cid===v),s=_AC[v]||(a?a:{own:CFG.own,ownsk:CFG.ownsk,tr:CFG.tr,trs:CFG.trs});
   ACCT=v;OWN=new Set(s.own||[]);OWNSK=new Set(s.ownsk||[]);TR=s.tr||{};TRS=s.trs||{};
   _status((a?a.name:(CFG.name||'본계'))+' 도감 편집 중',true);render();
 }
+if(CFG.t&&!(CFG.accts||[]).length)addEventListener('load',()=>{const bar=document.getElementById('acctbar');bar.style.display='block';bar.style.fontSize='12px';bar.style.opacity='.85';bar.textContent='👤 부계가 있다면 관리자에게 부계정 등록을 요청하세요. 등록되면 여기서 부계를 선택해 도감을 채울 수 있어요.'});
 if(CFG.t&&(CFG.accts||[]).length)addEventListener('load',()=>{
   const bar=document.getElementById('acctbar');bar.style.display='block';
   bar.innerHTML='👤 계정 선택 <select id="acctsel" style="margin-left:8px;padding:4px 8px;font-size:14px"></select> <span style="opacity:.7;font-size:12px">장수·전법 도감이 선택한 계정에 저장됩니다</span>';
