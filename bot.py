@@ -2886,6 +2886,14 @@ def tier_sheet_cfg():
     return cfg
 
 
+def my_alts(gid, main_cid):
+    """내가 등록한 부계 [(alt_cid, alt_name)]"""
+    if not SB_ON: return []
+    try: rows = _sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&main_cid=eq.{main_cid}&select=alt_name,alt_cid&order=created_at") or []
+    except Exception: return []
+    return [(r["alt_cid"], r.get("alt_name") or r["alt_cid"]) for r in rows]
+
+
 async def web_tier(request):
     pr = tier_parse(request.query.get("t"))
     if not pr: return web.Response(status=403, text="링크가 올바르지 않습니다. 디스코드에서 /추천 으로 새 링크를 받으세요.")
@@ -2893,6 +2901,11 @@ async def web_tier(request):
     info = roster.by_uid.get(cid) or {}
     dex = await asyncio.to_thread(store_get, f"dex_{cid}", dex_path(cid), {})
     cfg = await asyncio.to_thread(tier_sheet_cfg)
+    accts = []
+    for ac, an in await asyncio.to_thread(my_alts, pr[0], cid):
+        ad = await asyncio.to_thread(store_get, f"dex_{ac}", dex_path(ac), {})
+        accts.append({"cid": ac, "name": an, "own": ad.get("own", []), "ownsk": ad.get("ownsk", []), "tr": ad.get("tr", {}), "trs": ad.get("trs", {})})
+    cfg["accts"] = accts
     cfg |= {"embed": request.query.get("embed") == "1", "season": int(request.query["s"]) if request.query.get("s") in ("1", "2", "3") else 0, "t": request.query["t"], "api": "/api/dex", "name": info.get("name", ""), "own": dex.get("own", []), "ownsk": dex.get("ownsk", []), "tr": dex.get("tr", {}), "trs": dex.get("trs", {}), "hs": {k: [v["atk"], v["intl"], v["lead"], v["init"]] for k, v in hero_stats().items()}}
     import reco_img
     tpl = await asyncio.to_thread(reco_img.tier_html); cj = json.dumps(cfg, ensure_ascii=False)
@@ -2928,6 +2941,11 @@ async def web_dex_save(request):
             except Exception: continue
             if n > 0: out[str(k)[:30]] = n
         return out
+    acct = str(b.get("acct") or "")
+    if acct and acct != cid:   # 부계 저장: 내 부계로 등록된 계정만 허용
+        if acct not in {a for a, _ in await asyncio.to_thread(my_alts, pr[0], cid)}:
+            return web.json_response({"ok": False, "error": "등록된 부계가 아닙니다"}, status=403)
+        cid = acct
     info = roster.by_uid.get(cid) or {}
     data = {"cid": cid, "name": info.get("name", ""), "own": clean(b.get("own")), "ownsk": clean(b.get("ownsk")), "tr": clean_tr(b.get("tr")), "trs": clean_trs(b.get("trs")),
             "at": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")}

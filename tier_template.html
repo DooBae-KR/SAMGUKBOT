@@ -148,6 +148,7 @@ table.mini2{margin-top:8px;font-size:12px}table.mini2 th,table.mini2 td{padding:
   <div class="logo">천하결전 티어덱<small>시즌1 · 영상 기반 정리</small></div>
   <nav id="nav"></nav>
 </aside>
+<div id="acctbar" style="display:none;padding:8px 14px;background:#222;color:#fff;font:14px system-ui;position:sticky;top:0;z-index:50"></div>
 <main id="view"></main>
 </div>
 <div id="tip"></div>
@@ -383,14 +384,29 @@ try{OWNSK=new Set(CFG.t?CFG.ownsk:JSON.parse(localStorage.getItem('ownsk')||'[]'
 let TRS={};try{TRS=CFG.t?(CFG.trs||{}):JSON.parse(localStorage.getItem('trs')||'{}')}catch(e){}
 let TR={};const trN=n=>{const v=TR[n];return !v?0:typeof v==='object'?(v.n|0):(v|0)};const trA=n=>{const v=TR[n];return v&&typeof v==='object'&&Array.isArray(v.a)?v.a.map(x=>x|0):[0,0,0,0]};
 try{TR=CFG.t?(CFG.tr||{}):JSON.parse(localStorage.getItem('tr')||'{}')}catch(e){}
-let _st=null,_tm=null;
+let _st=null,_tm=null,_fl=null;
 function _status(m,ok){if(!CFG.t)return;if(!_st){_st=document.createElement('div');_st.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99;padding:7px 12px;border-radius:8px;font:13px system-ui;background:#222;color:#fff;box-shadow:0 2px 8px #0004';document.body.appendChild(_st)}_st.textContent=m;_st.style.background=ok===false?'#b3261e':ok?'#1b7a4b':'#444'}
 const saveOwn=()=>{
   if(!CFG.t){try{localStorage.setItem('own',JSON.stringify([...OWN]));localStorage.setItem('ownsk',JSON.stringify([...OWNSK]));localStorage.setItem('tr',JSON.stringify(TR));localStorage.setItem('trs',JSON.stringify(TRS))}catch(e){}return}
   _status('저장 중…');clearTimeout(_tm);
-  _tm=setTimeout(()=>fetch(CFG.api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:CFG.t,own:[...OWN],ownsk:[...OWNSK],tr:TR,trs:TRS})}).then(r=>{try{parent!==window&&parent.postMessage({dexSaved:1},'*')}catch(e){}return r})
-    .then(r=>r.json()).then(j=>_status(j.ok?'시트에 저장됨 ✓':'저장 실패: '+(j.error||''),!!j.ok)).catch(()=>_status('저장 실패(네트워크)',false)),900);
+  _fl=()=>{_fl=null;return fetch(CFG.api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:CFG.t,acct:ACCT,own:[...OWN],ownsk:[...OWNSK],tr:TR,trs:TRS})}).then(r=>{try{parent!==window&&parent.postMessage({dexSaved:1},'*')}catch(e){}return r})
+    .then(r=>r.json()).then(j=>_status(j.ok?'시트에 저장됨 ✓':'저장 실패: '+(j.error||''),!!j.ok)).catch(()=>_status('저장 실패(네트워크)',false))};
+  _tm=setTimeout(()=>_fl&&_fl(),900);
 };
+let ACCT='';const _AC={};
+function acctSwitch(v){
+  _AC[ACCT]={own:[...OWN],ownsk:[...OWNSK],tr:TR,trs:TRS};
+  const a=(CFG.accts||[]).find(x=>x.cid===v),s=_AC[v]||(a?a:{own:CFG.own,ownsk:CFG.ownsk,tr:CFG.tr,trs:CFG.trs});
+  ACCT=v;OWN=new Set(s.own||[]);OWNSK=new Set(s.ownsk||[]);TR=s.tr||{};TRS=s.trs||{};
+  _status((a?a.name:(CFG.name||'본계'))+' 도감 편집 중',true);render();
+}
+if(CFG.t&&(CFG.accts||[]).length)addEventListener('load',()=>{
+  const bar=document.getElementById('acctbar');bar.style.display='block';
+  bar.innerHTML='👤 계정 선택 <select id="acctsel" style="margin-left:8px;padding:4px 8px;font-size:14px"></select> <span style="opacity:.7;font-size:12px">장수·전법 도감이 선택한 계정에 저장됩니다</span>';
+  const sel=bar.querySelector('select');
+  [['',(CFG.name||'본계')+' (본계)'],...CFG.accts.map(a=>[a.cid,a.name+' (부계)'])].forEach(([v,n])=>{const o=document.createElement('option');o.value=v;o.textContent=n;sel.appendChild(o)});
+  sel.onchange=()=>{clearTimeout(_tm);if(_fl)_fl();acctSwitch(sel.value)};
+});
 if(CFG.t)addEventListener('load',()=>_status((CFG.name?CFG.name+'님 · ':'')+'체크하면 자동 저장됩니다',true));
 const heroOfSkill=s=>[...new Set(DECKS.flatMap(d=>d.heroes.filter(h=>Object.values(h.sk||{}).some(a=>a.includes(s))).map(h=>h.n)))];
 
