@@ -2904,6 +2904,12 @@ def my_alts(gid, main_cid):
     return [(r["alt_cid"], r.get("alt_name") or r["alt_cid"]) for r in rows]
 
 
+async def reco_acct(gid, main_cid, acct):
+    """요청의 부계(acct)가 내 등록 부계면 그 CID, 아니면 None(본계). 본계 CID·빈 값도 None."""
+    if not acct or acct == main_cid: return None
+    return acct if acct in {a for a, _ in await asyncio.to_thread(my_alts, gid, main_cid)} else "BAD"
+
+
 async def web_tier(request):
     pr = tier_parse(request.query.get("t"))
     if not pr: return notice_page("링크가 올바르지 않습니다", "디스코드에서 /추천 으로 새 링크를 받으세요.")
@@ -4531,6 +4537,7 @@ def finish_tactics(st, hd, skd):
 
 
 import contextvars
+RECO_CID = contextvars.ContextVar("reco_cid", default=None)   # 부계로 추천/도감 편집할 때 대상 CID(검증된 값만 설정)
 RECO_MODE = contextvars.ContextVar("reco_mode", default="pvp")      # 추천 대상 덱 목록: pvp(티어덱) / dev(개척덱)
 _DEV = []
 
@@ -4820,7 +4827,7 @@ def reco_pins(did, season): return (pref_get(did).get("pins") or {}).get(str(sea
 
 def reco_env(did):
     """추천 계산 없이 페이지에 필요한 값만(이름·장수/전법 데이터·돌). 추천 자체는 화면의 버튼을 눌렀을 때 클라이언트가 계산한다."""
-    cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
+    cid = RECO_CID.get() or next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
     dex = (store_get(f"dex_{cid}", dex_path(cid), {}) or {}) if cid else {}
     sd = tier_data()["SD"]; cfg = tier_sheet_cfg()
     hd, skd = {**sd["HD"], **cfg.get("hd", {})}, {**sd["SKD"], **cfg.get("skd", {})}
@@ -4829,7 +4836,7 @@ def reco_env(did):
 
 def reco_run(did, season):
     """내 도감(보유 장수·전법) 기준 추천 계산. → (오류 안내문 또는 None, 결과, 이름, 딜 방식, 장수 데이터, 전법 데이터)"""
-    cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
+    cid = RECO_CID.get() or next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
     if not cid: return "먼저 `/인증`으로 CID 인증을 해 주세요.", None, None, None, None, None, None
     dex = store_get(f"dex_{cid}", dex_path(cid), {}) or {}
     if not dex.get("own"): return "보유 장수가 없습니다. `/추천` 페이지의 **장수 도감·전법** 탭에서 보유 장수와 전법을 먼저 체크해 주세요.", None, None, None, None, None, None
@@ -4956,7 +4963,7 @@ def _reco_page_core(did, season, token, with_units=True, only_units=False):
     _hs0 = hero_stats()
     allx = {"h": [{"n": n, "bs": [round(_hs0[n][k]) for k in ("atk", "intl", "lead", "init")] if n in _hs0 else None, "style": v.get("style", ""), "nation": v.get("nation", ""), "pos": v.get("pos", ""), "troop": v.get("troop", ""), "season": v.get("season", 1), "img": imgs["HERO"] and reco_img.url("HERO", n, 44, 56), "img2": reco_img.url("HERO", n, 96, 122)} for n, v in hd.items()],
             "s": [{"n": n, "type": v.get("type", ""), "trait": v.get("trait", ""), "grade": v.get("grade", ""), "season": v.get("season", 1), "kw": sorted(status_of(v.get("desc"))[0] | status_of(v.get("desc"))[1] | ({"치유", "회복"} if tact_info(n, skd)["heal"] or tact_info(n, skd)["kind"] == "회복" else set())), "desc": re.sub(r"\s+", " ", v.get("desc") or "")[:400], "img": reco_img.url("SKI", n, 40, 40), "img2": reco_img.url("SKI", n, 72, 72)} for n, v in skd.items()]}
-    cid_ = (db_load()["uid"] or {}); cid2 = next((c for c, dd in cid_.items() if str(dd) == str(did)), None)
+    cid_ = (db_load()["uid"] or {}); cid2 = RECO_CID.get() or next((c for c, dd in cid_.items() if str(dd) == str(did)), None)
     dx = (store_get(f"dex_{cid2}", dex_path(cid2), {}) or {}) if cid2 else {}
     skn_ = {_nk(k): k for k in skd}; ski = {}
     for d in decks:
@@ -5042,10 +5049,16 @@ async def web_reco(request):
     set_gid(pr[0]); cid = pr[1]; did = (db_load()["uid"] or {}).get(cid)
     if not did: return web.Response(status=403, text="인증 정보를 찾지 못했습니다. 디스코드에서 /인증 후 다시 시도하세요.")
     sv = request.query.get("s"); season = int(sv) if sv in ("1", "2", "3") else (pref_get(did).get("season") if pref_get(did).get("season") in (1, 2, 3) else 1)
+    acct = await reco_acct(pr[0], cid, request.query.get("acct"))
+    if acct == "BAD": return notice_page("등록되지 않은 부계입니다", "관리자에게 부계정 등록을 요청해 주세요.")
+    if acct: RECO_CID.set(acct)
     try:
-        ck = (pr[0], did, season, request.query["t"], _DATA_VER[0]); hit = _RECO_C.get(ck)
+        ck = (pr[0], did, season, request.query["t"], _DATA_VER[0], acct); hit = _RECO_C.get(ck)
         if hit and time.time() - hit[0] < RECO_TTL: return gz_html_response(request, hit[1], ("reco",) + ck)
         data, err = await asyncio.to_thread(reco_page_data, did, season, request.query["t"], False)
+        if isinstance(data, dict):
+            al = await asyncio.to_thread(my_alts, pr[0], cid)
+            data["acct"] = acct or ""; data["accts"] = [{"cid": a, "name": n} for a, n in al]; data["mainName"] = (roster.by_uid.get(cid) or {}).get("name", "본계")
         import reco_web
         html = reco_web.render(data, err); _RECO_C[ck] = (time.time(), html)
         while len(_RECO_C) > RECO_CAP: _RECO_C.pop(next(iter(_RECO_C)))
@@ -5533,11 +5546,14 @@ async def web_reco_api(request):
     if not pr: return web.json_response({"ok": False, "error": "권한 없음"}, status=403)
     set_gid(pr[0]); did = (db_load()["uid"] or {}).get(pr[1])
     if not did: return web.json_response({"ok": False, "error": "인증 필요"}, status=403)
+    acct = await reco_acct(pr[0], pr[1], b.get("acct"))
+    if acct == "BAD": return web.json_response({"ok": False, "code": "noalt", "error": "등록되지 않은 부계입니다. 관리자에게 부계정 등록을 요청해 주세요."}, status=403)
+    if acct: RECO_CID.set(acct)
     op = b.get("op"); season = b.get("season") if b.get("season") in (2, 3) else 1
     if op == "recommend":
         mode = b.get("mode")
         if mode not in ("pvp", "dev"): return web.json_response({"ok": False, "error": "추천 모드를 선택해 주세요."}, status=400)
-        key = ("recommend", pr[0], did, season, mode, _DATA_VER[0])
+        key = ("recommend", pr[0], did, season, mode, _DATA_VER[0], acct)
         cached = _RECO_C.get(key)
         if cached and time.time() - cached[0] < RECO_TTL: return web.json_response(cached[1])
         ctx = RECO_MODE.set(mode)
@@ -5665,6 +5681,7 @@ def reco_defs():
 
 
 def _my_cid(did):
+    if RECO_CID.get(): return RECO_CID.get()
     cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
     if cid is None and cur_gid() in RECO_SERVERS:                  # 추천 전용 서버: 들어온 누구나 인증 없이 /추천 가능(가상 CID로 자동 등록)
         cid = "G" + str(did); db = db_load(); db["uid"][cid] = str(did)

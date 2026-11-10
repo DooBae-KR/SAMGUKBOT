@@ -138,17 +138,19 @@ let MODE='pvp';try{if(sessionStorage.getItem('rmode')==='dev')MODE='dev'}catch(e
 const RECOMMEND={pvp:{},dev:{}};
 const FR={dogam:'장수 도감',skdex:'전법 도감',chart:'상성 차트',mx:'상성표',fill:'부족한 것 메우기',guide:'상황 가이드'};
 const POPWIN=/[?&]pop=1/.test(location.search);const WINMODE=/[?&]win=1/.test(location.search);let EQ='';let TAB='mine';try{TAB=sessionStorage.getItem('rtab')||'mine';if(TAB==='own')TAB='mine'}catch(e){}
-async function post(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok)alert(j.error||'실패');else location.reload()}catch(e){alert('네트워크 오류')}}
+async function post(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,acct:D.acct||'',season:D.season,...o})});const j=await r.json();if(!j.ok)alert(j.error||'실패');else location.reload()}catch(e){alert('네트워크 오류')}}
 function US(){return RECOMMEND[MODE].units||[]}
 function setMode(m){MODE=m;try{sessionStorage.setItem('rmode',m)}catch(e){}draw();document.querySelector(`[data-reco-mode="${m}"]`)?.focus({preventScroll:true})}
 function vote(i,scope,kind){const u=US()[i];if(scope==='h')post({op:'vote',scope:'h',key:u.hk,kind,heroes:u.heroes.filter(h=>h.n).map(h=>h.n)});else post({op:'vote',scope:'t',key:u.tk,kind,pairs:u.heroes.flatMap(h=>h.n?h.tac.map(t=>[h.n,t.n]):[]),tset:u.tset})}
 function tg(k){const e=document.getElementById('dt'+k),a=document.getElementById('ar'+k);const o=e.style.display==='none';e.style.display=o?'':'none';a.textContent=o?'▾':'▸'}
+function acctSel(){if(!(D.accts||[]).length)return '';return `<select class="sbtn" style="margin-left:8px" onchange="acctGo(this.value)"><option value="">${esc(D.mainName||'본계')} (본계)</option>${D.accts.map(a=>`<option value="${esc(a.cid)}" ${a.cid===D.acct?'selected':''}>${esc(a.name)} (부계)</option>`).join('')}</select>`}
+function acctGo(v){const u=new URL(location.href);v?u.searchParams.set('acct',v):u.searchParams.delete('acct');location.href=u.toString()}
 let TRS=null,OWNS=null,OQ='',OF='all',DIRTY=false;
 async function setTr(name,k){TRS=TRS||Object.assign({},D.own.tr||{});const n=(TRS[name]||0)===k?k-1:k;
-  try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'tr',name,n})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return}}catch(e){alert('네트워크 오류');return}
+  try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,acct:D.acct||'',season:D.season,op:'tr',name,n})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return}}catch(e){alert('네트워크 오류');return}
   TRS[name]=n;DIRTY=true;const y=scrollY;draw();scrollTo(0,y)}
 async function toggleOwn(kind,name){OWNS=OWNS||{h:new Set(D.own.h),s:new Set(D.own.s)};const on=!OWNS[kind].has(name);
-  try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'own',kind,name,on})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return}}catch(e){alert('네트워크 오류');return}
+  try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,acct:D.acct||'',season:D.season,op:'own',kind,name,on})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return}}catch(e){alert('네트워크 오류');return}
   on?OWNS[kind].add(name):OWNS[kind].delete(name);DIRTY=true;const y=scrollY;draw();scrollTo(0,y)}
 function setQ(v){OQ=v;const e=document.getElementById('ol');if(e)e.innerHTML=ownList()}
 function setF(f){OF=f;draw()}
@@ -188,7 +190,7 @@ async function loadRecommendation(mode,retry=false) {
   state.status='loading';
   try{
     const response=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({t:D.t,season:D.season,op:'recommend',mode})});
+      body:JSON.stringify({t:D.t,acct:D.acct||'',season:D.season,op:'recommend',mode})});
     const data=await response.json();
     if(!response.ok||!data.ok)throw new Error(data.error||'추천을 불러오지 못했습니다.');
     state.units=Array.isArray(data.units)?data.units.slice(0,5):[];
@@ -305,12 +307,12 @@ let draftWrite=Promise.resolve();
 function saveDraft() {
   if(ANS){saveAnsDraft();return}
   clearTimeout(SVT);
-  const body=JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(ser):null});
+  const body=JSON.stringify({t:D.t,acct:D.acct||'',season:D.season,op:'draft',units:BLD.some(u=>u.h.some(Boolean))?BLD.map(ser):null});
   SVT=setTimeout(()=>{
     draftWrite=draftWrite.then(()=>fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body})).catch(()=>{});
   },700);
 }
-async function mpost(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,...o})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return false}if(j.mk)D.mk=j.mk;return true}catch(e){alert('네트워크 오류');return false}}
+async function mpost(o){try{const r=await fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,acct:D.acct||'',season:D.season,...o})});const j=await r.json();if(!j.ok){alert(j.error||'실패');return false}if(j.mk)D.mk=j.mk;return true}catch(e){alert('네트워크 오류');return false}}
 function focusBuildSlot(p) {
   if(!p)return;
   const selector=p.kind==='h'?`[data-du="${p.u}"][data-dk="${p.k}"]`:`[data-tu="${p.u}"][data-tk="${p.k}"][data-tj="${p.j}"]`;
@@ -552,7 +554,7 @@ async function winURL(only){const IDX=only==null?[0,1,2,3,4]:[only];
   return c.toDataURL('image/png')}
 const WINURL=()=>location.origin+location.pathname+`?t=${encodeURIComponent(D.t)}&s=${D.season}&win=1`;
 function shareWin(){if(!BLD.some(u=>u.h.some(Boolean))){alert('편성이 비어 있습니다');return}
-  clearTimeout(SVT);fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,season:D.season,op:'draft',units:BLD.map(ser)})}).catch(()=>{});
+  clearTimeout(SVT);fetch('/api/reco',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:D.t,acct:D.acct||'',season:D.season,op:'draft',units:BLD.map(ser)})}).catch(()=>{});
   const u=WINURL(),m=document.createElement('div');m.className='shm';m.innerHTML=`<div class="shb" style="max-width:420px"><div class="bar"><b>🖥 창모드로 열기</b><span class="sp"></span><button class="sbtn" onclick="this.closest('.shm').remove()">닫기</button></div><div class="m" style="line-height:1.6">디스코드 안에서는 창을 따로 띄울 수 없어요. 아래 버튼으로 <b>인터넷 창(브라우저)</b>에서 열면, 게임 옆에 띄워 놓고 보면서 따라 할 수 있는 가로 화면이 나옵니다.</div><div class="bar"><a class="sbtn on" href="${esc(u)}" target="_blank" rel="noopener">🌐 인터넷 창에서 열기</a><button class="sbtn" onclick="popWin()">🪟 팝업으로 열기</button><button class="sbtn" onclick="copyWin(this)">🔗 링크 복사</button></div><div class="m" style="word-break:break-all;user-select:all">${esc(u)}</div><div class="m">링크가 열리지 않으면 복사해서 크롬·사파리 등에 붙여넣으세요. 링크는 내 전용이니 남에게 보내지 마세요.</div></div>`;m.onclick=e=>{if(e.target===m)m.remove()};document.body.appendChild(m)}
 function popWin(){const w=window.open(WINURL()+'&pop=1','samgukwin','popup=yes,width=1180,height=640,resizable=yes,scrollbars=yes');if(!w)alert('팝업이 차단되었습니다. 주소창의 팝업 허용을 켜거나 "인터넷 창에서 열기"를 눌러 주세요')}
 function copyWin(b){const u=WINURL();(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>{b.textContent='✓ 복사됨'}).catch(()=>{const t=document.createElement('textarea');t.value=u;document.body.appendChild(t);t.select();try{document.execCommand('copy');b.textContent='✓ 복사됨'}catch(e){b.textContent='길게 눌러 복사'}t.remove()})}
@@ -691,7 +693,7 @@ function draw(){
   const inMore=MORE.some(m=>m[0]===TAB);
   const nav=`<nav class="mb">${NAV.map(n=>`<button class="${TAB===n[0]?'on':''}" onclick="MENU=false;setTab('${n[0]}')"><i>${n[1]}</i>${n[2]}</button>`).join('')}<button class="${inMore||MENU?'on':''}" onclick="toggleMenu()"><i>⋯</i>더보기</button></nav>`;
   const sheet=MENU?`<div class="mbg" onclick="if(event.target===this)toggleMenu()"><div class="msh"><h4>더보기</h4>${MORE.map(m=>`<button class="${TAB===m[0]?'on':''}" onclick="MENU=false;setTab('${m[0]}')">${m[1]}</button>`).join('')}</div></div>`:'';
-  $('#app').innerHTML=`<div class="ttl"><h1>🃏 ${esc([D.ally,D.who].filter(Boolean).join(' '))} · 덱 검색기</h1><button class="sbtn on dbtn" onclick="showDon()">☕ 후원</button></div>
+  $('#app').innerHTML=`<div class="ttl"><h1>🃏 ${esc([D.ally,D.who].filter(Boolean).join(' '))} · 덱 검색기</h1>${acctSel()}<button class="sbtn on dbtn" onclick="showDon()">☕ 후원</button></div>
   <div class="sbar"><span class="m">현재: <b>${esc(NAME[TAB]||'')}</b></span><span class="sp"></span>
   <a class="sbtn ${D.season===1?'on':''}" href="${q(1)}">시즌1</a><a class="sbtn ${D.season===2?'on':''}" href="${q(2)}">시즌2</a><a class="sbtn ${D.season===3?'on':''}" href="${q(3)}">시즌3</a></div>
   ${TAB==='mine'?mine():TAB==='board'?board():TAB==='build'?`<div class="bwrap">${build()}</div>`:TAB==='market'?market():TAB==='strat'?strat():TAB==='rank'?rank():TAB==='equip'?equip():FR[TAB]?frame(TAB):rank()}${nav}${sheet}`}
