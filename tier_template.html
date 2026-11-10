@@ -16,7 +16,7 @@
 body{background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans);min-height:100vh}
 a{color:var(--jade);text-decoration:none}a:hover{text-decoration:underline}
 .shell{display:grid;grid-template-columns:210px 1fr;min-height:100vh}
-body.emb .shell{display:block}body.emb aside{display:none}
+body.emb .shell{display:block}body.emb aside{display:none}body.emb #acctbar{left:0}@media(max-width:760px){#acctbar{left:0!important;padding:9px 14px!important}}
 aside{background:var(--bg2);border-right:1px solid var(--line);padding:22px 14px;position:sticky;top:0;height:100vh;overflow:auto}
 .logo{font:800 20px var(--serif);letter-spacing:-.5px;line-height:1.2;padding:0 8px 4px}
 .logo small{display:block;font:500 11px var(--sans);color:var(--mut);letter-spacing:0;margin-top:4px}
@@ -143,12 +143,12 @@ table.mini2{margin-top:8px;font-size:12px}table.mini2 th,table.mini2 td{padding:
 </style>
 </head>
 <body>
+<div id="acctbar" style="display:none;position:fixed;top:0;left:210px;right:0;z-index:60;padding:9px 32px;background:var(--bg2);border-bottom:1px solid var(--line);color:var(--ink);font:13px var(--sans)"></div>
 <div class="shell">
 <aside>
   <div class="logo">천하결전 티어덱<small>시즌1 · 영상 기반 정리</small></div>
   <nav id="nav"></nav>
 </aside>
-<div id="acctbar" style="display:none;padding:8px 14px;background:#222;color:#fff;font:14px system-ui;position:sticky;top:0;z-index:50"></div>
 <main id="view"></main>
 </div>
 <div id="tip"></div>
@@ -404,10 +404,10 @@ function acctSwitch(v){
   ACCT=v;OWN=new Set(s.own||[]);OWNSK=new Set(s.ownsk||[]);TR=s.tr||{};TRS=s.trs||{};
   _status((a?a.name:(CFG.name||'본계'))+' 도감 편집 중',true);render();
 }
-if(CFG.t&&!(CFG.accts||[]).length)addEventListener('load',()=>{const bar=document.getElementById('acctbar');bar.style.display='block';bar.style.fontSize='12px';bar.style.opacity='.85';bar.textContent='👤 부계가 있다면 관리자에게 부계정 등록을 요청하세요. 등록되면 여기서 부계를 선택해 도감을 채울 수 있어요.'});
+if(CFG.t&&!(CFG.accts||[]).length)addEventListener('load',()=>{const bar=document.getElementById('acctbar');bar.style.display='block';document.getElementById('view').style.paddingTop='62px';bar.style.color='var(--mut)';bar.textContent='👤 부계가 있다면 관리자에게 부계정 등록을 요청하세요. 등록되면 여기서 부계를 선택해 도감을 채울 수 있어요.'});
 if(CFG.t&&(CFG.accts||[]).length)addEventListener('load',()=>{
-  const bar=document.getElementById('acctbar');bar.style.display='block';
-  bar.innerHTML='👤 계정 선택 <select id="acctsel" style="margin-left:8px;padding:4px 8px;font-size:14px"></select> <span style="opacity:.7;font-size:12px">장수·전법 도감이 선택한 계정에 저장됩니다</span>';
+  const bar=document.getElementById('acctbar');bar.style.display='block';document.getElementById('view').style.paddingTop='62px';
+  bar.innerHTML='👤 계정 선택 <select id="acctsel" style="margin-left:8px;padding:5px 10px;font-size:13px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px"></select> <span style="opacity:.7;font-size:12px">장수·전법 도감이 선택한 계정에 저장됩니다</span>';
   const sel=bar.querySelector('select');
   [['',(CFG.name||'본계')+' (본계)'],...CFG.accts.map(a=>[a.cid,a.name+' (부계)'])].forEach(([v,n])=>{const o=document.createElement('option');o.value=v;o.textContent=n;sel.appendChild(o)});
   sel.onchange=()=>{clearTimeout(_tm);if(_fl)_fl();acctSwitch(sel.value)};
