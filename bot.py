@@ -4324,24 +4324,48 @@ def synergy_add(kind, a, b, delta, note="", src="vote", cap=12.0):
 NOT_USED = {s.strip() for s in os.environ.get("NOT_USED", "화웅,안량,감녕").split(",") if s.strip()}   # 추천(빈자리 채우기 포함)에서 제외할 장수 — 실전에서 쓰지 않음
 PURSUE = ("황충", "손상향", "하후연", "허저")                     # 추격 전법으로 구성하는 장수 (관통 증가 효과 전법이 잘 어울림)
 LU_COMBO = ("원문사극",)                                          # 여포 연타 구성(운영 노하우)
-LU_COUNTER = ("용맹한삼군", "일인천군")                            # 여포 반격덱 구성
+LU_COUNTER = ("용맹한삼군", "일인천군")                            # 여포 반격덱 구성(전열 추격 장수의 추격 딜 전법과 같음)
+PURSUE_MUST = ("황충", "손상향", "하후연")                         # 이 장수가 있으면 천리기습 필수
+PURSUE_MUST_SK = "천리기습"
+CHAIN_BUFFS = ("정의의희생", "강철의의지")                          # 추격 부대의 다른 장수에게 필수로 넣는, 아군에게 연타를 부여하는 버프 전법
 
 
 def pin_tactics(st, own_s, used, hd, skd, skn):
     """장수별 고정 전법(운영 노하우)을 먼저 배정한다. → st["pin"] = {전법: 장수}
-    · 황충·손상향·하후연·허저(추격): 전법 **설명에 '관통 증가' 효과가 있는** 보유 전법 1개(이름이 아니라 효과로 판단)
+    · 추격 장수(황충·손상향·하후연·허저)가 있는 부대
+        - 황충·손상향·하후연: **천리기습 필수**(없으면 설명에 '관통 증가'가 있는 보유 전법으로 대신)
+        - 추격 딜 전법: 장수가 전열이면 용맹한 삼군·일인천군, 그 외에는 **전법 특성이 병기이면서 유형이 추격**인 보유 전법
+        - 추격 장수가 아닌 다른 장수에게 **아군 연타 버프 전법(정의의 희생·강철의 의지)** 필수
     · 여포: 연타 구성이면 원문사극, 반격덱이면 용맹한 삼군·일인천군"""
     st.setdefault("pin", {})
     names = [h for h in st["hs"] if h]
+    def room(h): return 2 - sum(1 for o in st["pin"].values() if o == h)
     def put(k, owner, why):
-        if k in own_s and k not in used and k in skn:
+        if k in own_s and k not in used and k in skn and room(owner) > 0:
             n = skn[k]; ti = tact_info(n, skd); used.add(k); st["G"] |= ti["g"]; st["U"] |= ti["u"]
             if ti["heal"] or ti["kind"] == "회복": st["healed"] = True
-            st["picks"].append((n, why)); st["pin"][n] = owner
+            st["picks"].append((n, why)); st["pin"][n] = owner; return True
+        return False
+    def grade_key(k):
+        n = skn[k]; d = skd.get(n) or {}
+        return ((d.get("grade") == "전설"), tact_info(n, skd)["peak"])
     pur = [h for h in PURSUE if h in names]
     if pur:
-        cand = [k for k in sorted(own_s - used) if k in skn and tact_info(skn[k], skd)["pierce"]]
-        if cand: put(max(cand, key=lambda k: (tact_info(skn[k], skd)["type"] == "패시브", (skd.get(skn[k]) or {}).get("grade") == "전설")), pur[0], "관통 증가")
+        must = next((h for h in pur if h in PURSUE_MUST), None)
+        got = bool(must) and put(_nk(PURSUE_MUST_SK), must, "추격 필수")
+        if not got:                                                              # 천리기습이 없거나 해당 장수가 없으면 관통 증가 전법으로 대신
+            cand = [k for k in sorted(own_s - used) if k in skn and tact_info(skn[k], skd)["pierce"]]
+            if cand: put(max(cand, key=lambda k: (tact_info(skn[k], skd)["type"] == "패시브", (skd.get(skn[k]) or {}).get("grade") == "전설")), pur[0], "관통 증가")
+        for h in pur:                                                             # 추격 딜 전법
+            if (hd.get(h) or {}).get("pos") == "전열":
+                for k in LU_COUNTER: put(k, h, "전열 추격")
+            elif room(h) > 0:
+                cand = [k for k in sorted(own_s - used) if k in skn and k != "원문사극" and tact_info(skn[k], skd)["type"] == "추격" and tact_info(skn[k], skd)["trait"] == "병기"]
+                if cand: put(max(cand, key=grade_key), h, "병기 추격")
+        others = [h for h in names if h not in pur]
+        for k in CHAIN_BUFFS:                                                     # 아군 연타 버프(다른 장수에게)
+            o = max(others, key=room) if others else None
+            if o is not None: put(k, o, "연타 버프")
     if "여포" in names:
         counter = "반격" in (st.get("dname") or "")
         for k in (LU_COUNTER if counter else LU_COMBO): put(k, "여포", "여포 반격" if counter else "여포 연타")
