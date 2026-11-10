@@ -2540,7 +2540,8 @@ def _tier_num(t):
     return float(m.group(1)) if m else None
 
 
-RANK_GENERAL, RANK_PLT = 3, 1                                     # 장수가 겹치지 않는 0~2티어 완성 덱을 3개 이상 짤 수 있으면 장군 · 1~2개 소대장 · 그 외 일반
+RANK_GENERAL, RANK_PLT = 3, 1                                     # 대장: 장수가 겹치지 않는 0~2티어 덱 중 전법도 추천의 80% 이상 보유한 덱을 3개 이상 · 소대장: 장수만 맞는 덱 1개 이상 · 그 외 일반
+RANK_SK_RATIO = 0.8                                               # 대장 판정에 쓰는 덱 추천 전법 보유 비율
 RANK_MAX_TIER = 2.0
 _RK_CACHE = {}
 _RK_DECKS = []
@@ -2555,20 +2556,24 @@ def _rank_decks():
                 v = _tier_num(dk.get("tier"))
                 if v is None or v > RANK_MAX_TIER: continue
                 slots = [[x for x in h.split("/") if x] for h in dk.get("heroes") or []]
+                skrow = next((r[1] for r in dk.get("rows") or [] if r and r[0] == "전법"), [])
+                sk = [[o.strip() for o in re.split(r"[/>]", cc) if o.strip()] for hs in skrow for c in hs for cc in c.split("+")]       # 장수당 전법 칸 → 칸별 허용 전법(대체 포함, '+'는 별개 칸)
                 key = tuple(sorted("/".join(sl) for sl in slots))
                 if len(slots) != 3 or key in seen: continue
-                seen.add(key); L.append((v, ki, oi, dk.get("tier"), dk.get("name") or "/".join(dk.get("heroes") or []), slots))
-        _RK_DECKS.extend((t, n, sl) for _v, _k, _o, t, n, sl in sorted(L, key=lambda x: x[:3]))
+                seen.add(key); L.append((v, ki, oi, dk.get("tier"), dk.get("name") or "/".join(dk.get("heroes") or []), slots, sk))
+        _RK_DECKS.extend((t, n, sl, sk) for _v, _k, _o, t, n, sl, sk in sorted(L, key=lambda x: x[:3]))
     return _RK_DECKS
 
 
-def _rank_units(own_h, own_s, units=5):
+def _rank_units(own_h, own_s, units=5, strict=False):
     """보유 장수로 장수가 겹치지 않는 0~2티어 완성 덱을 최대 units개까지 가장 많이 짠다(티어 높은 덱 우선). 전법은 부대당 6개(장수당 2개) 이상 보유해야 한다.
+    strict=True(대장 판정): 덱 추천 전법(칸별 대체 포함)을 RANK_SK_RATIO 이상 보유한 덱만 세고, 한 전법은 한 부대에만 쓴다.
     → [{"t": 티어, "n": 덱 이름, "h": [배치된 장수 3명]}]"""
-    own = set(own_h); key = (tuple(sorted(own)), len(own_s) // 6)
+    nz = lambda x: str(x).replace(" ", "")                          # 덱 표기('허점공략')와 도감 이름('허점 공략')의 띄어쓰기 차이 흡수
+    own = set(own_h); osk = {nz(x) for x in own_s}; known = {nz(x) for x in reco_defs()[1]} if strict else set(); key = (tuple(sorted(own)), tuple(sorted(osk)) if strict else len(own_s) // 6, strict)
     if key in _RK_CACHE: return _RK_CACHE[key]
     cand = [d for d in _rank_decks() if all(any(a in own for a in sl) for sl in d[2])]
-    cap = min(units, len(own_s) // 6); best = []
+    cap = units if strict else min(units, len(own_s) // 6); best = []
 
     def assign(sl, j, used, pick):
         if j == len(sl): return pick
@@ -2578,21 +2583,37 @@ def _rank_units(own_h, own_s, units=5):
                 if r: return r
         return None
 
-    def rec(i, used, chosen):
+    def match_sk(sk, usk):
+        """슬롯별로 보유 중이고 아직 안 쓴 허용 전법을 하나씩 배정 → 배정된 전법 목록"""
+        got, tot = [], 0
+        for opts in sk:
+            opts = [nz(o) for o in opts]
+            if not any(o in known for o in opts): continue          # '추격 딜 전법'처럼 특정할 수 없는 칸은 분모에서 뺀다
+            tot += 1
+            a = next((o for o in opts if o in osk and o not in usk and o not in got), None)
+            if a: got.append(a)
+        return got, tot
+
+    def rec(i, used, chosen, usk):
         nonlocal best
         if len(chosen) > len(best): best = list(chosen)
         if len(chosen) >= cap or i >= len(cand) or len(chosen) + len(cand) - i <= len(best): return
-        t, n, sl = cand[i]; pk = assign(sl, 0, used, [])
-        if pk: rec(i + 1, used | set(pk), chosen + [{"t": t, "n": n, "h": pk}])
-        rec(i + 1, used, chosen)
-    rec(0, frozenset(), [])
+        t, n, sl, sk = cand[i]; pk = assign(sl, 0, used, [])
+        if pk:
+            if not strict: rec(i + 1, used | set(pk), chosen + [{"t": t, "n": n, "h": pk}], usk)
+            else:
+                got, tot = match_sk(sk, usk)
+                if tot >= 3 and len(got) >= RANK_SK_RATIO * tot - 1e-9:
+                    rec(i + 1, used | set(pk), chosen + [{"t": t, "n": n, "h": pk, "sk": f"{len(got)}/{tot}"}], usk | set(got))
+        rec(i + 1, used, chosen, usk)
+    rec(0, frozenset(), [], frozenset())
     if len(_RK_CACHE) > 3000: _RK_CACHE.clear()
     _RK_CACHE[key] = best
     return best
 
 
 def member_rank_data(gid, cids):
-    """동맹원별로 장수가 겹치지 않는 0~2티어 완성 부대 수와 편성 → {cid: {"n", "d": [부대], "cl": 장군/소대장/일반, "dex": 도감 입력 여부}}. 스레드에서 호출."""
+    """동맹원별로 장수가 겹치지 않는 0~2티어 완성 부대 수와 편성 → {cid: {"n", "d": [부대], "cl": 대장/소대장/일반, "dex": 도감 입력 여부}}. 스레드에서 호출."""
     hd, skd = reco_defs(); dexes = {}
     if SB_ON:
         try:
@@ -2604,8 +2625,10 @@ def member_rank_data(gid, cids):
         if dx is None: dx = store_get(f"dex_{c}", dex_path(c), {}) or {}
         oh = [h for h in dx.get("own") or [] if h in hd]; os_ = [t for t in dx.get("ownsk") or [] if t in skd]
         ds = _rank_units(oh, os_) if len(oh) >= 3 else []
-        n = len(ds)
-        out[c] = {"n": n, "d": ds, "cl": "장군" if n >= RANK_GENERAL else ("소대장" if n >= RANK_PLT else "일반"), "dex": bool(oh or os_)}
+        dg = _rank_units(oh, os_, strict=True) if len(oh) >= 3 and len(os_) >= 5 else []          # 전법 80% 이상 맞춘 덱
+        if len(dg) >= RANK_GENERAL: cl, ds = "대장", dg
+        else: cl = "소대장" if len(ds) >= RANK_PLT else "일반"
+        out[c] = {"n": len(ds), "d": ds, "cl": cl, "dex": bool(oh or os_), "ns": len(dg)}
     return out
 
 
@@ -2649,7 +2672,7 @@ def render_html(tok=None, snap=None):
         for d in D:
             x = rd.get(d.get("_c"))
             if x: d["bk"] = {"c": x["cl"], "n": x["n"], "d": x["d"], "x": 1 if x["dex"] else 0}
-    except Exception: log.exception("전투 등급(장군·소대장) 계산 실패")
+    except Exception: log.exception("전투 등급(대장·소대장) 계산 실패")
     comparison = act["comparison"] if act else None
     for d in D:
         if comparison:

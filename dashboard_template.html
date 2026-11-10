@@ -232,10 +232,10 @@ function tabSummary(){
   const n=D.length,cn=k=>D.filter(d=>d.ac===k),tk=D.filter(d=>d.t),un=D.filter(d=>d.g==='미편성');
   const S=(b,l,a)=>`<div class="stat" data-w="${a?W_(a):''}" data-t="${l}"><b>${b}</b><span>${l}</span></div>`;
   const jobs=[...new Set(D.map(d=>d.j))].map(j=>[j,D.filter(d=>d.j===j)]).sort((a,b)=>b[1].length-a[1].length),mxj=jobs[0][1].length;
-  const risk=D.filter(d=>d.rk&&d.rk.r!=null&&d.rk.r>=70),imm=D.filter(d=>d.g==='미편성'&&d.c>=10000),gen=D.filter(d=>d.bk&&d.bk.c==='장군');
+  const risk=D.filter(d=>d.rk&&d.rk.r!=null&&d.rk.r>=70),imm=D.filter(d=>d.g==='미편성'&&d.c>=10000),gen=D.filter(d=>d.bk&&d.bk.c==='대장');
   const TD=(ic,bg,ti,sub,cnt,go)=>`<button class="td" data-go="${go}"><span class="ic" style="background:${bg}">${ic}</span><span class="tx"><b>${ti}</b><span>${sub}</span></span><span class="n">${cnt}</span><span class="cv">›</span></button>`;
   document.getElementById('t0').innerHTML=`
-  <h2 class="sec">오늘 확인할 일</h2><div class="tdc">${CFG.act?.warObserved?TD('🚨','#fde7e4','쟁 미참여 · 경고',`전쟁 판정일 무훈이 낮은 인원`,cn('쟁 미참여').length+cn('경고').length,2):''}${risk.length?TD('📉','#fff1d6','이탈 위험 높음','무훈·공헌이 모두 낮아요',risk.length,2):''}${TD('🧩','#e3f3e5','즉시 편성 대상','미편성 · 공헌 1만 이상',imm.length,2)}${D.some(d=>d.bk)?TD('🎖️','#fff4cf','전투 등급 장군','도감 기준 5부대 편성',gen.length,5):''}</div>
+  <h2 class="sec">오늘 확인할 일</h2><div class="tdc">${CFG.act?.warObserved?TD('🚨','#fde7e4','쟁 미참여 · 경고',`전쟁 판정일 무훈이 낮은 인원`,cn('쟁 미참여').length+cn('경고').length,2):''}${risk.length?TD('📉','#fff1d6','이탈 위험 높음','무훈·공헌이 모두 낮아요',risk.length,2):''}${TD('🧩','#e3f3e5','즉시 편성 대상','미편성 · 공헌 1만 이상',imm.length,2)}${D.some(d=>d.bk)?TD('🎖️','#fff4cf','전투 등급 대장','도감 기준 5부대 편성',gen.length,5):''}</div>
   <h2 class="sec">한눈에 보기</h2>
   <div class="strip">${S(n,'전체 인원',D)}${S(cn('액티브').length,'액티브',cn('액티브'))}${S(cn('저조').length,'저조',cn('저조'))}${S(cn('경고').length,'경고',cn('경고'))}${S(cn('쟁 미참여').length,'쟁 미참여',cn('쟁 미참여'))}${S(tk.length,'톡방 참여',tk)}${S(D.filter(d=>d.tok).length,'토돼지',D.filter(d=>d.tok))}${S(f(CUT.c10),'무훈 상위 10% 기준 · 천하무쌍 '+CUT.n10+'명',D.filter(d=>d.tw))}${S(f(CUT.c30),'무훈 상위 30% 기준 · 액티브 '+CUT.n30+'명',D.filter(d=>d.tz))}${S(f(CUT.c50),'무훈 상위 50% 기준 · 쟁참여자 '+CUT.n50+'명',D.filter(d=>d.tj))}${S(un.length,'미편성',un)}</div>
   <section class="blk"><h2>진영도</h2><p class="lead">네모 하나가 연맹원 한 명입니다. 묶는 기준을 바꿔 보고, 칸에 마우스를 올리면 누구인지 나옵니다. 각 묶음 안에서는 점수가 높은 사람이 앞에 옵니다.</p>
@@ -374,16 +374,16 @@ function tabRules(){
    <tr><td>일 공헌</td><td>${W.c}점. 무훈과 같은 방식입니다.</td></tr>
    <tr><td>톡방 참여</td><td>+${W.talk}점. 참여 여부는 점수와 별개로 항상 참여/비참여로 표시합니다.</td></tr></tbody></table></div></section>`;
 }
-// ---------- 전투 등급(장군·소대장·일반) ----------
-let RKG='장군';
+// ---------- 전투 등급(대장·소대장·일반) ----------
+let RKG='대장';
 function tabRank(){
-  const L=D.filter(d=>d.bk),G=['장군','소대장','일반'],cols=['#2e7d32','#b7791f','#2f7aa3','#7b5ea7','#c0562a','#00796b'];
+  const L=D.filter(d=>d.bk),G=['대장','소대장','일반'],cols=['#2e7d32','#b7791f','#2f7aa3','#7b5ea7','#c0562a','#00796b'];
   if(!L.length){$('t5').innerHTML='<h2 class="sec">전투 등급</h2><p class="lead">보유 장수·전법(도감) 정보가 아직 없습니다.</p>';return}
   const by=g=>L.filter(d=>d.bk.c===g).sort((a,b)=>b.bk.n-a.bk.n||String(a.n).localeCompare(String(b.n),'ko')),noDex=L.filter(d=>!d.bk.x).length;
   const short=d=>{const n=d.bk.d.map(u=>u.n);return n.length?n.slice(0,3).join(' · ')+(n.length>3?` +${n.length-3}`:''):(d.bk.x?'완성 부대 없음':'도감 없음')};
   const us=d=>d.bk.d.map(u=>`${u.n}(${u.h.join('·')})`);
   const row=d=>`<div class="rl"><div class="h"><div class="a" style="background:${cols[[...d.n].reduce((s,c)=>s+c.charCodeAt(0),0)%cols.length]}">${esc([...d.n][0])}</div><div class="nm"><b>${esc(d.n)}</b><span>${short(d)}</span></div><span class="cv">⌄</span></div>${d.bk.d.map((u,i)=>`<div class="u"><b>${i+1}부대</b><span><b style="color:inherit;width:auto">${u.t} ${u.n}</b> <em>${u.h.join(' · ')}</em></span></div>`).join('')}</div>`;
-  $('t5').innerHTML=`<h2 class="sec">전투 등급</h2><p class="lead">도감의 보유 장수로 <b>장수가 겹치지 않는 0~2티어 덱을 최대 5부대</b> 짰을 때(전법은 부대당 6개 이상) 완성되는 부대 수입니다. 3개 이상 장군, 1~2개 소대장, 그 외 일반입니다. 도감 미입력 ${noDex}명은 일반입니다. 이름을 누르면 부대 편성이 펼쳐집니다.</p>
+  $('t5').innerHTML=`<h2 class="sec">전투 등급</h2><p class="lead">도감의 보유 장수로 <b>장수가 겹치지 않는 0~2티어 덱을 최대 5부대</b> 짰을 때 완성되는 부대 수입니다. 대장은 <b>전법도 부대 추천 전법의 80% 이상</b> 보유한 덱만 셉니다(3개 이상). 소대장은 장수만 맞으면 되며 전법은 부대당 6개 이상, 1~2개, 1~2개 소대장, 그 외 일반입니다. 도감 미입력 ${noDex}명은 일반입니다. 이름을 누르면 부대 편성이 펼쳐집니다.</p>
   <div class="rseg">${G.map(g=>`<button data-g="${g}" class="${g===RKG?'on':''}">${g} ${by(g).length}</button>`).join('')}</div>
   <p style="margin:0 0 10px"><button class="btn" id="rkcsv">⬇ 리스트 CSV</button></p><div id="rklist">${by(RKG).map(row).join('')||'<p class="lead">해당 인원이 없습니다.</p>'}</div>`;
   document.querySelectorAll('#t5 .rseg button').forEach(b=>b.onclick=()=>{RKG=b.dataset.g;tabRank()});
