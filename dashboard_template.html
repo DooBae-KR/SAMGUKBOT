@@ -142,7 +142,7 @@ body>header .sub{color:#d5e7dc}
 <div class="adm" id="adm" hidden><b>명단 업데이트</b><label>명단 엑셀 <input type="file" id="fr" accept=".xlsx,.xls,.csv"></label><button class="btn" id="aprev" disabled>확인</button><button class="btn pri" id="aapply" disabled>적용</button><span id="amsg"></span><label style="flex-basis:100%;display:block">톡방 참여자 <span class="lead" style="margin:0">(스프레드시트 톡방참여자 탭의 닉네임 열을 복사해 붙여넣으세요)</span><textarea id="tk" rows="3" style="display:block;width:100%;margin-top:6px"></textarea></label><button class="btn" id="atk">톡방 적용</button><span id="tmsg" style="color:var(--mute)"></span></div></div></header>
 <div class="ops-layout"><nav aria-label="인사 상황판 메뉴"><div class="wrap" id="nav"></div></nav>
 <main><div class="wrap">
-<section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section><section class="tab" id="t5"></section><section class="tab" id="t6"></section>
+<section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section><section class="tab" id="t5"></section><section class="tab" id="t6"></section><section class="tab" id="t7"></section>
 </div></main></div>
 <div id="tip"></div>
 <script>
@@ -150,6 +150,7 @@ let D=__D__, CFG=__CFG__;
 const med=a=>{if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),n=s.length;return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2};
 const pctr=a=>{const s=[...a].sort((x,y)=>x-y);return v=>{let lo=0,eq=0;for(const x of s){if(x<v)lo++;else if(x===v)eq++}return (lo+eq/2)/s.length*100}};
 const q=(a,p)=>{const s=[...a].sort((x,y)=>x-y);return s[Math.floor((s.length-1)*p)]};
+const ALT_DAYS=2;
 const f=n=>Math.round(n).toLocaleString('ko-KR'), P=(a,b)=>b?Math.round(a/b*100):0;
 let rc,rm;
 let TALK=null;
@@ -245,9 +246,22 @@ function tabSummary(){
   document.querySelectorAll('.td').forEach(b=>b.onclick=()=>show(+b.dataset.go));
   waffle();
 }
+// ---------- 부계정 ----------
+let ALTF='all';
+function altRows(){const L=[];D.forEach(m=>(m.altd||[]).forEach(a=>L.push({...a,main:m.n})));return L}
+function tabAlt(){
+  const L=altRows(),idle=L.filter(a=>a.idle),unk=L.filter(a=>a.idle==null);
+  const V=ALTF==='idle'?idle:L;
+  const st=a=>a.idle?`<b style="color:var(--bad,#c0392b)">미접</b> <span class="lead" style="margin:0">${a.since?a.since.slice(5)+'부터 ':''}변화 없음</span>`:a.idle===false?'활동':'<span class="lead" style="margin:0">판정 불가(기록 부족)</span>';
+  $('t7').innerHTML=`<h2 class="sec">부계정</h2><p class="lead">본계에 연결된 부계정입니다. 부계정은 통계와 점수에서 제외되고, 본계 줄에 이름만 붙습니다. <b>${ALT_DAYS}일 동안 무훈과 공헌 수치가 그대로</b>이면 <b>미접</b>으로 분류합니다(누적 값이 있으면 누적 값 기준).</p>
+   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0">${[[L.length,'부계정'],[idle.length,'미접'],[L.length-idle.length-unk.length,'활동'],[unk.length,'판정 불가']].map(([n,l])=>`<div style="background:#fff;border-radius:14px;padding:10px 2px;text-align:center;box-shadow:0 1px 3px rgba(20,60,30,.1)"><b style="font-size:20px;display:block">${n}</b><span style="font-size:12px">${l}</span></div>`).join('')}</div>
+   <div class="rseg"><button data-a="all" class="${ALTF==='all'?'on':''}">전체 ${L.length}</button><button data-a="idle" class="${ALTF==='idle'?'on':''}">미접 ${idle.length}</button></div>
+   ${V.length?`<div class="tw"><table><thead><tr><th>부계정</th><th>본계</th><th>상태</th><th>직업</th><th>직위</th><th class="n">번영</th><th class="n">주간 무훈</th><th class="n">주간 공헌</th><th class="n">주 공성</th></tr></thead><tbody>${V.sort((a,b)=>(b.idle?1:0)-(a.idle?1:0)||a.main.localeCompare(b.main,'ko')).map(a=>`<tr><td><b>${a.n}</b></td><td>${a.main}</td><td>${st(a)}</td><td>${a.j}</td><td>${a.r}</td><td class="n">${f(a.p)}</td><td class="n">${f(a.m)}</td><td class="n">${f(a.c)}</td><td class="n">${f(a.s)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="lead">표시할 부계정이 없습니다. 부계정은 <code>/부캐</code> 명령이나 관리 페이지에서 본계에 연결하면 여기에 나옵니다.</p>'}`;
+  document.querySelectorAll('#t7 .rseg button').forEach(b=>b.onclick=()=>{ALTF=b.dataset.a;tabAlt()});
+}
 // ---------- 명부 ----------
 const COLS=[
- {h:'닉네임',s:d=>d.n,f:d=>`<b>${d.n}</b>${d.alts?` <span class="lead" style="margin:0">부 ${d.alts.join(', ')}</span>`:''}`},{h:'직위',s:d=>d.r,f:d=>d.r},{h:'직업',s:d=>d.j,f:d=>d.j},{h:'조',s:d=>d.g,f:d=>d.g},
+ {h:'닉네임',s:d=>d.n,f:d=>`<b>${d.n}</b>${d.alts?` <span class="lead" style="margin:0">부 ${(d.altd||d.alts.map(n=>({n}))).map(a=>a.n+(a.idle?'(미접)':'')).join(', ')}</span>`:''}`},{h:'직위',s:d=>d.r,f:d=>d.r},{h:'직업',s:d=>d.j,f:d=>d.j},{h:'조',s:d=>d.g,f:d=>d.g},
  {h:'액티브 판정',s:d=>d.ac,f:d=>acTag(d.ac)},{h:'등급',s:d=>d.score,f:d=>`<span class="grade">${d.grade}</span>`},
  {h:'점수',n:1,s:d=>d.score,f:d=>d.score.toFixed(1)},{h:'최근 일 무훈',n:1,s:d=>lastM(d)==null?-1:lastM(d),f:d=>lastM(d)==null?'':f(lastM(d))},
  {h:'주간 무훈',n:1,s:d=>d.m,f:d=>f(d.m)},{h:'주간 공헌',n:1,s:d=>d.c,f:d=>f(d.c)},{h:'번영',n:1,s:d=>d.p,f:d=>f(d.p)},
@@ -391,11 +405,11 @@ function tabRank(){
   $('rkcsv').onclick=()=>{const q=v=>'"'+String(v).replace(/"/g,'""')+'"',rows=[['등급','이름','부대 수','부대 편성','도감']].concat(G.flatMap(g=>by(g).map(d=>[g,d.n,d.bk.n,us(d).join(' / '),d.bk.x?'입력':'없음'])));
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(q).join(',')).join('\n')],{type:'text/csv'}));a.download='전투등급.csv';a.click()}
 }
-function build(){derive();tabSummary();tabRoster();tabIssues();tabAct();tabRules();tabRank();if(CFG.edit)tabTalk()}
+function build(){derive();tabSummary();tabRoster();tabIssues();tabAct();tabRules();tabRank();tabAlt();if(CFG.edit)tabTalk()}
 const renderMeta=()=>{document.getElementById('meta').textContent=`명단 ${CFG.rosterFile}, 기준일 ${CFG.rosterDate}. 톡방 목록 ${CFG.talkFile}, 업데이트 ${CFG.talkDate}. 캐릭터 ID는 표시하지 않습니다.`};
-const TABN={0:'현황',1:'명단',2:'이슈',3:'활동 기록',4:'기준표',5:'전투 등급',6:'톡방 관리'};
+const TABN={0:'현황',1:'명단',2:'이슈',3:'활동 기록',4:'기준표',5:'전투 등급',6:'톡방 관리',7:'부계정'};
 const NAVMAIN=[[0,'🏠','현황'],[2,'⚠️','이슈'],[1,'👥','명단'],[3,'📈','활동 기록'],[-1,'⋯','더보기']];
-const MORE=[[5,'🎖️','전투 등급'],[4,'📋','기준표']].concat(CFG.edit?[[6,'💬','톡방 관리']]:[]);
+const MORE=[[5,'🎖️','전투 등급'],[7,'👤','부계정'],[4,'📋','기준표']].concat(CFG.edit?[[6,'💬','톡방 관리']]:[]);
 document.getElementById('nav').innerHTML=NAVMAIN.map(([i,ic,n])=>`<button data-i="${i}"><span class="pl">${ic}</span>${n}</button>`).join('');
 document.body.insertAdjacentHTML('beforeend','<div class="sheetbg" id="mbg"></div><div class="msheet" id="msh"><div class="gr"></div>'+MORE.map(([i,ic,n])=>`<button data-m="${i}"><span>${ic}</span>${n}</button>`).join('')+'</div>');
 let CURT=0;

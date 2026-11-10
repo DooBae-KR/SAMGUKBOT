@@ -2632,6 +2632,42 @@ def member_rank_data(gid, cids):
     return out
 
 
+ALT_IDLE_DAYS = 2        # 부계정: 이 기간 동안 무훈·공헌 수치가 그대로면 미접으로 분류
+
+
+def alt_idle_calc(gid, cids, upto=None):
+    """부계정 CID별 미접 판정 → {cid: {"idle": True/False/None, "since": 마지막으로 값이 바뀐 날(미접일 때 이 날 이후 변화 없음), "gap": 비교한 일수}}.
+    최신 기록과 ALT_IDLE_DAYS일 이전(없으면 그 이전 가장 가까운) 기록의 무훈·공헌(누적값이 있으면 누적값)을 비교한다. 비교할 기록이 없으면 idle=None(판정 안 함)."""
+    cids = [c for c in cids if c]
+    if not SB_ON or not cids: return {}
+    D = datetime.date.fromisoformat
+    base = D(upto) if upto else (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+    since = (base - datetime.timedelta(days=ALT_IDLE_DAYS + 12)).isoformat()
+    rows = []
+    for i in range(0, len(cids), 100):
+        rows += _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&snap_date=gte.{since}" + (f"&snap_date=lte.{upto}" if upto else "") + f"&cid=in.({','.join(cids[i:i + 100])})&select=cid,snap_date,war_merit,contribution,total_merit,total_contribution&order=snap_date&limit=100000") or []
+    by = {}
+    for r in rows: by.setdefault(r["cid"], []).append(r)
+    out = {}
+    for c, L in by.items():
+        last = L[-1]; lim = D(last["snap_date"]) - datetime.timedelta(days=ALT_IDLE_DAYS)
+        old = [r for r in L if D(r["snap_date"]) <= lim]
+        if not old: out[c] = {"idle": None, "since": "", "gap": 0}; continue
+        a = old[-1]
+        def same(x, y):
+            if x.get("total_merit") is not None and y.get("total_merit") is not None and x.get("total_contribution") is not None and y.get("total_contribution") is not None:
+                return x["total_merit"] == y["total_merit"] and x["total_contribution"] == y["total_contribution"]
+            return (x["war_merit"] or 0) == (y["war_merit"] or 0) and (x["contribution"] or 0) == (y["contribution"] or 0)
+        idle = same(a, last); since = ""
+        if idle:                                                              # 값이 마지막으로 달라진 날 = 변하지 않은 구간의 시작
+            since = a["snap_date"]
+            for r in reversed(L):
+                if D(r["snap_date"]) <= D(a["snap_date"]) and same(r, last): since = r["snap_date"]
+                elif D(r["snap_date"]) <= D(a["snap_date"]): break
+        out[c] = {"idle": idle, "since": since, "gap": (D(last["snap_date"]) - D(a["snap_date"])).days}
+    return out
+
+
 def render_html(tok=None, snap=None):
     """현재 명단/톡방 데이터로 상황판 HTML 문자열을 만든다. 데이터가 없으면 None. tok이 있으면(간부 링크) 톡방 관리 탭이 켜진다."""
     if not roster.members: return None
@@ -2663,9 +2699,16 @@ def render_html(tok=None, snap=None):
             x = dict(rk[i])
             if not spy_ok: x["sp"] = None
             d["rk"] = x
-    for d in D:                                             # 부계정은 통계에서 빼고, 본계 줄에 이름만 붙여 본계 판정을 따라간다
+    alt_idle = {}
+    try: alt_idle = alt_idle_calc(gid, [c for c, mc in alts.items() if c in cn and mc in cn and mc != c], snap)
+    except Exception: log.exception("부계정 미접 계산 실패")
+    for d in D:                                             # 부계정은 통계에서 빼고, 본계 줄에 이름·정보를 붙여 본계 판정을 따라간다
         m = cn.get(alts.get(d.get("_c")))
-        if m is not None and m is not d: m.setdefault("alts", []).append(d["n"])
+        if m is not None and m is not d:
+            m.setdefault("alts", []).append(d["n"])
+            ai = alt_idle.get(d.get("_c")) or {}
+            m.setdefault("altd", []).append({"n": d["n"], "j": d.get("j", ""), "r": d.get("r", ""), "g": d.get("g", ""), "p": d.get("p", 0), "m": d.get("m", 0), "c": d.get("c", 0), "s": d.get("s", 0),
+                                              "reg": d.get("reg", ""), "t": d.get("t", 0), "idle": ai.get("idle"), "since": ai.get("since", ""), "gap": ai.get("gap", 0)})
     D = [d for d in D if not (d.get("_c") in alts and alts[d["_c"]] in cn and alts[d["_c"]] != d["_c"])]
     try:
         rd = member_rank_data(gid, [d["_c"] for d in D if d.get("_c")])
