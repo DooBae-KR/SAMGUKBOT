@@ -2887,11 +2887,13 @@ def tier_sheet_cfg():
 
 
 def notice_page(title, msg, status=403):
-    """티어덱 페이지 테마(짙은 녹색·옥색)에 맞춘 안내 페이지 — 403 원문 텍스트 대신 사용"""
+    """안내 페이지 — /추천·인사 페이지와 같은 초록 테마(기본 밝게, 기기가 다크면 어둡게)"""
     h = (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>'
-         '<style>body{margin:0;background:#0c1311;color:#e8efe9;font:15px/1.6 "Noto Sans KR","Malgun Gothic",system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}'
-         '.c{max-width:420px;background:#16221f;border:1px solid #273934;border-radius:14px;padding:26px 24px;text-align:center}'
-         'h1{margin:0 0 10px;font-size:18px;color:#e3b95a}p{margin:0;color:#8fa59b}</style></head><body>'
+         '<style>:root{--bg:#f3f8f3;--card:#fff;--line:#d5e2d6;--txt:#17261a;--mute:#5d7262;--gold:#9a6b00;--jade:#2e7d32}'
+         '@media (prefers-color-scheme: dark){:root{--bg:#0d140e;--card:#1a251b;--line:#2a3a2c;--txt:#e6f0e7;--mute:#9bb09e;--gold:#f0c75e;--jade:#66bb6a}}'
+         'body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 "Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}'
+         '.c{max-width:420px;background:var(--card);border:1px solid var(--line);border-top:4px solid var(--jade);border-radius:12px;padding:26px 24px;text-align:center}'
+         'h1{margin:0 0 10px;font-size:18px;color:var(--gold)}p{margin:0;color:var(--mute)}</style></head><body>'
          f'<div class="c"><h1>{title}</h1><p>{msg}</p></div></body></html>')
     return web.Response(status=status, text=h, content_type="text/html")
 
