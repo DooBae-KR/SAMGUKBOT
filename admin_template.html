@@ -135,7 +135,9 @@ header .wrap,.admin-layout{max-width:1160px}
  <div class="card"><h2>현재 관리자</h2><ul id="alist"></ul></div>
 </div>
 <div class="tab" id="cmd">
- <div class="card"><h2>간부 명령어 직책별 권한</h2><p class="lead">직책을 선택하면 그 직책만 해당 명령어를 쓸 수 있습니다. 아무것도 선택하지 않으면 간부 역할 전체가 쓸 수 있습니다. 관리자는 항상 쓸 수 있고, 클릭하면 바로 저장됩니다.</p><div id="plist"></div></div>
+ <div class="card"><h2>간부 명령어 직책별 권한</h2><p class="lead">체크한 직책만 해당 명령어를 쓸 수 있습니다. 직책을 하나도 체크하지 않으면(= "간부 전체" 체크) 간부 역할 전체가 쓸 수 있습니다. 관리자는 항상 쓸 수 있고, 체크하면 바로 저장됩니다.</p><div id="plist" style="overflow-x:auto"></div></div>
+ <div class="card"><h2>개인별 권한</h2><p class="lead">직책과 관계없이 특정 사람에게만 명령어를 허용합니다. 간부 역할이 없어도 체크한 명령어는 쓸 수 있습니다(디스코드 인증된 사람만 해당). 사람을 추가한 뒤 칸을 체크하면 바로 저장됩니다.</p>
+  <div class="row"><input id="pu" list="mlst" placeholder="닉네임 또는 CID"><button class="b" id="pubtn">사람 추가</button></div><div id="pulist" style="overflow-x:auto;margin-top:8px"></div></div>
  <div class="card"><h2>명령어 권한</h2><p class="lead">역할별로 쓸 수 있는 명령어입니다. 관리자는 간부·동맹원 명령어도 모두 쓸 수 있고, 간부는 동맹원 명령어와 간부 명령어를 씁니다. 관리자 권한은 "관리자 권한" 탭에서 부여합니다.</p><div id="clist"></div></div>
 </div>
 <div class="tab" id="rsv">
@@ -210,7 +212,10 @@ function render(){if(!S)return;const a=S.ally||{};$("#ally").textContent=(a.serv
   $("#lall").textContent=L.length>200?"검색으로 좁혀 보세요 (200명까지 표시, 전체 "+L.length+"명)":""}
  const aq=$("#aq").value.trim();$("#acnt").textContent="(본캐 "+S.alts.length+"명)";
  $("#alts").innerHTML=S.alts.filter(g=>!aq||g.n.includes(aq)||g.alts.some(a=>a.n.includes(aq))).map(g=>`<li style="display:block"><b>${esc(g.n||g.c)}</b> <span class="mute">${esc(g.c)}</span><div class="row" style="gap:6px;margin-top:4px">${g.alts.map(a=>`<span class="tag">${esc(a.n||a.c)} <a href="#" data-ar="${esc(a.c)}" style="color:var(--verm);text-decoration:none">✕</a></span>`).join("")}</div></li>`).join("")||'<li class="mute">연결된 부캐가 없습니다</li>';
- $("#plist").innerHTML=S.staffCmds.map(c=>{const sel=S.cmdperm[c[0]]||[];return `<div style="padding:10px 0;border-top:1px solid var(--line)"><b>${esc(c[0])}</b> <span class="mute">${esc(c[1])}</span><div class="row" style="margin-top:6px;gap:6px"><button class="b ${sel.length?"g":""}" style="padding:3px 10px;font-size:12px;flex:0 0 auto" data-pc="${esc(c[0])}" data-all="1">전체</button>${S.titles.map(t=>`<button class="b ${sel.includes(t)?"":"g"}" style="padding:3px 10px;font-size:12px;flex:0 0 auto" data-pc="${esc(c[0])}" data-pt="${esc(t)}">${esc(t)}</button>`).join("")}<span class="tag ${sel.length?"w":""}" style="align-self:center">${sel.length?"제한: "+sel.length+"개 직책":"간부 전체"}</span></div></div>`}).join("");
+ {const ck=(on,attr)=>`<input type="checkbox" ${on?"checked":""} ${attr} style="width:18px;height:18px;accent-color:var(--jade);cursor:pointer">`,TH="padding:6px 8px;text-align:center;white-space:nowrap;font-size:12px;border-bottom:1px solid var(--line)",TD="padding:6px 8px;text-align:center;border-bottom:1px solid var(--line)",TN="padding:6px 8px;white-space:nowrap;border-bottom:1px solid var(--line);position:sticky;left:0;background:var(--card)";
+ $("#plist").innerHTML=`<table style="border-collapse:collapse;min-width:100%"><thead><tr><th style="${TH};text-align:left;position:sticky;left:0;background:var(--card)">명령어</th><th style="${TH}">간부 전체</th>${S.titles.map(t=>`<th style="${TH}">${esc(t)}</th>`).join("")}</tr></thead><tbody>`+S.staffCmds.map(c=>{const sel=S.cmdperm[c[0]]||[];return `<tr><td style="${TN}"><b>${esc(c[0])}</b><div class="mute" style="font-size:11px">${esc(c[1])}</div></td><td style="${TD}">${ck(!sel.length,`data-pc="${esc(c[0])}" data-all="1"`)}</td>${S.titles.map(t=>`<td style="${TD}">${ck(sel.includes(t),`data-pc="${esc(c[0])}" data-pt="${esc(t)}"`)}</td>`).join("")}</tr>`}).join("")+"</tbody></table>";
+ const nm={};(S.members||[]).forEach(m=>nm[m.c]=m.n);const cu=S.cmduser||{},ids=[...new Set([...Object.keys(cu),...PUX])];
+ $("#pulist").innerHTML=ids.length?`<table style="border-collapse:collapse;min-width:100%"><thead><tr><th style="${TH};text-align:left;position:sticky;left:0;background:var(--card)">사람</th>${S.staffCmds.map(c=>`<th style="${TH}">${esc(c[0])}</th>`).join("")}<th style="${TH}"></th></tr></thead><tbody>`+ids.map(id=>{const g=cu[id]||[];return `<tr><td style="${TN}"><b>${esc(nm[id]||id)}</b><div class="mute" style="font-size:11px">${esc(id)}</div></td>${S.staffCmds.map(c=>`<td style="${TD}">${ck(g.includes(c[0]),`data-uc="${esc(c[0])}" data-uid="${esc(id)}"`)}</td>`).join("")}<td style="${TD}"><a href="#" data-urm="${esc(id)}" style="color:var(--verm);text-decoration:none">✕</a></td></tr>`}).join("")+"</tbody></table>":'<p class="mute">개인 권한을 준 사람이 없습니다.</p>'}
  $("#tmax").textContent="(한도 "+S.maxTries+"회)";
  {const q=$("#rq").value.trim().toLowerCase(),R=(S.reserve||[]).filter(x=>!q||(x.n+x.c+x.memo+x.dn).toLowerCase().includes(q));
  $("#rcnt").textContent=`(${(S.reserve||[]).length}명 · 인증 ${(S.reserve||[]).filter(x=>x.ok).length})`;
@@ -242,7 +247,11 @@ $("#sbtn").onclick=async()=>{if(await api({op:"spy_add",id:$("#si").value}))$("#
 $("#splist").onclick=e=>{const d=e.target.dataset.spyd;if(d&&confirm("열람 권한을 뺄까요?"))api({op:"spy_del",id:d})};
 $("#abtn").onclick=async()=>{if(await api({op:"admin_add",id:$("#ai").value}))$("#ai").value=""};
 $("#alist").onclick=e=>{const id=e.target.dataset.rev;if(id&&confirm("이 사용자의 관리자 권한을 뺄까요?"))api({op:"admin_remove",id})};
-$("#plist").onclick=e=>{const d=e.target.dataset;if(!d.pc)return;if(d.all){if((S.cmdperm[d.pc]||[]).length)api({op:"cmdperm_set",cmd:d.pc,titles:[]});return}const cur=(S.cmdperm[d.pc]||[]).slice(),i=cur.indexOf(d.pt);i<0?cur.push(d.pt):cur.splice(i,1);api({op:"cmdperm_set",cmd:d.pc,titles:cur})};
+$("#plist").onchange=e=>{const d=e.target.dataset;if(!d.pc)return;if(d.all){if(e.target.checked)api({op:"cmdperm_set",cmd:d.pc,titles:[]});else e.target.checked=true;return}const cur=(S.cmdperm[d.pc]||[]).slice(),i=cur.indexOf(d.pt);i<0?cur.push(d.pt):cur.splice(i,1);api({op:"cmdperm_set",cmd:d.pc,titles:cur})};
+const PUX=new Set();
+$("#pulist").onchange=e=>{const d=e.target.dataset;if(!d.uc)return;const cur=((S.cmduser||{})[d.uid]||[]).slice(),i=cur.indexOf(d.uc);i<0?cur.push(d.uc):cur.splice(i,1);if(!cur.length)PUX.add(d.uid);api({op:"cmduser_set",cid:d.uid,cmds:cur})};
+$("#pulist").onclick=e=>{const id=e.target.dataset.urm;if(!id)return;e.preventDefault();PUX.delete(id);if((S.cmduser||{})[id])api({op:"cmduser_set",cid:id,cmds:[]});else render()};
+$("#pubtn").onclick=()=>{const v=$("#pu").value.trim(),m=(S.members||[]).find(x=>x.n===v||x.c===v);if(!m)return toast("명단에서 찾을 수 없는 사람입니다",1);PUX.add(m.c);$("#pu").value="";render()};
 $("#abtn2").onclick=async()=>{if(await api({op:"alt_add",main:$("#am").value,names:$("#an").value}))$("#an").value=""};
 $("#aq").oninput=render;$("#lq").oninput=render;
 $("#alts").onclick=e=>{const c=e.target.dataset.ar;if(c){e.preventDefault();if(confirm("이 부캐 연결을 해제할까요?"))api({op:"alt_remove",cid:c})}};

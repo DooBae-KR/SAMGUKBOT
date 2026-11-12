@@ -3037,7 +3037,7 @@ def adm_state(gid):
             left.append({"c": r["cid"], "n": r.get("name") or "", "j": r.get("job") or "", "d": r.get("left_date") or "", "t": ls.get("title") or "", "p": ls.get("prosperity") or 0,
                          "w": ls.get("war_merit") or 0, "g": ls.get("contribution") or 0, "s": ls.get("siege_count") or 0, "sd": ls.get("snap_date") or ""})
     except Exception: log.exception("이탈자 목록 조회 실패")
-    return {"left": left, "blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v}, "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "spy": [{"id": str(i), "name": (lambda m: str(m) if m else "")((bot.get_guild(gid).get_member(i) if bot.get_guild(gid) else None))} for i in sorted(spy_ids(gid))], "season": (lambda sn: {"no": sn["no"], "start": sn["start"], "ended": sn["ended"], "links": [{"no": a["no"], "at": a.get("at", ""), "url": ss_url(gid, a["no"])} for a in sn["archive"]][::-1]})(season_get()), "now": int(time.time())}
+    return {"left": left, "blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v and k != "__users"}, "cmduser": dict(((store_get("cmdperm", CMDPERM_PATH, {}) or {}).get("__users")) or {}), "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "spy": [{"id": str(i), "name": (lambda m: str(m) if m else "")((bot.get_guild(gid).get_member(i) if bot.get_guild(gid) else None))} for i in sorted(spy_ids(gid))], "season": (lambda sn: {"no": sn["no"], "start": sn["start"], "ended": sn["ended"], "links": [{"no": a["no"], "at": a.get("at", ""), "url": ss_url(gid, a["no"])} for a in sn["archive"]][::-1]})(season_get()), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
@@ -3581,6 +3581,17 @@ async def web_admin_api(request):
                 d = dict(store_get("cmdperm", CMDPERM_PATH, {}) or {}); d[cmd] = sorted(set(ts2)); store_set("cmdperm", CMDPERM_PATH, d)
             await asyncio.to_thread(sv)
             msg = f"✅ {cmd} 권한을 " + (", ".join(sorted(set(title_norm(t) for t in ts))) + " 직책으로 제한했습니다." if ts else "간부 전체로 되돌렸습니다.")
+        elif op == "cmduser_set":
+            c, cs = str(body.get("cid", "")).strip(), body.get("cmds")
+            if not (c.isascii() and c.isdigit()): raise ValueError("CID가 올바르지 않습니다.")
+            if not isinstance(cs, list) or any(x not in staff_cmds() for x in cs): raise ValueError("설정할 수 없는 명령어가 포함되어 있습니다.")
+            def sv2():
+                set_gid(gid); d = dict(store_get("cmdperm", CMDPERM_PATH, {}) or {}); u = dict(d.get("__users") or {})
+                if cs: u[c] = sorted(set(cs))
+                else: u.pop(c, None)
+                d["__users"] = u; store_set("cmdperm", CMDPERM_PATH, d)
+            await asyncio.to_thread(sv2)
+            msg = "✅ 개인 권한을 저장했습니다." if cs else "✅ 개인 권한을 모두 해제했습니다."
         elif op == "tries_reset":
             k = str(body.get("id", "")).strip()
             if not (k.isascii() and k.isdigit()): raise ValueError("ID가 올바르지 않습니다.")
@@ -5928,10 +5939,17 @@ def noperm_text(it, base="권한이 없습니다."):
     except Exception: return base
 
 
+def user_grants(did):
+    """관리 페이지에서 이 사람(CID)에게 직접 허용한 명령어 집합"""
+    cid = next((c for c, d in db_load()["uid"].items() if str(d) == str(did)), None)
+    return set(((store_get("cmdperm", CMDPERM_PATH, {}) or {}).get("__users") or {}).get(cid, [])) if cid else set()
+
+
 def staff_ok(it, cmd):
     """간부 명령어 사용 가능 여부. 관리자(디스코드 관리자·승인 관리자)는 항상 가능, 간부는 관리자가 정한 직책 제한을 따른다."""
-    if not is_staff(it): return False
     if is_admin(it): return True
+    if cmd in user_grants(it.user.id): return True              # 개인별 허용(간부 역할·직책 제한과 무관)
+    if not is_staff(it): return False
     lim = cmd_titles(cmd)
     return not lim or my_title(it.user.id) in lim
 
