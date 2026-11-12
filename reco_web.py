@@ -154,7 +154,7 @@ async function toggleOwn(kind,name){OWNS=OWNS||{h:new Set(D.own.h),s:new Set(D.o
   on?OWNS[kind].add(name):OWNS[kind].delete(name);DIRTY=true;const y=scrollY;draw();scrollTo(0,y)}
 function setQ(v){OQ=v;const e=document.getElementById('ol');if(e)e.innerHTML=ownList()}
 function setF(f){OF=f;draw()}
-function fm(s){const ns=(s||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진'}[x.trim()]||x.trim())).filter(x=>D.forms[x]);
+function fm(s){const ns=(s||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진','구형진':'구행진'}[x.trim()]||x.trim())).filter(x=>D.forms[x]);
   if(!ns.length)return s?esc(s):'';return ns.map(n=>`<span class="fm" title="${esc(n)}"><span class="fg">${D.forms[n].flat().map(v=>`<i class="${v?'on':''}"></i>`).join('')}</span>${esc(n)}</span>`).join(' ')}
 function pin(name,on){post({op:'pin',deck:name,on})}
 function showDon(){const m=document.createElement('div');m.className='shm';m.innerHTML=`<div class="shb" style="max-width:340px;text-align:center"><div class="bar"><b>☕ 제작자 커피 후원</b><span class="sp"></span><button class="sbtn" onclick="this.closest('.shm').remove()">닫기</button></div>`+donate()+`</div>`;m.onclick=e=>{if(e.target===m)m.remove()};document.body.appendChild(m)}
@@ -178,7 +178,7 @@ function unit(u,i){
   const fl=u.flow,s=fl.start;
   const lines=[`<div><b>전투 시작</b><span>지휘 ${esc(s['지휘'].join(' · ')||'-')} → 패시브 ${esc(s['패시브'].join(' · ')||'-')}</span></div>`].concat(fl.turn.map((t,k)=>`<div><b>턴 ${k+1}번째</b><span>${esc(t[0])}${t[1]!=null?`(${t[1]})`:''} 액티브 ${esc(t[2].join(' · ')||'-')} → 평타${t[3].length?` → 추격 ${esc(t[3].join(' · '))}`:''}</span></div>`));
   if(u.status.g.length)lines.push(`<div><b>이상상태</b><span class="m">부여 ${esc(u.status.g.join(', '))}${u.status.miss.length?` · 부족 ${esc(u.status.miss.join(', '))}`:''}</span></div>`);
-  return `<div class="unit reco-detail"><div class="uh"><span class="badge">${u.i}부대</span>${u.name?`<span class="m">${esc(u.tier)}</span><span class="nm">${esc(u.name)}</span><span class="tr">${fm(u.form)}</span>`:'<span class="nm">자유 편성</span>'}
+  return `<div class="unit reco-detail"><div class="uh"><span class="badge">${u.i}부대</span>${u.name?`<span class="m">${esc(u.tier)}</span><span class="nm">${esc(u.name)}</span><span class="tr" title="${esc(u.fw||'')}">${fm(u.form)}</span>`:`<span class="nm">자유 편성</span><span class="tr" title="${esc(u.fw||'')}">${fm(u.form)}</span>`}
   ${u.name?`<div class="votes">${vg('장수 조합',u.hv,i,'h')}${u.tset.length?vg('전법 조합',u.tv,i,'t'):''}</div>`:''}</div>
   <div class="hs reco-heroes">${u.heroes.map(h=>`<div class="reco-hero-card">${hero(h)}${h.n?[0,1].map(k=>`<div class="tc">${h.tac[k]?tcell(h.tac[k]):'<span class="m">전법 부족</span>'}</div>`).join(''):''}</div>`).join('')}</div>${tinfo(u)}<details class="tinfo"><summary>행동 순서와 이상상태</summary><div class="flow">${lines.join('')}</div></details></div>`}
 function tinfo(u){if(!u.name||!u.heroes.some(h=>h.ti&&(h.ti['스탯']||[]).length))return'';
@@ -216,7 +216,7 @@ function useRecommendation() {
   if(ANS||!US().length)return;
   loadFrom(US().map(unit=>{
     const form=(unit.form||'').split(/[\/·,]/).map(name=>name.trim())
-      .map(name=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진'}[name]||name))
+      .map(name=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진','구형진':'구행진'}[name]||name))
       .find(name=>Object.hasOwn(D.forms,name))||'';
     return {h:unit.heroes.map(hero=>hero.n||''),t:unit.heroes.map(hero=>(hero.tac||[]).slice(0,2).map(tactic=>tactic.n)),
       a:unit.heroes.map(hero=>hero.add||Z4()),f:form};
@@ -332,7 +332,7 @@ function setPQ(v){PQ=v;const e=document.getElementById('pl');if(e)e.innerHTML=pi
 function assign(name){PD=null;const p=PK;if(!p)return;const u=BLD[p.u];if(p.kind==='h'){u.h[p.k]=name;u.a[p.k]=Z4();fixA(u)}else u.t[p.k][p.j]=name;PK=null;saveDraft();const y=scrollY;draw();scrollTo(0,y);focusBuildSlot(p)}
 function clr(u,k,kind,j){if(kind==='h'){BLD[u].h[k]='';BLD[u].t[k]=['',''];BLD[u].a[k]=Z4()}else BLD[u].t[k][j]='';PK=null;saveDraft();draw()}
 function clearAll(){if(!confirm('5부대를 모두 비울까요?'))return;BLD=[0,1,2,3,4].map(T0);PK=null;saveDraft();draw()}
-function fillTier(u,name){const d=D.rank.decks.find(x=>x.name===name);if(!d)return;const o=BLD[u];BLD[u]=T0();BLD[u].src=name;BLD[u].f=(d.form||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진'}[x.trim()]||x.trim())).find(x=>D.forms[x])||'';const uh=usedH(),us=usedS(),oh=ownH(),os=ownS();
+function fillTier(u,name){const d=D.rank.decks.find(x=>x.name===name);if(!d)return;const o=BLD[u];BLD[u]=T0();BLD[u].src=name;BLD[u].f=(d.form||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진','구형진':'구행진'}[x.trim()]||x.trim())).find(x=>D.forms[x])||'';const uh=usedH(),us=usedS(),oh=ownH(),os=ownS();
   d.slots.forEach((slot,k)=>{const h=slot.split('/').find(x=>oh.has(x)&&!uh.has(x)&&HM[x]&&(HM[x].season||1)<=D.season);if(!h)return;BLD[u].h[k]=h;uh.add(h);
     ((d.tc||[])[k]||[]).slice(0,2).forEach((cell,j)=>{const t=cell.split(/[>\/]/).map(x=>SNK[x.trim().replace(/[\s·\-]/g,'')]).find(x=>x&&os.has(x)&&!us.has(x)&&(SM[x].season||1)<=D.season);if(t){BLD[u].t[k][j]=t;us.add(t)}})});
   recA(u,true);fixA(BLD[u]);saveDraft();draw()}
@@ -537,7 +537,7 @@ async function shareImg(){if(!BLD.some(u=>u.h.some(Boolean))){alert('편성이 �
         x.fillStyle='#5fcfb1';x.font=`600 18px ${F}`;x.fillText(t,ox+132,yy+4)}}}
   x.fillStyle='#8fa8a3';x.font=`500 16px ${F}`;x.fillText('한 번 쓴 장수·전법은 다른 부대에서 쓸 수 없음 · 무소유',30,H-20);
   const url=c.toDataURL('image/png');const m=document.createElement('div');m.className='shm';m.innerHTML=`<div class="shb"><div class="bar"><b>📷 내 5부대 편성 이미지</b><span class="sp"></span><a class="sbtn on" download="내_5부대_편성.png" href="${url}">⬇ 저장</a><button class="sbtn" onclick="this.closest('.shm').remove()">닫기</button></div><div class="m">모바일은 이미지를 길게 눌러 저장하세요</div><img src="${url}" alt="편성"></div>`;m.onclick=e=>{if(e.target===m)m.remove()};document.body.appendChild(m)}
-const fmNames=f=>(f||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진'}[x.trim()]||x.trim())).filter(x=>D.forms[x]);
+const fmNames=f=>(f||'').split(/[\/·,]/).map(x=>({'안영진':'안형진','추행진':'추형진','기영진':'기형진','구형진':'구행진'}[x.trim()]||x.trim())).filter(x=>D.forms[x]);
 async function winURL(only){const IDX=only==null?[0,1,2,3,4]:[only];
   const CW=340,GP=12,M=20,CH=268,W=M*2+IDX.length*CW+(IDX.length-1)*GP,H=96+66+3*CH+2*8+M+30,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');const F="'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif";
   x.fillStyle='#0f1a18';x.fillRect(0,0,W,H);const g=x.createLinearGradient(0,0,W,0);g.addColorStop(0,'#0d4c43');g.addColorStop(1,'#1f8f7a');x.fillStyle=g;x.fillRect(0,0,W,80);

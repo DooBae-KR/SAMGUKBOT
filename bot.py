@@ -4946,8 +4946,15 @@ def _reco_page_core(did, season, token, with_units=True, only_units=False):
                            "ti": {kk: (tier_cells(deck, kk)[h["slot"]] if h.get("slot") is not None and h["slot"] < len(tier_cells(deck, kk)) else []) for kk in ("스탯", "병법", "장비")} if deck else {},
                            "eq": equipment.recommend(v.get("style", ""), [info(t)["type"] for t, _w in tac])})
         u = {"i": i, "heroes": heroes, "flow": {"start": fl["start"], "turn": [[a, b2, c, d2] for a, b2, c, d2 in fl["turn"]]}, "status": {"g": ss[0], "miss": ss[1]}}
+        dform = (deck or {}).get("form", "")
+        if deck and not formations.names(dform):                                    # 개척덱처럼 진형이 비어 있으면 같은 이름의 티어덱 진형을 빌려 온다
+            key = re.sub(r"\s*\(.*?\)", "", deck["name"]).strip()
+            dform = next((d.get("form", "") for s_ in (season, 1, 2, 3) for d in tier_data()["S%d" % s_] if d["name"] == key and formations.names(d.get("form"))), "")
+        fmn, fmw = formations.pick(dform, heroes, season, (deck or {}).get("name", ""),      # 진형 자동 선택(티어덱에 없거나 자유 편성이어도 채움)
+                                   chaser=any(x.get("sktype") == "추격" or any(t.get("type") == "추격" for t in x.get("tac", [])) for x in heroes if x.get("n")))
+        u |= {"form": fmn, "fw": fmw}
         if deck:
-            u |= {"tier": deck.get("tier", ""), "name": deck["name"], "form": deck.get("form", ""), "note": deck.get("note", ""), "hk": vote_key(season, deck["name"]), "tk": tvote_key(season, deck["name"], tset), "tset": tset,
+            u |= {"tier": deck.get("tier", ""), "name": deck["name"], "form": fmn or deck.get("form", ""), "note": deck.get("note", ""), "hk": vote_key(season, deck["name"]), "tk": tvote_key(season, deck["name"], tset), "tset": tset,
                   "hv": vt(vote_key(season, deck["name"])), "tv": vt(tvote_key(season, deck["name"], tset))}
         units.append(u)
     if only_units: return {"units": units}, None
