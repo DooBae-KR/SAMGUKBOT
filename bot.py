@@ -1000,6 +1000,16 @@ async def start_finish(g):
 
 class GuildTree(app_commands.CommandTree):
     """모든 명령 실행 전에: ① 처리할 서버를 정하고 ② 허가되지 않은 서버는 /동맹등록 외에는 막는다."""
+    async def on_error(self, it: discord.Interaction, error: app_commands.AppCommandError):
+        """명령 처리 중 오류가 나도 '생각 중...'에서 멈추지 않게 안내 메시지를 보낸다."""
+        cmd = getattr(it.command, "qualified_name", "?")
+        log.error("명령 오류 /%s: %r", cmd, error, exc_info=error)
+        msg = "⚠️ 처리 중 오류가 났습니다. 잠시 후 다시 시도해 주세요. 계속되면 간부에게 알려 주세요."
+        try:
+            if it.response.is_done(): await it.followup.send(msg, ephemeral=True)
+            else: await it.response.send_message(msg, ephemeral=True)
+        except Exception: log.warning("오류 안내 전송 실패", exc_info=True)
+
     async def interaction_check(self, it: discord.Interaction):
         set_gid(it.guild_id)
         if it.user.id != OWNER_ID and svbl_has(it.user.id):
@@ -5768,7 +5778,10 @@ async def cmd_reco(it: discord.Interaction, 시즌: app_commands.Choice[int] = N
     else:
         season = 시즌.value; await asyncio.to_thread(pref_set, did, season=season)
     await it.response.defer(ephemeral=True)
-    await reco_deliver(it, did, season, note=note)
+    try: await asyncio.wait_for(reco_deliver(it, did, season, note=note), timeout=40)
+    except asyncio.TimeoutError:
+        log.error("/추천 시간 초과 did=%s", did)
+        await it.followup.send("⚠️ 서버가 바빠 링크를 만들지 못했습니다. 1~2분 뒤 다시 `/추천`을 눌러 주세요.", ephemeral=True)
 
 
 @bot.tree.command(name="봇초대", description="이 봇을 다른 서버에 초대하는 링크를 봅니다")
