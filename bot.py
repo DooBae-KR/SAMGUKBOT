@@ -96,9 +96,7 @@ class Roster:
         miss = [n for n in need if n not in H]
         if miss: raise RuntimeError("상황판용 열이 없습니다: " + ", ".join(miss))
         ix = {n: H.index(n) for n in need}
-        def num(v):
-            try: return float(str(v).replace(",", "").strip() or 0)
-            except ValueError: return 0
+        num = _num                                                    # '344만'·'1.2억' 표기도 숫자(3440000)로 바꿔 정렬·집계에 쓴다
         out = []
         for r in rows[hi + 1:]:
             g = lambda k: (str(r[ix[k]]).strip() if ix[k] < len(r) and r[ix[k]] is not None else "")
