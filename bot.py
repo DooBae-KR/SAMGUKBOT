@@ -2222,7 +2222,8 @@ CMD_HELP = {
            ("/공성등록", "공성 주둔지 등록"), ("/공성", "정철 개수·공성 예상 일정"), ("/공성취소", "등록한 공성 취소"),
            ("/공성예약", "공성 시각 예약(30분 전 간부 호출)"), ("/공성예약취소", "공성 예약 취소"),
            ("/정철설정", "정철 보유량 맞추기"), ("/동맹수정", "등록된 서버 번호·동맹명 수정"),
-           ("/동맹원추가", "게임 엑셀(오전 8시 반영)에 아직 없는 동맹원을 직접 추가")],
+           ("/동맹원추가", "게임 엑셀(오전 8시 반영)에 아직 없는 동맹원을 직접 추가"),
+           ("/부캐대리", "다른 사람의 부계정을 대신 등록(/부캐 본캐 지정, /인사 페이지 등록 탭)")],
     "관리자": [("/업적부여", "후원자(☕·💎) 업적 부여·회수"), ("/시즌종료", "이번 시즌 결산 통계(애니메이션 페이지) 만들기"), ("/시즌시작", "새 시즌 시작: 동맹원 명단(CID·닉네임 엑셀 또는 MemberWeek)으로 처음부터 집계"), ("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
 }
 
@@ -2739,6 +2740,10 @@ def render_html(tok=None, snap=None):
            "act": ({"dates": act["dates"], "quiet": act["quiet"], "n": act["n"], "warn": ACT_WARN,
                     "need": ACT_ACTIVE, "warObserved": act["warObserved"]} if act and act["n"] else None)}
     if tok: cfg.update(edit=True, tok=tok, talkNames=sorted(names))
+    try:
+        vu = int(str(tok).split(".")[0]) if tok else 0
+        if vu: cfg["reg"] = {"add": staff_ok_uid(gid, vu, "/동맹원추가"), "alt": staff_ok_uid(gid, vu, "/부캐대리")}
+    except Exception: log.exception("등록 권한 계산 실패")
     body = tpl.replace("__D__", json.dumps(D, ensure_ascii=False)).replace("__CFG__", json.dumps(cfg, ensure_ascii=False))
     return '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + body + "</html>"
 
@@ -2804,6 +2809,45 @@ async def web_hr(request):
     html = await asyncio.to_thread(lambda: (set_gid(gid), render_html(request.query.get("t"), snap))[1])
     if html is None: return web.Response(status=503, text="명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
     return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+
+async def web_hrreg(request):
+    """/인사 페이지 '등록' 탭: 동맹원 추가·부계정 대리 등록. 인사 링크 토큰 + 명령어 권한(/동맹원추가, /부캐대리)이 있어야 한다."""
+    t = request.query.get("t"); gid = hr_parse(t); set_gid(gid)
+    if gid is None: return web.json_response({"error": "링크가 만료되었습니다. 디스코드에서 /인사 를 다시 입력해 주세요."}, status=403)
+    if request.content_length and request.content_length > 50_000: return web.json_response({"error": "요청이 너무 큽니다."}, status=413)
+    try: body = await request.json()
+    except Exception: return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
+    if not isinstance(body, dict): return web.json_response({"error": "요청 형식이 올바르지 않습니다."}, status=400)
+    uid = int(str(t).split(".")[0]); op = body.get("op")
+    if not SB_ON: return web.json_response({"error": "DB가 연결되지 않아 사용할 수 없습니다."}, status=503)
+    g = bot.get_guild(gid); who = (lambda m: m.display_name if m else str(uid))(g.get_member(uid) if g else None)
+    try:
+        if op == "member_add":
+            if not await asyncio.to_thread(lambda: (set_gid(gid), staff_ok_uid(gid, uid, "/동맹원추가"))[1]): return web.json_response({"error": "동맹원 추가 권한이 없습니다. 디스코드 관리자에게 문의하세요."}, status=403)
+            cid, nick, job = str(body.get("cid", "")).strip(), re.sub(r"\s+", " ", str(body.get("nick", ""))).strip(), str(body.get("job", "")).strip()[:20]
+            if not (cid.isascii() and cid.isdigit() and 4 <= len(cid) <= 14): raise ValueError("CID는 숫자만 입력해 주세요.")
+            if not nick or len(nick) > 20: raise ValueError("닉네임을 1~20자로 입력해 주세요.")
+            msg = await asyncio.to_thread(lambda: (set_gid(gid), member_add(gid, cid, nick, job))[1])
+            if str(msg).startswith("✅") and g: await hr_notify(g, f"➕ **동맹원 추가** — **{nick}** · CID `{cid}` · 처리: {discord.utils.escape_markdown(who)} (인사 페이지)")
+        elif op == "alt_add":
+            if not await asyncio.to_thread(lambda: (set_gid(gid), staff_ok_uid(gid, uid, "/부캐대리"))[1]): return web.json_response({"error": "부계정 등록 권한이 없습니다. 디스코드 관리자에게 문의하세요."}, status=403)
+            key, raw = re.sub(r"\s+", " ", str(body.get("main", ""))).strip(), str(body.get("names", ""))[:2000]
+            if not key or not raw.strip(): raise ValueError("본캐와 부캐 닉네임을 입력해 주세요.")
+            def al():
+                set_gid(gid); by = roster_for(gid).by_uid
+                cs = [key] if key in by else [c for c, v in by.items() if v.get("name") == key]
+                if not cs: raise ValueError(f"명단에 없는 본캐입니다: {key}")
+                if len(cs) > 1: raise ValueError(f"같은 닉네임이 {len(cs)}명이라 CID로 입력해 주세요: {', '.join(cs)}")
+                if _sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&alt_cid=eq.{cs[0]}&select=alt_cid"): raise ValueError("이 본캐는 이미 다른 사람의 부캐로 연결되어 있습니다.")
+                return cs[0], by[cs[0]].get("name") or cs[0], *alt_link(gid, cs[0], raw)
+            mc, mn, ok, bad = await asyncio.to_thread(al)
+            msg = (f"✅ {mn}에 부캐 {len(ok)}명 연결: {', '.join(n for n, _ in ok)}" if ok else "연결된 부캐가 없습니다.") + ("\n⚠️ 제외: " + " / ".join(f"{n}({w})" for n, w in bad) if bad else "")
+            if ok and g: await hr_notify(g, f"👥 **부계정 등록** — 본캐 **{mn}** ← {', '.join(n for n, _ in ok)} · 처리: {discord.utils.escape_markdown(who)} (인사 페이지)")
+        else: return web.json_response({"error": "알 수 없는 요청입니다."}, status=400)
+    except ValueError as e: return web.json_response({"error": str(e)}, status=400)
+    except Exception: log.exception("인사 페이지 등록 실패"); return web.json_response({"error": "처리 중 오류가 발생했습니다."}, status=500)
+    return web.json_response({"msg": msg})
 
 
 async def web_talk(request):
@@ -3645,7 +3689,7 @@ async def start_web():
     if not WEB_PORT: return
     app = web.Application(middlewares=[gzip_mw]); app.router.add_get("/", web_index)
     app.router.add_get("/img/{k}/{size}/{name}", web_img); app.router.add_get("/guide/{name}", web_guide)
-    app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk)
+    app.router.add_get("/tier", web_tier); app.router.add_get("/hr", web_hr); app.router.add_post("/api/dex", web_dex_save); app.router.add_post("/api/talk", web_talk); app.router.add_post("/api/hrreg", web_hrreg)
     app.router.add_get("/admin", web_admin); app.router.add_get("/owner", web_owner); app.router.add_get("/recojoin", web_recojoin); app.router.add_post("/api/owner", web_owner_api); app.router.add_get("/reco", web_reco); app.router.add_post("/api/reco", web_reco_api); app.router.add_post("/api/admin", web_admin_api)
     app.router.add_get("/season", web_season); app.router.add_get("/admin/season_template.xlsx", web_admin_tpl); app.router.add_get("/invite", web_invite); app.router.add_get("/bimg/{iid}", web_bimg)
     app.router.add_get("/health", lambda r: web.Response(text="ok"))      # 외부 핑(UptimeRobot 등)용
@@ -4257,7 +4301,7 @@ async def cmd_alt(it: discord.Interaction, 닉네임: str = "", 본캐: str = ""
     if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
     gid = cur_gid(); did = str(it.user.id); target = ""
     if 본캐.strip():                                                         # 관리자: 다른 사람의 본캐를 지정
-        if not is_admin(it): return await it.response.send_message("본캐를 지정하는 기능은 관리자만 사용할 수 있습니다.", ephemeral=True)
+        if not staff_ok(it, "/부캐대리"): return await it.response.send_message(noperm_text(it, "본캐를 지정하는 기능은 권한이 있는 간부·관리자만 사용할 수 있습니다."), ephemeral=True)
         nm = re.sub(r"\s+", " ", 본캐).strip()
         cs = [c for c, v in roster_for(gid).by_uid.items() if v.get("name") == nm]
         if not cs: return await it.response.send_message(f"❌ 명단에 없는 본캐 닉네임입니다: {nm}", ephemeral=True)
@@ -5999,6 +6043,19 @@ def staff_ok(it, cmd):
     if not is_staff(it): return False
     lim = cmd_titles(cmd)
     return not lim or my_title(it.user.id) in lim
+
+
+def staff_ok_uid(gid, uid, cmd):
+    """웹(인사 링크)용: 디스코드 사용자 ID로 staff_ok와 같은 규칙을 검사한다. 호출 전에 set_gid(gid) 필요."""
+    try:
+        g = bot.get_guild(int(gid)); m = g.get_member(int(uid)) if g else None
+        if m is None: return False
+        if m.guild_permissions.administrator or (int(gid), int(uid)) in PERM: return True
+        if cmd in user_grants(uid): return True
+        if not any(r.name == OFFICER_ROLE for r in m.roles): return False
+        lim = cmd_titles(cmd)
+        return not lim or my_title(uid) in lim
+    except Exception: log.exception("권한 확인 실패"); return False
 
 
 def jc_plan(st):
