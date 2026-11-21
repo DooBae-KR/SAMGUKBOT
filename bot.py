@@ -2224,7 +2224,7 @@ CMD_HELP = {
            ("/정철설정", "정철 보유량 맞추기"), ("/동맹수정", "등록된 서버 번호·동맹명 수정"),
            ("/동맹원추가", "게임 엑셀(오전 8시 반영)에 아직 없는 동맹원을 직접 추가"),
            ("/부캐대리", "다른 사람의 부계정을 대신 등록(/부캐 본캐 지정, /인사 페이지 등록 탭)")],
-    "관리자": [("/업적부여", "후원자(☕·💎) 업적 부여·회수"), ("/시즌종료", "이번 시즌 결산 통계(애니메이션 페이지) 만들기"), ("/시즌시작", "새 시즌 시작: 동맹원 명단(CID·닉네임 엑셀 또는 MemberWeek)으로 처음부터 집계"), ("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
+    "관리자": [("/업적부여", "후원자(☕·💎) 업적 부여·회수"), ("/시즌종료", "이번 시즌 결산 통계(애니메이션 페이지) 만들기"), ("/시즌결산삭제", "보관된 지난 시즌 결산 하나 삭제"), ("/시즌시작", "새 시즌 시작: 동맹원 명단(CID·닉네임 엑셀 또는 MemberWeek)으로 처음부터 집계"), ("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
 }
 
 
@@ -4162,6 +4162,47 @@ async def cmd_season_end(it: discord.Interaction):
     try: await it.channel.send(season_summary(stats) + f"\n▶ 결산 영상처럼 보기 ({SEASON_LINK_DAYS}일 유효)\n{url}")
     except Exception: log.warning("시즌 결산 게시 실패", exc_info=True)
     await it.followup.send(f"✅ 시즌 {stats['no']} 통계를 만들어 이 채널에 올렸습니다.\n{url}\n📌 시즌이 끝나 **서버 번호가 초기화**되었습니다. 새 시즌 서버 번호는 `/동맹등록`으로 다시 입력해 주세요.\n다음 시즌은 `/시즌시작`으로 새 명단을 넣으면 시작됩니다. (그전까지 인사 기록은 그대로 쌓입니다)", ephemeral=True)
+
+
+def season_archive_delete(no):
+    """보관된 시즌 결산 하나를 지운다(인사 기록은 그대로). 그 시즌이 '종료' 상태였다면 진행 중으로 되돌린다. → (지웠는지, 되돌렸는지)"""
+    st = season_get(); n0 = len(st["archive"])
+    st["archive"] = [a for a in st["archive"] if a.get("no") != no]
+    if len(st["archive"]) == n0: return False, False
+    reopened = bool(st.get("ended")) and st.get("no") == no
+    if reopened: st["ended"] = None
+    season_set(st); return True, reopened
+
+
+class SeasonDelView(CtxView):
+    def __init__(self, uid, no):
+        super().__init__(timeout=120); self.uid, self.no = uid, no
+
+    @discord.ui.button(label="결산 삭제", style=discord.ButtonStyle.danger)
+    async def go(self, it: discord.Interaction, b: discord.ui.Button):
+        if it.user.id != self.uid: return await it.response.send_message("명령을 입력한 관리자만 누를 수 있습니다.", ephemeral=True)
+        try: ok, reopened = await asyncio.to_thread(season_archive_delete, self.no)
+        except Exception: log.exception("시즌 결산 삭제 실패"); return await it.response.edit_message(content="❌ 삭제 중 오류가 발생했습니다.", view=None)
+        msg = f"🗑️ 시즌 {self.no} 결산을 삭제했습니다." if ok else f"시즌 {self.no} 결산이 이미 없습니다."
+        if reopened: msg += "\n시즌이 다시 진행 중 상태가 되었습니다. 필요하면 `/시즌종료`로 결산을 새로 만드세요."
+        await it.response.edit_message(content=msg, view=None)
+
+    @discord.ui.button(label="취소", style=discord.ButtonStyle.secondary)
+    async def cancel(self, it: discord.Interaction, b: discord.ui.Button):
+        if it.user.id != self.uid: return await it.response.send_message("명령을 입력한 관리자만 누를 수 있습니다.", ephemeral=True)
+        await it.response.edit_message(content="취소했습니다. 아무것도 지우지 않았습니다.", view=None)
+
+
+@bot.tree.command(name="시즌결산삭제", description="[관리자] 보관된 지난 시즌 결산 하나를 삭제합니다 (인사 기록은 지우지 않습니다)")
+@app_commands.describe(시즌="삭제할 시즌 번호")
+async def cmd_season_del(it: discord.Interaction, 시즌: int):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if not is_admin(it): return await it.response.send_message(noperm_text(it, "관리자만 사용할 수 있습니다."), ephemeral=True)
+    if not SB_ON: return await it.response.send_message("DB가 연결되지 않아 사용할 수 없습니다.", ephemeral=True)
+    st = await asyncio.to_thread(season_get)
+    have = sorted(a.get("no") for a in st["archive"])
+    if 시즌 not in have: return await it.response.send_message(f"시즌 {시즌} 결산이 보관돼 있지 않습니다. 보관된 시즌: {', '.join(map(str, have)) or '없음'}", ephemeral=True)
+    await it.response.send_message(f"시즌 **{시즌}** 결산을 삭제할까요? 되돌릴 수 없습니다. (인사 기록은 지워지지 않습니다)", view=SeasonDelView(it.user.id, 시즌), ephemeral=True)
 
 
 class SeasonStartView(CtxView):
