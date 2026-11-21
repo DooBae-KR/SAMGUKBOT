@@ -3968,13 +3968,44 @@ def season_template_xlsx():
     buf = io.BytesIO(); wb.save(buf); buf.seek(0); return buf
 
 
+def season_account(rows, base=None):
+    """한 사람의 인사 기록(sam_emp_stat 행들) → 시즌 무훈·공헌·공성 합계와 주별 내역.
+
+    [주간 사이클 규칙] 게임의 주간 무훈·공헌·공성 값은 주(월요일 시작)마다 0에서 다시 쌓인다.
+      · 같은 주 안에서는 값이 오른 만큼(상대값)을 더한다. 값이 줄었다면 주중 리셋으로 보고 그 값 자체를 새로 더한다.
+        (그날 첫 기록은 0에서 시작한 값이므로 값 자체를 더한다 → 스냅샷이 빠진 날이 있어도 마지막 값까지 반영)
+      · 0으로 잘못 읽힌 행(파싱 실패 등)은 이미 양수가 쌓인 뒤라면 건너뛰어 이중 집계를 막는다.
+      · 주별 값을 모두 더한 것이 시즌 합계의 기본값이다.
+    [누적 우선 규칙] 총 무훈·총 공헌(total_merit·total_contribution)이 있는 사람은 주간 합 대신
+      '마지막 누적값 − 시즌 시작 시점 누적값'을 시즌 값으로 쓴다(주간 값으로 쌓은 기존 데이터는 무시).
+      시작 시점 누적값은 base={'tm':…, 'tc':…}가 있으면 그것을, 없으면 시즌 첫 기록의 누적값에서 그 기록의 주간 값을 뺀 값(0 미만이면 0)을 쓴다.
+    → {"wm","ct","sg","wk":{주 시작일:[무훈,공헌,공성]},"tm","tc"(누적 기준 값, 없으면 None)}"""
+    D = datetime.date.fromisoformat
+    L = sorted(rows, key=lambda r: r["snap_date"])
+    wk, prev = {}, {}
+    for r in L:
+        d = D(r["snap_date"]); w = (d - datetime.timedelta(days=d.weekday())).isoformat()
+        cur = [r.get("war_merit") or 0, r.get("contribution") or 0, r.get("siege_count") or 0]
+        a = wk.setdefault(w, [0, 0, 0]); p = prev.get(w, [0, 0, 0])
+        for k in range(3):
+            if cur[k] == 0 and p[k] > 0: continue                 # 0으로 읽힌 행은 무시(이중 집계 방지)
+            a[k] += cur[k] - p[k] if cur[k] >= p[k] else cur[k]
+            p[k] = cur[k]
+        prev[w] = p
+    out = {"wk": wk, "wm": sum(v[0] for v in wk.values()), "ct": sum(v[1] for v in wk.values()), "sg": sum(v[2] for v in wk.values()), "tm": None, "tc": None}
+    for key, tot, wcol, name in (("tm", "total_merit", "war_merit", "wm"), ("tc", "total_contribution", "contribution", "ct")):
+        T = [r for r in L if r.get(tot) is not None]
+        if not T: continue
+        if base and base.get(key) is not None: b = base[key]
+        else: b = max(0, min(T[0][tot], T[0][tot] - (T[0].get(wcol) or 0)))
+        out[key] = max(0, T[-1][tot] - b); out[name] = out[key]
+    return out
+
+
 def _season_sums(rows):
-    """한 사람의 인사 기록 → 시즌 무훈·공헌·공성 합계(주별 최댓값의 합). 시즌결산과 이탈자 보관에 같이 쓴다."""
-    wk = {}
-    for r in rows:
-        d = datetime.date.fromisoformat(r["snap_date"]); w = wk.setdefault((d - datetime.timedelta(days=d.weekday())).isoformat(), [0, 0, 0])
-        w[0] = max(w[0], r.get("war_merit") or 0); w[1] = max(w[1], r.get("contribution") or 0); w[2] = max(w[2], r.get("siege_count") or 0)
-    return {"sw": sum(v[0] for v in wk.values()), "sc": sum(v[1] for v in wk.values()), "ss": sum(v[2] for v in wk.values())}
+    """이탈 시 보관용: 시즌 합계(sw/sc/ss) + 누적 기준 값(tm/tc) + 주별 내역(wk). 시즌결산과 이탈자 보관에 같이 쓴다."""
+    a = season_account(rows)
+    return {"sw": a["wm"], "sc": a["ct"], "ss": a["sg"], "tm": a["tm"], "tc": a["tc"], "wk": a["wk"]}
 
 
 def season_stats(gid, start=None):
@@ -3987,11 +4018,12 @@ def season_stats(gid, start=None):
     for r in rows:
         if r["cid"] not in emp or r["cid"] in alts: continue
         by.setdefault(r["cid"], []).append(r); dates.add(r["snap_date"])
-        d = D(r["snap_date"]); w = wk.setdefault((d - datetime.timedelta(days=d.weekday())).isoformat(), {}).setdefault(r["cid"], [0, 0, 0])
-        w[0] = max(w[0], r["war_merit"] or 0); w[1] = max(w[1], r["contribution"] or 0); w[2] = max(w[2], r["siege_count"] or 0)
-    weeks = sorted(wk); per = []
+    acc = {cid: season_account(L) for cid, L in by.items()}        # 주간 사이클 상대값 합 / 누적값이 있으면 누적 우선(season_account 설명 참고)
+    for cid, a in acc.items():
+        for w, v in a["wk"].items(): wk.setdefault(w, {})[cid] = v
+    per = []
     for cid, L in by.items():
-        wm = sum(wk[w].get(cid, [0, 0, 0])[0] for w in weeks); ct = sum(wk[w].get(cid, [0, 0, 0])[1] for w in weeks); sg = sum(wk[w].get(cid, [0, 0, 0])[2] for w in weeks)
+        wm, ct, sg = acc[cid]["wm"], acc[cid]["ct"], acc[cid]["sg"]
         days = streak = best = 0
         for a, b in zip(L, L[1:]):                          # 일 증가분: 같은 주면 차이, 월요일(주 리셋)·감소면 그날 값 자체
             reset = D(b["snap_date"]).weekday() == 0 or D(b["snap_date"]) < D(a["snap_date"])
@@ -4009,10 +4041,18 @@ def season_stats(gid, start=None):
         ls = r.get("last_stat") or {}
         if start and (ls.get("snap_date") or "9") < start: continue            # 지난 시즌에 이미 떠난 사람은 제외
         wm = ls.get("sw", ls.get("war_merit") or 0); ct = ls.get("sc", ls.get("contribution") or 0); sg = ls.get("ss", ls.get("siege_count") or 0)
+        if ls.get("tm") is not None: wm = ls["tm"]                              # 누적 값이 있으면 누적 우선
+        if ls.get("tc") is not None: ct = ls["tc"]
         if wm + ct <= 0: continue
         nleft += 1
+        lw = ls.get("wk")
+        if not lw and ls.get("snap_date"):                                       # 주별 내역이 없는 예전 보관분: 마지막 기록이 있던 주에 합계를 몰아서 반영
+            dd = D(ls["snap_date"]); lw = {(dd - datetime.timedelta(days=dd.weekday())).isoformat(): [wm, ct, sg]}
+        for w, v in (lw or {}).items(): wk.setdefault(w, {})["L" + r["cid"]] = v        # 주별 합계·추이에 이탈자도 포함
         per.append({"c": r["cid"], "n": (r.get("name") or "") + "(이탈)", "j": r.get("job") or "", "wm": wm, "ct": ct, "sg": sg, "days": 0, "streak": 0, "pg": 0, "p": 0, "first": ls.get("snap_date") or ""})
+    weeks = sorted(wk)
     if not per: return {"n": 0}
+    if not dates: dates = {w for w in weeks}                       # 현재 명단 기록이 없고 이탈자만 있는 경우
     first = min(dates)
     top = lambda key, k=10: [{"n": x["n"], "j": x["j"], "v": x[key]} for x in sorted(per, key=lambda x: -x[key])[:k] if x[key] > 0]
     mw, mc = max(x["wm"] for x in per) or 1, max(x["ct"] for x in per) or 1
