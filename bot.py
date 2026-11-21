@@ -3967,17 +3967,15 @@ def season_template_xlsx():
 
 
 def season_account(rows, base=None):
-    """한 사람의 인사 기록(sam_emp_stat 행들) → 시즌 무훈·공헌·공성 합계와 주별 내역.
+    """한 사람의 인사 기록(sam_emp_stat 행들) → 시즌 결산용 총 무훈·총 공헌과 공성 합계, 주차별 누적 내역.
 
-    [주간 사이클 규칙] 게임의 주간 무훈·공헌·공성 값은 주(월요일 시작)마다 0에서 다시 쌓인다.
-      · 같은 주 안에서는 값이 오른 만큼(상대값)을 더한다. 값이 줄었다면 주중 리셋으로 보고 그 값 자체를 새로 더한다.
-        (그날 첫 기록은 0에서 시작한 값이므로 값 자체를 더한다 → 스냅샷이 빠진 날이 있어도 마지막 값까지 반영)
-      · 0으로 잘못 읽힌 행(파싱 실패 등)은 이미 양수가 쌓인 뒤라면 건너뛰어 이중 집계를 막는다.
-      · 주별 값을 모두 더한 것이 시즌 합계의 기본값이다.
-    [누적 우선 규칙] 총 무훈·총 공헌(total_merit·total_contribution)이 있는 사람은 주간 합 대신
-      '마지막 누적값 − 시즌 시작 시점 누적값'을 시즌 값으로 쓴다(주간 값으로 쌓은 기존 데이터는 무시).
-      시작 시점 누적값은 base={'tm':…, 'tc':…}가 있으면 그것을, 없으면 시즌 첫 기록의 누적값에서 그 기록의 주간 값을 뺀 값(0 미만이면 0)을 쓴다.
-    → {"wm","ct","sg","wk":{주 시작일:[무훈,공헌,공성]},"tm","tc"(누적 기준 값, 없으면 None)}"""
+    [총합 기준] 결산은 주간 무훈·공헌이 아니라 '총 무훈·총 공헌'(total_merit·total_contribution)으로 낸다.
+      · 총 무훈·총 공헌이 있으면 마지막 기록의 누적값 그대로가 그 사람의 값이다(시작 시점 값을 빼지 않는다).
+      · 누적 값이 없는 사람(주간 값만 있는 옛 기록)은 주간 사이클 규칙으로 대신 합산한다:
+        같은 주 안에서는 값이 오른 만큼(상대값)을 더하고, 값이 줄면 주중 리셋으로 보아 그 값 자체를 새로 더한다.
+        0으로 잘못 읽힌 행은 이미 양수가 쌓인 뒤라면 건너뛴다. 이렇게 쌓은 값은 총 무훈·총 공헌 대신 쓰는 근사치다.
+      · 공성 횟수는 계속 주간 합산이다.
+    → {"wm","ct"(총 무훈·총 공헌), "sg", "wk":{주 시작일:[주 끝 시점 누적 무훈, 누적 공헌, 그 주 공성]}, "tm","tc"(누적 값이 있었으면 그 값, 없으면 None)}"""
     D = datetime.date.fromisoformat
     L = sorted(rows, key=lambda r: r["snap_date"])
     wk, prev = {}, {}
@@ -3990,13 +3988,22 @@ def season_account(rows, base=None):
             a[k] += cur[k] - p[k] if cur[k] >= p[k] else cur[k]
             p[k] = cur[k]
         prev[w] = p
-    out = {"wk": wk, "wm": sum(v[0] for v in wk.values()), "ct": sum(v[1] for v in wk.values()), "sg": sum(v[2] for v in wk.values()), "tm": None, "tc": None}
-    for key, tot, wcol, name in (("tm", "total_merit", "war_merit", "wm"), ("tc", "total_contribution", "contribution", "ct")):
+    out = {"wm": 0, "ct": 0, "sg": sum(v[2] for v in wk.values()), "tm": None, "tc": None}
+    for key, tot, idx, name in (("tm", "total_merit", 0, "wm"), ("tc", "total_contribution", 1, "ct")):
         T = [r for r in L if r.get(tot) is not None]
-        if not T: continue
-        if base and base.get(key) is not None: b = base[key]
-        else: b = max(0, min(T[0][tot], T[0][tot] - (T[0].get(wcol) or 0)))
-        out[key] = max(0, T[-1][tot] - b); out[name] = out[key]
+        if T:                                                      # 누적 값 우선: 주별로 그 주 마지막 누적값, 합계는 마지막 누적값
+            last = {}
+            for r in T:
+                d = D(r["snap_date"]); last[(d - datetime.timedelta(days=d.weekday())).isoformat()] = r[tot]
+            run = 0
+            for w in sorted(wk):
+                run = last.get(w, run); wk[w][idx] = run
+            out[key] = out[name] = T[-1][tot]
+        else:                                                      # 주간 값만 있으면 주별 합산을 누적해서 쓴다
+            run = 0
+            for w in sorted(wk): run += wk[w][idx]; wk[w][idx] = run
+            out[name] = run
+    out["wk"] = wk
     return out
 
 
@@ -4011,7 +4018,7 @@ def season_stats(gid, start=None):
     D = datetime.date.fromisoformat
     emp = {r["cid"]: r for r in (_sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid,name,job&limit=5000") or [])}
     alts = {r["alt_cid"] for r in (_sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid&limit=100000") or [])}
-    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}" + (f"&snap_date=gte.{start}" if start else "") + "&select=cid,snap_date,prosperity,war_merit,contribution,siege_count&order=snap_date.asc&limit=100000") or []
+    rows = _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}" + (f"&snap_date=gte.{start}" if start else "") + "&select=cid,snap_date,prosperity,war_merit,contribution,siege_count,total_merit,total_contribution&order=snap_date.asc&limit=100000") or []
     by, wk, dates = {}, {}, set()
     for r in rows:
         if r["cid"] not in emp or r["cid"] in alts: continue
@@ -4049,6 +4056,11 @@ def season_stats(gid, start=None):
         for w, v in (lw or {}).items(): wk.setdefault(w, {})["L" + r["cid"]] = v        # 주별 합계·추이에 이탈자도 포함
         per.append({"c": r["cid"], "n": (r.get("name") or "") + "(이탈)", "j": r.get("job") or "", "wm": wm, "ct": ct, "sg": sg, "days": 0, "streak": 0, "pg": 0, "p": 0, "first": ls.get("snap_date") or ""})
     weeks = sorted(wk)
+    for k in {k for v in wk.values() for k in v}:                    # 주차별 누적: 기록이 없는 주는 직전 주 값을 이어 쓴다(이탈자는 마지막 값 유지)
+        run = [0, 0]
+        for w in weeks:
+            if k in wk[w]: run = [wk[w][k][0], wk[w][k][1]]
+            else: wk[w][k] = [run[0], run[1], 0]
     if not per: return {"n": 0}
     if not dates: dates = {w for w in weeks}                       # 현재 명단 기록이 없고 이탈자만 있는 경우
     first = min(dates)

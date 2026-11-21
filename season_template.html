@@ -47,7 +47,7 @@ button{background:var(--jade);color:#052;border:0;border-radius:10px;padding:11p
  <div class="rv hero-n" style="margin-top:22px"><b id="hn" style="color:var(--jade);font-size:1.6em">0</b>명이 함께한 시즌</div>
  <div class="hint rv">▼ 아래로 스크롤</div></div></section>
 <section class="scene" id="s1"><div class="in-w"><h2 class="rv">우리 동맹이 해낸 일</h2><p class="sub rv" id="s1s"></p><div class="tiles rv" id="tiles"></div></div></section>
-<section class="scene" id="s2"><div class="in-w"><h2 class="rv">주차별 흐름</h2><p class="sub rv">한 주 동안 동맹 전체가 쌓은 무훈과 공헌입니다</p><div class="rv" id="chart"></div><div class="lg rv"><span><i style="background:var(--gold)"></i>무훈</span><span><i style="background:var(--jade)"></i>공헌</span></div></div></section>
+<section class="scene" id="s2"><div class="in-w"><h2 class="rv">주차별 누적 흐름</h2><p class="sub rv">각 주가 끝날 때까지 동맹 전체가 쌓은 총 무훈과 총 공헌입니다</p><div class="rv" id="chart"></div><div class="lg rv"><span><i style="background:var(--gold)"></i>무훈</span><span><i style="background:var(--jade)"></i>공헌</span></div></div></section>
 <section class="scene" id="s3"><div class="in-w"><h2 class="rv">⚔️ 무훈 TOP 10</h2><p class="sub rv">전쟁에서 가장 앞장선 사람들</p><ol class="rank" id="rw"></ol></div></section>
 <section class="scene" id="s4"><div class="in-w"><h2 class="rv">🌾 공헌 TOP 10</h2><p class="sub rv">적 토지 뒤집기와 보급 운송으로 동맹을 키운 사람들</p><ol class="rank" id="rc"></ol></div></section>
 <section class="scene" id="s5"><div class="in-w"><h2 class="rv">🏅 시즌 어워드</h2><p class="sub rv">이번 시즌을 빛낸 사람들</p><div class="awards" id="aws"></div></div></section>
@@ -74,7 +74,7 @@ $("#s1s").textContent="동맹원 "+S.n+"명 · 기록 "+S.snaps+"일"+(S.joined?
  [["wm","#e0b65a"],["ct","#5ecfb1"]].forEach(([k,c])=>{const pts=W.map((x,i)=>[X(i),Y(x[k])]);
   const p=mk("path",{d:pts.map((q,i)=>(i?"L":"M")+q[0].toFixed(1)+" "+q[1].toFixed(1)).join(""),class:"ln",stroke:c});svg.append(p);let len=0;pts.forEach((q,i)=>{if(i)len+=Math.hypot(q[0]-pts[i-1][0],q[1]-pts[i-1][1])});p.style.setProperty("--len",Math.ceil(len)+2);
   pts.forEach((q,i)=>{svg.append(mk("circle",{cx:q[0],cy:q[1],r:4.5,fill:c,class:"dot"}))})});
- const pk=W.reduce((a,b)=>b.wm+b.ct>a.wm+a.ct?b:a);const m=mk("text",{x:X(W.indexOf(pk)),y:T-6,fill:"#ece7d6","font-size":13,"text-anchor":"middle",class:"dot"});m.textContent="★ 최고의 주";svg.append(m);$("#chart").append(svg)})();
+ $("#chart").append(svg)})();
 // 랭킹
 function rank(id,L,col){const o=$(id);if(!L.length){o.append(el("li",null,"기록이 없습니다"));return}const mx=Math.max(1,L[0].v);
  L.forEach((x,i)=>{const li=el("li"),no=el("span","no",i+1),mid=el("div","nm"),nm=el("span",null,x.n);mid.append(nm);if(x.j)mid.append(el("small",null,x.j));
