@@ -142,7 +142,7 @@ body>header .sub{color:#d5e7dc}
 <div class="adm" id="adm" hidden><b>명단 업데이트</b><label>명단 엑셀 <input type="file" id="fr" accept=".xlsx,.xls,.csv"></label><button class="btn" id="aprev" disabled>확인</button><button class="btn pri" id="aapply" disabled>적용</button><span id="amsg"></span><label style="flex-basis:100%;display:block">톡방 참여자 <span class="lead" style="margin:0">(스프레드시트 톡방참여자 탭의 닉네임 열을 복사해 붙여넣으세요)</span><textarea id="tk" rows="3" style="display:block;width:100%;margin-top:6px"></textarea></label><button class="btn" id="atk">톡방 적용</button><span id="tmsg" style="color:var(--mute)"></span></div></div></header>
 <div class="ops-layout"><nav aria-label="인사 상황판 메뉴"><div class="wrap" id="nav"></div></nav>
 <main><div class="wrap">
-<section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section><section class="tab" id="t5"></section><section class="tab" id="t6"></section><section class="tab" id="t7"></section>
+<section class="tab on" id="t0"></section><section class="tab" id="t1"></section><section class="tab" id="t2"></section><section class="tab" id="t3"></section><section class="tab" id="t4"></section><section class="tab" id="t5"></section><section class="tab" id="t6"></section><section class="tab" id="t7"></section><section class="tab" id="t8"></section>
 </div></main></div>
 <div id="tip"></div>
 <script>
@@ -405,11 +405,11 @@ function tabRank(){
   $('rkcsv').onclick=()=>{const q=v=>'"'+String(v).replace(/"/g,'""')+'"',rows=[['등급','이름','부대 수','부대 편성','도감']].concat(G.flatMap(g=>by(g).map(d=>[g,d.n,d.bk.n,us(d).join(' / '),d.bk.x?'입력':'없음'])));
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(q).join(',')).join('\n')],{type:'text/csv'}));a.download='전투등급.csv';a.click()}
 }
-function build(){derive();tabSummary();tabRoster();tabIssues();tabAct();tabRules();tabRank();tabAlt();if(CFG.edit)tabTalk()}
+function build(){derive();tabSummary();tabRoster();tabIssues();tabAct();tabRules();tabRank();tabAlt();if(CFG.edit)tabTalk();if(CFG.reg&&(CFG.reg.add||CFG.reg.alt))tabReg()}
 const renderMeta=()=>{document.getElementById('meta').textContent=`명단 ${CFG.rosterFile}, 기준일 ${CFG.rosterDate}. 톡방 목록 ${CFG.talkFile}, 업데이트 ${CFG.talkDate}. 캐릭터 ID는 표시하지 않습니다.`};
-const TABN={0:'현황',1:'명단',2:'이슈',3:'활동 기록',4:'기준표',5:'전투 등급',6:'톡방 관리',7:'부계정'};
+const TABN={0:'현황',1:'명단',2:'이슈',3:'활동 기록',4:'기준표',5:'전투 등급',6:'톡방 관리',7:'부계정',8:'등록'};
 const NAVMAIN=[[0,'🏠','현황'],[2,'⚠️','이슈'],[1,'👥','명단'],[3,'📈','활동 기록'],[-1,'⋯','더보기']];
-const MORE=[[5,'🎖️','전투 등급'],[7,'👤','부계정'],[4,'📋','기준표']].concat(CFG.edit?[[6,'💬','톡방 관리']]:[]);
+const MORE=[[5,'🎖️','전투 등급'],[7,'👤','부계정'],[4,'📋','기준표']].concat(CFG.edit?[[6,'💬','톡방 관리']]:[]).concat(CFG.reg&&(CFG.reg.add||CFG.reg.alt)?[[8,'➕','등록']]:[]);
 document.getElementById('nav').innerHTML=NAVMAIN.map(([i,ic,n])=>`<button data-i="${i}"><span class="pl">${ic}</span>${n}</button>`).join('');
 document.body.insertAdjacentHTML('beforeend','<div class="sheetbg" id="mbg"></div><div class="msheet" id="msh"><div class="gr"></div>'+MORE.map(([i,ic,n])=>`<button data-m="${i}"><span>${ic}</span>${n}</button>`).join('')+'</div>');
 let CURT=0;
@@ -486,6 +486,27 @@ async function initLive(){
   },()=>{});
   let can=false;try{can=user?await user.canEdit():false}catch(e){}
   if(can){$('adm').hidden=false;bindAdmin(db)}
+}
+
+
+// ---------- 등록 탭 (동맹원 추가 · 부계정 등록) ----------
+let RMSG='';
+async function regApi(body){
+  const r=await fetch('/api/hrreg?t='+encodeURIComponent(CFG.tok),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('오류 '+r.status));return j}
+function tabReg(){
+  const P=CFG.reg||{},IN='font:14px var(--sans);padding:8px 11px;border:1px solid var(--line);border-radius:12px;background:var(--raise);color:var(--text)',BT='background:var(--gold);color:#17201e;border-color:var(--gold);font-weight:700';
+  $('t8').innerHTML=`<section class="blk"><h2>등록</h2><p class="lead">권한이 허용된 간부만 쓸 수 있습니다. 등록 결과는 #인사관리 채널에도 기록됩니다. 등록 직후 명단·부계정 표시는 페이지를 새로 고치면 반영됩니다.</p>
+  ${P.add?`<h3 style="margin:14px 0 6px">동맹원 추가</h3><p class="lead">게임 엑셀(오전 8시 반영)에 아직 없는 동맹원을 직접 넣습니다.</p>
+  <div class="filters"><input id="rc" placeholder="CID (숫자)" size="14" inputmode="numeric" style="${IN}"><input id="rn" placeholder="닉네임" size="14" maxlength="20" style="${IN}"><input id="rj" placeholder="직업(선택)" size="10" maxlength="20" style="${IN}"><button class="btn" id="radd" style="${BT}">추가</button></div>`:''}
+  ${P.alt?`<h3 style="margin:18px 0 6px">부계정 등록</h3><p class="lead">본캐 닉네임(또는 CID)과 부계정 닉네임을 입력하세요. 부계정이 여러 개면 쉼표나 줄바꿈으로 구분합니다. 부계정은 명단에 있는 닉네임이어야 합니다.</p>
+  <div class="filters"><input id="rm" placeholder="본캐 닉네임 또는 CID" size="18" style="${IN}"><textarea id="rnm" rows="2" placeholder="부계정 닉네임 (쉼표·줄바꿈 구분)" style="flex:1;min-width:220px;${IN}"></textarea><button class="btn" id="ralt" style="${BT}">등록</button></div>`:''}
+  <div class="lead" id="rmsg" style="white-space:pre-wrap;margin-top:12px">${esc(RMSG)}</div></section>`;
+  const go=async(body,btn,clear)=>{btn.disabled=true;RMSG='처리 중…';$('rmsg').textContent=RMSG;
+    try{const j=await regApi(body);RMSG=j.msg||'완료';if(String(RMSG).startsWith('✅'))clear.forEach(i=>$(i).value='')}catch(e){RMSG='❌ '+e.message}
+    $('rmsg').textContent=RMSG;btn.disabled=false};
+  if($('radd'))$('radd').onclick=()=>go({op:'member_add',cid:$('rc').value,nick:$('rn').value,job:$('rj').value},$('radd'),['rc','rn','rj']);
+  if($('ralt'))$('ralt').onclick=()=>go({op:'alt_add',main:$('rm').value,names:$('rnm').value},$('ralt'),['rm','rnm']);
 }
 
 // ---------- 톡방 관리 탭 ----------
