@@ -3691,7 +3691,11 @@ def _merit_cols(g, mh, m_tot, ch, c_tot, base):
 
 
 def _num(v):
-    try: return int(float(str(v).replace(",", "").strip() or 0))
+    t = str(v).replace(",", "").strip()
+    mul = 1
+    if t.endswith("억"): mul, t = 100000000, t[:-1].strip()          # 게임 명단의 '127만'·'1.2억' 표기 → 숫자
+    elif t.endswith("만"): mul, t = 10000, t[:-1].strip()
+    try: return int(float(t or 0) * mul)
     except ValueError: return 0
 
 
@@ -3764,8 +3768,12 @@ def hr_import(now=None, rows=None, gid=GUILD_ID, reset=False, with_stat=True):
         last = {}                                                  # 이탈 직전 마지막 인사 수치를 함께 보관(sam_emp 삭제 시 sam_emp_stat은 같이 지워지므로)
         for i in range(0, len(gone), 100):
             ids = ",".join(r["cid"] for r in gone[i:i + 100])
-            for x in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&cid=in.({ids})&order=snap_date.desc&select=cid,snap_date,title,prosperity,war_merit,contribution,camp,siege_count&limit=100000") or []:
+            sst = season_get().get("start")
+            for x in _sb_req("GET", f"sam_emp_stat?guild_id=eq.{gid}&cid=in.({ids})&order=snap_date.desc&select=cid,snap_date,title,prosperity,war_merit,contribution,total_merit,total_contribution,camp,siege_count&limit=100000") or []:
                 last.setdefault(x["cid"], x)
+                if not sst or x["snap_date"] >= sst: last[x["cid"]].setdefault("_rows", []).append(x)
+        for c, x in last.items():                                   # 시즌결산용: 이탈자가 이번 시즌에 쌓은 무훈·공헌·공성(주별 최댓값의 합)을 같이 보관
+            sw = _season_sums(x.pop("_rows", [])); x.update(sw)
         al = (_sb_req("GET", f"sam_alli?guild_id=eq.{gid}&select=name,game_server") or [{}])[0]      # 서버 번호 + 동맹명으로 sam_alli에 FK
         fk = {"game_server": al["game_server"], "ally_name": al["name"]} if al.get("game_server") and al.get("name") else {}
         lf = [{"guild_id": gid, "cid": r["cid"], "name": r.get("name") or "", "job": r.get("job") or "", "left_date": snap, "left_at": now,
@@ -3916,6 +3924,15 @@ def season_template_xlsx():
     buf = io.BytesIO(); wb.save(buf); buf.seek(0); return buf
 
 
+def _season_sums(rows):
+    """한 사람의 인사 기록 → 시즌 무훈·공헌·공성 합계(주별 최댓값의 합). 시즌결산과 이탈자 보관에 같이 쓴다."""
+    wk = {}
+    for r in rows:
+        d = datetime.date.fromisoformat(r["snap_date"]); w = wk.setdefault((d - datetime.timedelta(days=d.weekday())).isoformat(), [0, 0, 0])
+        w[0] = max(w[0], r.get("war_merit") or 0); w[1] = max(w[1], r.get("contribution") or 0); w[2] = max(w[2], r.get("siege_count") or 0)
+    return {"sw": sum(v[0] for v in wk.values()), "sc": sum(v[1] for v in wk.values()), "ss": sum(v[2] for v in wk.values())}
+
+
 def season_stats(gid, start=None):
     """시즌 중 쌓인 인사 기록(sam_emp_stat)으로 통계를 만든다. 부계정·명단에 없는 사람은 제외. 스레드에서 호출."""
     D = datetime.date.fromisoformat
@@ -3941,6 +3958,16 @@ def season_stats(gid, start=None):
             else: streak = 0
         pg = (L[-1]["prosperity"] or 0) - (L[0]["prosperity"] or 0) if len(L) > 1 else 0
         per.append({"c": cid, "n": emp[cid].get("name") or "", "j": emp[cid].get("job") or "", "wm": wm, "ct": ct, "sg": sg, "days": days, "streak": best, "pg": pg, "p": L[-1]["prosperity"] or 0, "first": L[0]["snap_date"]})
+    leftrows = _sb_req("GET", f"sam_emp_left?guild_id=eq.{gid}&select=cid,name,job,last_stat&limit=100000") or []
+    nleft = 0
+    for r in leftrows:                                      # 이탈자가 했던 무훈·공헌도 합계·랭킹에 포함(이탈 시 보관한 시즌 합계, 없으면 마지막 수치)
+        if r["cid"] in alts or r["cid"] in by: continue
+        ls = r.get("last_stat") or {}
+        if start and (ls.get("snap_date") or "9") < start: continue            # 지난 시즌에 이미 떠난 사람은 제외
+        wm = ls.get("sw", ls.get("war_merit") or 0); ct = ls.get("sc", ls.get("contribution") or 0); sg = ls.get("ss", ls.get("siege_count") or 0)
+        if wm + ct <= 0: continue
+        nleft += 1
+        per.append({"c": r["cid"], "n": (r.get("name") or "") + "(이탈)", "j": r.get("job") or "", "wm": wm, "ct": ct, "sg": sg, "days": 0, "streak": 0, "pg": 0, "p": 0, "first": ls.get("snap_date") or ""})
     if not per: return {"n": 0}
     first = min(dates)
     top = lambda key, k=10: [{"n": x["n"], "j": x["j"], "v": x[key]} for x in sorted(per, key=lambda x: -x[key])[:k] if x[key] > 0]
@@ -3964,7 +3991,7 @@ def season_stats(gid, start=None):
     tw = [{"w": w[5:], "wm": sum(v[0] for v in wk[w].values()), "ct": sum(v[1] for v in wk[w].values()), "sg": sum(v[2] for v in wk[w].values())} for w in weeks]
     left = len(_sb_req("GET", f"sam_emp_left?guild_id=eq.{gid}&select=cid&limit=100000") or [])
     last = max(dates)
-    return {"n": len(per), "first": first, "last": last, "days": (D(last) - D(first)).days + 1, "snaps": len(dates), "left": left,
+    return {"n": len(per), "first": first, "last": last, "days": (D(last) - D(first)).days + 1, "snaps": len(dates), "left": left, "left_incl": nleft,
             "joined": sum(1 for x in per if x["first"] > first), "wm": sum(x["wm"] for x in per), "ct": sum(x["ct"] for x in per), "sg": sum(x["sg"] for x in per),
             "pg": sum(x["pg"] for x in per), "p": sum(x["p"] for x in per), "weeks": tw, "top_wm": top("wm"), "top_ct": top("ct"), "top_days": top("days", 5), "top_pg": top("pg", 5),
             "types": types, "jobs": [{"j": j, "n": n} for j, n in sorted(jobs.items(), key=lambda t: -t[1])[:8]], "awards": aw}

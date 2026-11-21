@@ -63,7 +63,7 @@ document.title=(S.alli||"동맹")+" 시즌 "+S.no+" 결산";
 function count(n,to,fmtf){if(RM){n.textContent=fmtf(to);return}const t0=performance.now(),D=1600;(function f(t){const p=Math.min(1,(t-t0)/D),e=1-Math.pow(1-p,3);n.textContent=fmtf(to*e);if(p<1)requestAnimationFrame(f)})(t0)}
 const tiles=[["g","총 무훈",S.wm,""],["j","총 공헌",S.ct,""],["b","공성 참여",S.sg,"회"],["v","번영 증가",S.pg,""]];
 const tw=$("#tiles");tiles.forEach(([c,l,v,u])=>{const d=el("div","tile "+c),b=el("b",null,"0"),s=el("span",null,l);d.append(b,s);d.dataset.to=v;d.dataset.u=u;tw.append(d)});
-$("#s1s").textContent="동맹원 "+S.n+"명 · 기록 "+S.snaps+"일"+(S.joined?" · 중간 합류 "+S.joined+"명":"")+(S.left?" · 떠난 동맹원 "+S.left+"명":"");
+$("#s1s").textContent="동맹원 "+S.n+"명 · 기록 "+S.snaps+"일"+(S.joined?" · 중간 합류 "+S.joined+"명":"")+(S.left?" · 떠난 동맹원 "+S.left+"명":"")+(S.left_incl?" (이탈자 "+S.left_incl+"명의 기록 포함)":"");
 // 주차 그래프
 (function(){const W=S.weeks||[];if(!W.length){$("#chart").textContent="주차 기록이 없습니다";return}
  const w=640,h=300,L=10,R=10,T=20,B=34,mx=Math.max(1,...W.flatMap(x=>[x.wm,x.ct])),X=i=>W.length<2?w/2:L+i*(w-L-R)/(W.length-1),Y=v=>T+(h-T-B)*(1-v/mx);
