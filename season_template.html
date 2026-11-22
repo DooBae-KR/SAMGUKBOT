@@ -42,7 +42,7 @@ h2.sec{font:700 16px var(--sans);margin:26px 2px 10px}
 <div class="wrap">
 <div class="strip" id="tiles"></div>
 <p class="sub" id="s1s"></p>
-<h2 class="sec">주차별 흐름</h2><div class="card chart"><div id="chart"></div><div class="lg"><span><i style="background:var(--gold)"></i>무훈</span><span><i style="background:var(--jade)"></i>공헌</span></div></div>
+<h2 class="sec">주차별 누적 흐름</h2><p class="sub">각 주가 끝날 때까지 동맹 전체가 쌓은 총 무훈과 총 공헌입니다</p><div class="card chart"><div id="chart"></div><div class="lg"><span><i style="background:var(--gold)"></i>무훈</span><span><i style="background:var(--jade)"></i>공헌</span></div></div>
 <div class="cols"><div><h2 class="sec">⚔️ 무훈 TOP 10</h2><div class="card"><ol class="rank" id="rw"></ol></div></div>
 <div><h2 class="sec">🌾 공헌 TOP 10</h2><div class="card"><ol class="rank" id="rc"></ol></div></div></div>
 <h2 class="sec">🏅 시즌 어워드</h2><div class="awards" id="aws"></div>
@@ -55,7 +55,7 @@ const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=nu
 const ymd=s=>String(s||"").replaceAll("-",".");
 $("#alli").textContent=S.alli||"우리 동맹";$("#ttl").textContent="시즌 "+S.no+" 결산";$("#per").textContent=ymd(S.first)+" ~ "+ymd(S.last)+" · "+S.days+"일 · 동맹원 "+S.n+"명";
 document.title=(S.alli||"동맹")+" 시즌 "+S.no+" 결산";
-[["누적 무훈",S.wm,""],["누적 공헌",S.ct,""],["공성 참여",S.sg,"회"],["번영 증가",S.pg,""]].forEach(([l,v,u])=>{const d=el("div","stat"),b=el("b",null,fmt(v)+u);d.append(b,el("span",null,l));$("#tiles").append(d)});
+[["총 무훈",S.wm,""],["총 공헌",S.ct,""],["공성 참여",S.sg,"회"],["번영 증가",S.pg,""]].forEach(([l,v,u])=>{const d=el("div","stat"),b=el("b",null,fmt(v)+u);d.append(b,el("span",null,l));$("#tiles").append(d)});
 $("#s1s").textContent="기록 "+S.snaps+"일"+(S.joined?" · 중간 합류 "+S.joined+"명":"")+(S.left?" · 떠난 동맹원 "+S.left+"명":"")+(S.left_incl?" (이탈자 "+S.left_incl+"명의 기록 포함)":"");
 (function(){const W=S.weeks||[];if(!W.length){$("#chart").textContent="주차 기록이 없습니다";return}
  const w=640,h=280,L=10,R=10,T=22,B=30,mx=Math.max(1,...W.flatMap(x=>[x.wm,x.ct])),X=i=>W.length<2?w/2:L+i*(w-L-R)/(W.length-1),Y=v=>T+(h-T-B)*(1-v/mx);
@@ -66,7 +66,7 @@ $("#s1s").textContent="기록 "+S.snaps+"일"+(S.joined?" · 중간 합류 "+S.j
  [["wm","#b7791f"],["ct","#2e7d32"]].forEach(([k,c])=>{const pts=W.map((x,i)=>[X(i),Y(x[k])]);
   svg.append(mk("path",{d:pts.map((q,i)=>(i?"L":"M")+q[0].toFixed(1)+" "+q[1].toFixed(1)).join(""),fill:"none",stroke:c,"stroke-width":3,"stroke-linecap":"round","stroke-linejoin":"round"}));
   pts.forEach(q=>svg.append(mk("circle",{cx:q[0],cy:q[1],r:4.5,fill:c})))});
- const pk=W.reduce((a,b)=>b.wm+b.ct>a.wm+a.ct?b:a);const m=mk("text",{x:Math.min(Math.max(X(W.indexOf(pk)),40),w-40),y:T-8,fill:"#1a2b1f","font-size":12,"text-anchor":"middle"});m.textContent="★ 최고의 주";svg.append(m);$("#chart").append(svg)})();
+$("#chart").append(svg)})();
 function rank(id,L,col){const o=$(id);if(!L.length){o.append(el("li",null,"기록이 없습니다"));return}const mx=Math.max(1,L[0].v);
  L.forEach((x,i)=>{const li=el("li"),mid=el("div","nm"),b=el("b",null,x.n);mid.append(b);if(x.j)mid.append(el("small",null,x.j));
   const bar=el("div","bar"),f=el("i");f.style.cssText="width:"+Math.round(x.v/mx*100)+"%;background:"+col;bar.append(f);mid.append(bar);li.append(el("span","no",i+1),mid,el("span","v",fmt(x.v)));o.append(li)})}
