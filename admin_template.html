@@ -20,6 +20,12 @@ button.b.g{background:none;color:var(--mute);border:1px solid var(--line);paddin
 ul{list-style:none;padding:0;margin:10px 0 0}li{display:flex;gap:8px;align-items:center;padding:7px 4px;border-top:1px solid var(--line)}li span.n{flex:1;word-break:break-all}
 .tag{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}.tag.w{color:var(--gold);border-color:var(--gold)}.tag.o{color:var(--jade);border-color:var(--jade)}
 #toast{white-space:pre-line;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d3a34;border:1px solid var(--jade);padding:10px 18px;border-radius:10px;display:none;max-width:90vw;z-index:9}
+#ldov{position:fixed;inset:0;z-index:9999;background:rgba(5,12,10,.72);display:none;align-items:center;justify-content:center}
+#ldov .bx{background:var(--raise);border:1px solid var(--jade);border-radius:14px;padding:26px 30px;min-width:260px;max-width:90vw;text-align:center}
+#ldov .sp{width:38px;height:38px;margin:0 auto 14px;border:4px solid var(--line);border-top-color:var(--jade);border-radius:50%;animation:ldsp 0.9s linear infinite}
+#ldov.done .sp{animation:none;border-color:var(--jade);position:relative}#ldov.done .sp:after{content:"\2713";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--jade)}
+#ldov .tt{font-weight:700;margin-bottom:6px}#ldov .ds{color:var(--mute);font-size:13px;white-space:pre-line}
+@keyframes ldsp{to{transform:rotate(360deg)}}
 #toast.err{background:#3a1d1d;border-color:var(--verm)}.mute{color:var(--mute);font-size:12.5px}
 
 /* Grouped admin navigation and task layout. */
@@ -160,6 +166,10 @@ header .wrap,.admin-layout{max-width:1160px}
 <div class="tab" id="sea">
  <div class="card"><h2>시즌 <span class="mute" id="sno"></span></h2><p class="lead">시즌이 끝나면 <b>결산 통계</b>(애니메이션 페이지)를 만들고, 새 시즌은 동맹원 명단을 넣어 시작합니다. 디스코드의 <code>/시즌종료</code>·<code>/시즌시작</code>과 같은 기능입니다.</p>
   <div class="row"><button class="b" id="seBtn">시즌 종료 · 결산 통계 만들기</button></div><ul id="slinks"></ul></div>
+ <div class="card" id="scard" style="display:none"><h2>새 시즌 준비 <span class="mute" id="scmeta"></span></h2><p class="lead">지난 시즌 기록은 이력에 시즌별로 보관되고, 새 명단이 반영되었습니다. 아래 순서로 새로 작성·확인해 주세요. 지난 시즌의 부캐 연결은 CID로 그대로 이어받았습니다.</p>
+  <ol style="margin:0 0 6px 18px;padding:0;line-height:1.9"><li>인원(동맹원) 점검 — <a href="#" data-go="mem" style="color:var(--jade)">동맹원 추가 탭</a> · <a href="#" data-go="left" style="color:var(--jade)">이탈자 탭</a></li><li>부캐 확인 — <a href="#" data-go="alt" style="color:var(--jade)">부캐 탭</a> (닉네임이 달라진 것만 아래에 표시)</li><li>서버 번호 등록 — 디스코드 <code>/동맹등록</code></li></ol>
+  <h3 style="margin:10px 0 0;font-size:14px">부캐 닉네임이 달라진 사람 <span class="mute" id="schc"></span></h3><ul id="schk"></ul><h3 style="margin:10px 0 0;font-size:14px">새 명단에 없어 연결이 끊긴 부캐 <span class="mute" id="sdrc"></span></h3><ul id="sdrp"></ul>
+  <div class="row" style="margin-top:8px"><button class="b" id="schSync">새 닉네임으로 모두 맞추기</button><button class="b g" id="schClose">확인 끝 · 닫기</button></div></div>
  <div class="card"><h2>새 시즌 시작</h2><p class="lead">동맹원 명단을 넣으면 지난 시즌 결산을 보관(아직이면 자동)하고, 주간 무훈·공헌·이탈·이력 기록을 비워 처음부터 집계합니다. 명단에 없는 사람은 빠집니다(되돌릴 수 없음). 디스코드 인증·역할은 그대로 두고 명단과 다시 맞춥니다.</p>
   <p class="mute"><b>방법 ①</b> 양식을 받아 A열 CID · B열 닉네임(2행부터)을 채운 뒤 아래에서 파일 선택 &nbsp;<a href="/admin/season_template.xlsx?t=__T__" style="color:var(--jade)">양식 내려받기</a><br><b>방법 ②</b> 게임에서 받은 MemberWeek.xlsx를 그대로 선택 (자동 인식)<br><b>방법 ③</b> 엑셀에서 CID와 닉네임 두 열을 복사해 아래 칸에 붙여넣기</p>
   <input type="file" id="sfile" accept=".xlsx"><textarea id="stext" style="margin-top:8px;min-height:120px" placeholder="2004105680812&#9;용감한호랑이&#10;2004105680813&#9;날쌘독수리"></textarea>
@@ -174,14 +184,14 @@ header .wrap,.admin-layout{max-width:1160px}
   <div class="row"><input id="ti" inputmode="numeric" placeholder="CID 또는 디스코드 ID"><button class="b" id="tbtn2">실패 횟수 초기화</button></div></div>
  <div class="card"><ul id="trlist"></ul></div>
 </div>
-</div></main></div><div id="toast" role="status"></div>
+</div></main></div><div id="ldov" role="alertdialog" aria-modal="true" aria-live="assertive"><div class="bx"><div class="sp"></div><div class="tt" id="ldt">LOADING</div><div class="ds" id="ldd"></div><div class="row" style="justify-content:center;margin-top:12px"><button class="b" id="ldx" style="display:none">닫기</button></div></div></div><div id="toast" role="status"></div>
 <script>
 const T="__T__",$=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 let S=null,busy=false;
 function toast(m,e){const t=$("#toast");t.textContent=m;t.className=e?"err":"";t.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display="none",e?5000:2800+m.length*25)}
 async function api(body,quiet){busy=true;try{const r=await fetch("/api/admin?t="+encodeURIComponent(T),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
  const j=await r.json();$("#dot").className="live"+(r.ok?"":" off");
- if(!r.ok){if(!quiet)toast(j.error||"오류",1);return null}
+ if(!r.ok){api.err=j.error||"오류";if(!quiet)toast(j.error||"오류",1);return null}
  S=j;render();if(j.msg)toast(j.msg.replace(/\*\*/g,""));return j}catch(e){$("#dot").className="live off";if(!quiet)toast("서버에 연결할 수 없습니다",1);return null}finally{busy=false}}
 const tabMenu=$("#admin-tab"),tabButtons=[...document.querySelectorAll(".admin-menu button[data-t]")];
 function showAdminTab(id){
@@ -230,6 +240,9 @@ function render(){if(!S)return;const a=S.ally||{};$("#ally").textContent=(a.serv
 $("#trlist").innerHTML=S.tries.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">디스코드 ${esc(x.d)}${x.cid?" · 시도한 CID "+esc(x.cid):""}</span></span><span class="tag ${x.lock?"w":""}">${x.n}/${S.maxTries}${x.lock?" 잠김":""}</span><button class="b g" data-tr="${esc(x.d)}">초기화</button></li>`).join("")||'<li class="mute">실패 기록이 없습니다</li>';
  $("#splist").innerHTML=(S.spy||[]).map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">${esc(x.id)}</span></span><button class="b d" data-spyd="${esc(x.id)}">해제</button></li>`).join("")||'<li class="mute">없습니다 (관리자만 볼 수 있음)</li>';
  {const z=S.season||{no:1,links:[]};$("#sno").textContent="(현재 시즌 "+z.no+(z.start?" · 시작 "+z.start:"")+(z.ended?" · 종료됨 "+z.ended:" · 진행 중")+")";
+ {const c=z.check,card=$("#scard");if(c&&((c.alts||[]).length||(c.dropped||[]).length||!z.ended)&&c.at){card.style.display="";$("#scmeta").textContent="(시즌 "+z.no+" · 부캐 "+(c.kept||0)+"건 이어받음)";
+  $("#schc").textContent=(c.alts||[]).length+"건";$("#schk").innerHTML=(c.alts||[]).map(x=>`<li><span class="n">${esc(x.old||"(이름 없음)")} → <b>${esc(x.new)}</b> <span class="mute">CID ${esc(x.cid)} · 본캐 ${esc(x.main)}</span></span><span class="tag w">닉네임 다름</span></li>`).join("")||'<li class="mute">닉네임이 달라진 부캐가 없습니다</li>';
+  $("#sdrc").textContent=(c.dropped||[]).length+"건";$("#sdrp").innerHTML=(c.dropped||[]).map(x=>`<li><span class="n">${esc(x.name||x.cid)} <span class="mute">CID ${esc(x.cid)} · 본캐 ${esc(x.main)}</span></span><span class="tag">연결 해제</span></li>`).join("")||'<li class="mute">없습니다</li>'}else card.style.display="none"}
  $("#slinks").innerHTML=z.links.map(x=>`<li><span class="n">시즌 ${x.no} 결산 <span class="mute">${esc(x.at)}</span></span><a class="tag o" target="_blank" rel="noopener" href="${esc(x.url)}">결산 보기</a></li>`).join("")||'<li class="mute">아직 만든 결산이 없습니다</li>'}
  $("#alist").innerHTML=S.admins.map(x=>`<li><span class="n">${esc(x.name||"(이름 미확인)")} <span class="mute">${esc(x.id)}</span></span>${x.src=="owner"?'<span class="tag o">제작자</span>':x.src=="discord"?'<span class="tag">디스코드 관리자</span>':'<span class="tag o">부여됨</span>'}${x.src=="grant"&&x.id!=S.me?`<button class="b d" data-rev="${esc(x.id)}">권한 빼기</button>`:""}</li>`).join("")}
 $("#tbtn").onclick=async()=>{const v=$("#tadd").value.split(/[\n,]/).map(x=>x.trim()).filter(Boolean);if(!v.length)return toast("이름을 입력해 주세요",1);if(await api({op:"talk",req:{op:"add",names:v}}))$("#tadd").value=""};
@@ -238,11 +251,23 @@ $("#tlist").onclick=async e=>{const d=e.target.dataset;if(d.del&&confirm(d.del+"
 $("#tq").oninput=render;
 $("#mbtn").onclick=async()=>{if(await api({op:"member_add",cid:$("#mc").value,nick:$("#mn").value,job:$("#mj").value})){$("#mc").value=$("#mn").value=$("#mj").value=""}};
 $("#seBtn").onclick=()=>api({op:"season_end"});
+const LD={on(t,d){$("#ldov").className="";$("#ldov").style.display="flex";$("#ldt").textContent=t;$("#ldd").textContent=d||"";$("#ldx").style.display="none";LD.lock=true},
+ done(t,d,fn){$("#ldov").className="done";$("#ldt").textContent=t;$("#ldd").textContent=d||"";LD.lock=false;setTimeout(()=>{$("#ldov").style.display="none";fn&&fn()},1300)},
+ fail(t,d){$("#ldov").className="";$("#ldt").textContent=t;$("#ldd").textContent=d||"";$("#ldx").style.display="";LD.lock=false}};
+$("#ldx").onclick=()=>{$("#ldov").style.display="none"};
+$("#ldov").onclick=e=>e.stopPropagation();document.addEventListener("keydown",e=>{if(LD.lock&&$("#ldov").style.display=="flex")e.preventDefault()},true);
+window.addEventListener("beforeunload",e=>{if(LD.lock){e.preventDefault();e.returnValue=""}});
 $("#ssBtn").onclick=async()=>{const f=$("#sfile").files[0],t=$("#stext").value.trim();if(!f&&!t)return toast("양식 파일을 고르거나 CID·닉네임을 붙여넣어 주세요",1);
- if(!confirm("새 시즌을 시작할까요?\n주간 무훈·공헌·이탈·이력 기록이 비워지고, 새 명단에 없는 사람은 명단에서 빠집니다. 되돌릴 수 없습니다."))return;
+ if(!confirm("새 시즌을 시작할까요?\n지난 시즌 인사 기록은 시즌 번호와 함께 이력에 보관되고, 주간 기록은 비워집니다. 새 명단에 없는 사람은 명단에서 빠집니다."))return;
  let body={op:"season_start"};if(f){if(f.size>140000)return toast("파일이 너무 큽니다. 디스코드 /시즌시작에 첨부해 주세요",1);
   const b=new Uint8Array(await f.arrayBuffer());let s="";for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));body.file_b64=btoa(s)}else body.text=t;
- if(await api(body)){$("#sfile").value="";$("#stext").value=""}};
+ LD.on("LOADING","새 시즌을 준비하고 있습니다.\n지난 시즌 기록 보관 → 새 명단 반영 → 부캐 연결 이어받기\n완료될 때까지 이 창을 닫거나 새로고침하지 마세요.");
+ const j=await api(body,true);
+ if(j){$("#sfile").value="";$("#stext").value="";LD.done("완료되었습니다.","이제 인원·동맹원·부캐를 새로 확인해 주세요.",()=>{showAdminTab("sea");$("#scard").scrollIntoView({behavior:"smooth",block:"start"})})}
+ else LD.fail("시작하지 못했습니다",api.err||"오류가 발생했습니다")};
+$("#scard").onclick=e=>{const g=e.target.dataset.go;if(g){e.preventDefault();showAdminTab(g)}};
+$("#schSync").onclick=async()=>{if(confirm("표시된 부캐 닉네임을 새 명단의 닉네임으로 모두 바꿀까요?"))api({op:"alt_sync"})};
+$("#schClose").onclick=()=>api({op:"check_clear"});
 $("#sbtn").onclick=async()=>{if(await api({op:"spy_add",id:$("#si").value}))$("#si").value=""};
 $("#splist").onclick=e=>{const d=e.target.dataset.spyd;if(d&&confirm("열람 권한을 뺄까요?"))api({op:"spy_del",id:d})};
 $("#abtn").onclick=async()=>{if(await api({op:"admin_add",id:$("#ai").value}))$("#ai").value=""};

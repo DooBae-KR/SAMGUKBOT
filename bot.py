@@ -3089,7 +3089,7 @@ def adm_state(gid):
             left.append({"c": r["cid"], "n": r.get("name") or "", "j": r.get("job") or "", "d": r.get("left_date") or "", "t": ls.get("title") or "", "p": ls.get("prosperity") or 0,
                          "w": ls.get("war_merit") or 0, "g": ls.get("contribution") or 0, "s": ls.get("siege_count") or 0, "sd": ls.get("snap_date") or ""})
     except Exception: log.exception("이탈자 목록 조회 실패")
-    return {"left": left, "blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v and k != "__users"}, "cmduser": dict(((store_get("cmdperm", CMDPERM_PATH, {}) or {}).get("__users")) or {}), "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "spy": [{"id": str(i), "name": (lambda m: str(m) if m else "")((bot.get_guild(gid).get_member(i) if bot.get_guild(gid) else None))} for i in sorted(spy_ids(gid))], "season": (lambda sn: {"no": sn["no"], "start": sn["start"], "ended": sn["ended"], "links": [{"no": a["no"], "at": a.get("at", ""), "url": ss_url(gid, a["no"])} for a in sn["archive"]][::-1]})(season_get()), "now": int(time.time())}
+    return {"left": left, "blacklist": blk, "reserve": reserve, "alts": alts, "titles": known_titles(), "staffCmds": CMD_HELP["간부"], "cmdperm": {k: v for k, v in (store_get("cmdperm", CMDPERM_PATH, {}) or {}).items() if v and k != "__users"}, "cmduser": dict(((store_get("cmdperm", CMDPERM_PATH, {}) or {}).get("__users")) or {}), "tries": tr, "maxTries": MAX_TRIES, "cmds": CMD_HELP, "stats": cmd_stats_view(), "ally": ally, "talk": names, "talkDate": tdate, "members": mem, "admins": sorted(adm.values(), key=lambda a: (a["src"] != "owner", a["src"] != "discord", a["name"])), "spy": [{"id": str(i), "name": (lambda m: str(m) if m else "")((bot.get_guild(gid).get_member(i) if bot.get_guild(gid) else None))} for i in sorted(spy_ids(gid))], "season": (lambda sn: {"no": sn["no"], "start": sn["start"], "ended": sn["ended"], "check": sn.get("check"), "links": [{"no": a["no"], "at": a.get("at", ""), "url": ss_url(gid, a["no"])} for a in sn["archive"]][::-1]})(season_get()), "now": int(time.time())}
 
 
 async def adm_grant(gid, did, by):
@@ -3623,6 +3623,17 @@ async def web_admin_api(request):
             c = str(body.get("cid", "")).strip()
             if not (c.isascii() and c.isdigit()): raise ValueError("CID가 올바르지 않습니다.")
             await asyncio.to_thread(_sb_req, "DELETE", f"sam_emp_alt?guild_id=eq.{gid}&alt_cid=eq.{c}", prefer="return=minimal"); msg = "✅ 부캐 연결을 해제했습니다."
+        elif op == "alt_sync":
+            def sy():
+                set_gid(gid); st = season_get(); ck = st.get("check") or {}; n = 0
+                for x in ck.get("alts", []):
+                    _sb_req("PATCH", f"sam_emp_alt?guild_id=eq.{gid}&alt_cid=eq.{x['cid']}", {"alt_name": x["new"]}, "return=minimal"); n += 1
+                ck["alts"] = []; st["check"] = ck; season_set(st); return n
+            n = await asyncio.to_thread(sy); msg = f"✅ 부캐 닉네임 {n}건을 새 명단 기준으로 맞췄습니다."
+        elif op == "check_clear":
+            def cc():
+                set_gid(gid); st = season_get(); st.pop("check", None); season_set(st)
+            await asyncio.to_thread(cc); msg = "✅ 새 시즌 확인 목록을 닫았습니다."
         elif op == "cmdperm_set":
             cmd, ts = str(body.get("cmd", "")), body.get("titles")
             if cmd not in staff_cmds(): raise ValueError("설정할 수 없는 명령어입니다.")
@@ -3716,6 +3727,16 @@ async def cmd_ally_edit(it: discord.Interaction):
 def _sb_rows(table, rows, conflict="guild_id,cid"):
     for i in range(0, len(rows), 200):
         _sb_req("POST", f"{table}?on_conflict={conflict}", rows[i:i + 200], prefer="resolution=merge-duplicates,return=minimal")
+
+
+def _sb_all(path, page=1000):
+    """Supabase는 한 번에 최대 1000행만 주므로 offset으로 끝까지 이어 읽는다. path에 order를 꼭 넣을 것."""
+    out, off = [], 0
+    while True:
+        rows = _sb_req("GET", f"{path}{'&' if '?' in path else '?'}limit={page}&offset={off}") or []
+        out += rows
+        if len(rows) < page: return out
+        off += page
 
 
 def _sb_count(table, gid=GUILD_ID):
@@ -4107,19 +4128,56 @@ def season_end_work(gid):
     return st, stats
 
 
+def season_archive_history(gid, no):
+    """지난 시즌의 인사 기록(날짜별 수치·이탈자·부캐 연결)을 sam_user_history에 시즌 번호와 함께 그대로 보관한다. → 보관한 행 수."""
+    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
+    emp = {r["cid"]: r for r in _sb_all(f"sam_emp?guild_id=eq.{gid}&select=cid,name,job&order=cid")}
+    rows = []
+    for r in _sb_all(f"sam_emp_stat?guild_id=eq.{gid}&select=*&order=snap_date,cid"):
+        e = emp.get(r["cid"]) or {}
+        rows.append({"guild_id": gid, "season": no, "kind": "stat", "cid": r["cid"], "nick": e.get("name"), "job": e.get("job"), "snap_date": r["snap_date"],
+                     **{k: r.get(k) for k in ("title", "prosperity", "war_merit", "contribution", "siege_count", "total_merit", "total_contribution", "camp", "camp_x", "camp_y")}})
+    for r in _sb_all(f"sam_emp_left?guild_id=eq.{gid}&select=*&order=cid"):
+        rows.append({"guild_id": gid, "season": no, "kind": "left", "cid": r["cid"], "nick": r.get("name"), "job": r.get("job"),
+                     "snap_date": r.get("left_date") or today, "extra": r.get("last_stat")})
+    for r in _sb_all(f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,alt_name,main_cid&order=alt_cid"):
+        rows.append({"guild_id": gid, "season": no, "kind": "alt", "cid": r["alt_cid"], "nick": r.get("alt_name"), "snap_date": today, "main_cid": r["main_cid"]})
+    try: _sb_rows("sam_user_history", rows, conflict="guild_id,season,kind,cid,snap_date")
+    except RuntimeError as e:
+        if "sam_user_history" in str(e) or "PGRST205" in str(e) or "42P01" in str(e):
+            raise ValueError("보관용 표(sam_user_history)가 아직 없습니다. 저장소의 migrations/001_sam_user_history.sql을 Supabase SQL Editor에서 실행한 뒤 다시 시작해 주세요. (아무것도 지우지 않았습니다)")
+        raise
+    return len(rows)
+
+
 def season_start_work(gid, rows, kind):
-    """새 시즌: 지난 시즌 통계 보관(아직이면) → 인사 기록·이탈·이력 비우기 → 새 명단 반영 → 시즌 번호·시작일 갱신. 스레드에서 호출."""
+    """새 시즌: 지난 시즌 통계 보관(아직이면) → 지난 시즌 인사 기록을 sam_user_history에 시즌별 보관 → 인사 기록·이탈·이력 비우기 → 새 명단 반영
+    → 부캐 연결을 CID로 이어받고 닉네임이 달라진 것만 확인 목록에 남김 → 시즌 번호·시작일 갱신. 스레드에서 호출."""
     set_gid(gid); st = season_get(); note = []
     if not st.get("ended"):
         try: season_end_work(gid); note.append(f"시즌 {st['no']} 통계를 자동으로 보관했습니다.")
         except ValueError: pass
+    prev_no = int(st["no"])
+    nh = season_archive_history(gid, prev_no); note.append(f"시즌 {prev_no} 인사 기록 {nh}건을 이력(sam_user_history)에 보관했습니다.")   # 실패하면 여기서 멈춤 → 아직 아무것도 지우지 않은 상태
+    prev_names = {r["cid"]: r.get("name") or "" for r in _sb_all(f"sam_emp?guild_id=eq.{gid}&select=cid,name&order=cid")}
+    prev_alts = _sb_all(f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,alt_name,main_cid&order=alt_cid")
     for t in ("sam_emp_stat", "sam_emp_left", "sam_emp_event"): _sb_req("DELETE", f"{t}?guild_id=eq.{gid}", prefer="return=minimal")
     out, warn = hr_import(None, rows, gid, reset=True, with_stat=(kind == "week"))
-    cids = {r["cid"] for r in (_sb_req("GET", f"sam_emp?guild_id=eq.{gid}&select=cid&limit=5000") or [])}
-    gone = [r["alt_cid"] for r in (_sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,main_cid&limit=100000") or []) if r["alt_cid"] not in cids or r["main_cid"] not in cids]
+    new_names = {r["cid"]: r.get("name") or "" for r in _sb_all(f"sam_emp?guild_id=eq.{gid}&select=cid,name&order=cid")}
+    gone_rows = [a for a in prev_alts if a["alt_cid"] not in new_names or a["main_cid"] not in new_names]
+    gone = [a["alt_cid"] for a in gone_rows]
     for i in range(0, len(gone), 100): _sb_req("DELETE", f"sam_emp_alt?guild_id=eq.{gid}&alt_cid=in.({','.join(gone[i:i + 100])})", prefer="return=minimal")
-    st = season_get(); st["no"] = int(st["no"]) + 1; st["start"] = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d"); st["ended"] = None; season_set(st)
+    check = []                                                   # 이어받은 부캐 중 닉네임이 달라진 것(CID로 매칭)
+    for a in prev_alts:
+        c, m = a["alt_cid"], a["main_cid"]
+        if c in new_names and m in new_names and (a.get("alt_name") or "") != new_names[c]:
+            check.append({"cid": c, "old": a.get("alt_name") or "", "new": new_names[c], "main_cid": m, "main": new_names[m], "main_old": prev_names.get(m, ""), })
+    kept = sum(1 for a in prev_alts if a["alt_cid"] in new_names and a["main_cid"] in new_names)
+    st = season_get(); st["no"] = prev_no + 1; st["start"] = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d"); st["ended"] = None
+    st["check"] = {"at": st["start"], "kept": kept, "alts": check, "dropped": [{"cid": a["alt_cid"], "name": a.get("alt_name") or prev_names.get(a["alt_cid"], ""), "main": prev_names.get(a["main_cid"], a["main_cid"])} for a in gone_rows]}
+    season_set(st)
     roster_load_db(gid)
+    note.append(f"부캐 연결 {kept}건을 CID로 이어받음 · 닉네임이 다른 것 {len(check)}건 확인 필요")
     return st, out, warn, note, len(gone)
 
 
@@ -4230,7 +4288,7 @@ class SeasonStartView(CtxView):
             log.exception("시즌 시작 실패"); return await it.edit_original_response(content=f"❌ 실패: {str(e)[:300]}")
         n = len(self.rows) - 1
         await it.edit_original_response(content=f"🎌 **시즌 {st['no']} 시작** — 동맹원 {n}명 반영\n" + "\n".join("• " + x for x in note + out)
-                                        + (f"\n• 새 명단에 없는 부계정 연결 {nalt}건 정리" if nalt else "") + f"\n• 역할 동기화: 인증자 {sy['total']}명 중 역할 변경 {sy['role']}명, 별명 변경 {sy['nick']}명"
+                                        + (f"\n• 새 명단에 없는 부계정 연결 {nalt}건 정리" if nalt else "")+ (lambda ck: f"\n• 부캐 닉네임이 달라진 {len(ck['alts'])}건은 `/관리` 페이지 시즌·부캐 탭에서 확인하세요" if ck.get("alts") else "")(st.get("check") or {}) + f"\n• 역할 동기화: 인증자 {sy['total']}명 중 역할 변경 {sy['role']}명, 별명 변경 {sy['nick']}명"
                                         + ("\n⚠️ " + "\n⚠️ ".join(warn) if warn else "")
                                         + ("\n\n게임 인사 파일(MemberWeek)은 매일 올리던 방식 그대로 `/명단업데이트`로 올리면 이어서 집계됩니다." if self.kind == "simple" else ""))
         try: await it.channel.send(f"🎌 **시즌 {st['no']}가 시작되었습니다!** 동맹원 {n}명 · 인사 기록을 새로 집계합니다. 이전 시즌 결산은 관리자가 `/시즌종료`로 다시 볼 수 있습니다.")
