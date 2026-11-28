@@ -738,7 +738,7 @@ def find_cats(g, name):
 
 async def dedupe_cats(g, names=None):
     """같은 이름의 카테고리가 여러 개면 채널이 가장 많은 하나(동수면 위쪽)만 남기고, 나머지의 채널을 옮긴 뒤 빈 카테고리를 지운다."""
-    n = 0
+    n, errs = 0, []
     for name in names or (GUIDE_CAT, MGMT_CAT, BOT_CAT, START_CAT):
         async with cat_lock(g, name):
             cs = find_cats(g, name)
@@ -749,8 +749,8 @@ async def dedupe_cats(g, names=None):
                 try:
                     for ch in list(d.channels): await ch.edit(category=keep, sync_permissions=False, reason="중복 카테고리 정리"); await asyncio.sleep(0.4)
                     await d.delete(reason="중복 카테고리 정리"); n += 1; await asyncio.sleep(0.4)
-                except Exception as e: log.warning("중복 카테고리 정리 실패 서버=%s 카테고리=%s: %r", g.id, d.id, e)
-    return n
+                except Exception as e: log.warning("중복 카테고리 정리 실패 서버=%s 카테고리=%s: %r", g.id, d.id, e); errs.append(f"{name}: {type(e).__name__} {str(e)[:80]}")
+    return n, errs
 
 
 async def bot_cat(g):
@@ -1486,7 +1486,7 @@ async def reco_guide(g, ch):
 
 async def channels_setup(g, force=False):
     """분류된 안내 채널(관리: 인사정보·공성정보 / 공략: 시즌추천덱)을 준비하고 채널 목록 순서를 맞춘다."""
-    await dedupe_cats(g)
+    await dedupe_cats(g)                                            # 중복 카테고리가 있으면 합치고 삭제(실패는 로그에 남음)
     await hrinfo_channel(g, force=force); await siege_info_channel(g); await reco_channel(g, force=force)
     await layout_order(g)
 
@@ -2258,7 +2258,7 @@ CMD_HELP = {
            ("/정철설정", "정철 보유량 맞추기"), ("/동맹수정", "등록된 서버 번호·동맹명 수정"),
            ("/동맹원추가", "게임 엑셀(오전 8시 반영)에 아직 없는 동맹원을 직접 추가"),
            ("/부캐대리", "다른 사람의 부계정을 대신 등록(/부캐 본캐 지정, /인사 페이지 등록 탭)")],
-    "관리자": [("/업적부여", "후원자(☕·💎) 업적 부여·회수"), ("/시즌종료", "이번 시즌 결산 통계(애니메이션 페이지) 만들기"), ("/시즌결산삭제", "보관된 지난 시즌 결산 하나 삭제"), ("/시즌시작", "새 시즌 시작: 동맹원 명단(CID·닉네임 엑셀 또는 MemberWeek)으로 처음부터 집계"), ("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
+    "관리자": [("/업적부여", "후원자(☕·💎) 업적 부여·회수"), ("/시즌종료", "이번 시즌 결산 통계(애니메이션 페이지) 만들기"), ("/카테고리정리", "중복 생성된 카테고리(공략·관리·봇·시작하기)를 합치고 삭제"), ("/시즌결산삭제", "보관된 지난 시즌 결산 하나 삭제"), ("/시즌시작", "새 시즌 시작: 동맹원 명단(CID·닉네임 엑셀 또는 MemberWeek)으로 처음부터 집계"), ("/관리", "관리 페이지: 톡방 참여자·동맹원 추가·관리자 권한 부여(DB 실시간 연동)")],
 }
 
 
@@ -3218,6 +3218,8 @@ async def reco_server_prepare(g):
     """추천 전용 서버로 지정된 서버에 #추천전용 채널(없으면)과 공통 초대 링크를 준비한다. 기존 채널은 건드리지 않는다."""
     me = g.me
     if me is None: raise ValueError("봇이 이 서버에 없습니다.")
+    try: await dedupe_cats(g, (GUIDE_CAT,))
+    except Exception: log.warning("추천 전용 서버 중복 카테고리 정리 실패 %s", g.id, exc_info=True)
     ch = discord.utils.get(g.text_channels, name=GUEST_CH)
     if ch is None:
         ch = await g.create_text_channel(GUEST_CH, topic="추천 전용 — /추천 으로 덱 추천 페이지 링크를 받습니다", reason="추천 전용 서버"); fresh = True
@@ -6082,6 +6084,22 @@ async def cmd_owner_mode(it: discord.Interaction):
     if it.user.id != owner.id: return await it.response.send_message("제작자만 사용할 수 있습니다.", ephemeral=True)
     exp = int(time.time()) + ADM_HOURS * 3600
     await it.response.send_message(f"👑 제작자 모드 (본인 전용 · {ADM_HOURS}시간 유효 · 외부 공유 금지)\n{PUBLIC_URL}/owner?t={own_token(it.user.id, exp)}", ephemeral=True)
+
+
+@bot.tree.command(name="카테고리정리", description="[관리자] 같은 이름으로 중복 생성된 카테고리(공략·관리·봇·시작하기)를 하나로 합치고 빈 카테고리를 삭제합니다")
+async def cmd_cat_dedupe(it: discord.Interaction):
+    if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
+    if not is_admin(it): return await it.response.send_message("권한이 없습니다.", ephemeral=True)
+    await it.response.defer(ephemeral=True, thinking=True)
+    g = it.guild; before = {n: len(find_cats(g, n)) for n in (GUIDE_CAT, MGMT_CAT, BOT_CAT, START_CAT)}
+    n, errs = await dedupe_cats(g)
+    dup = {k: v for k, v in before.items() if v > 1}
+    if not dup: return await it.followup.send("중복된 카테고리가 없습니다. (공략·관리·봇·시작하기 기준)", ephemeral=True)
+    msg = f"중복 {', '.join(f'{k} {v}개' for k, v in dup.items())} → {n}개 삭제, 채널은 남은 카테고리로 옮겼습니다."
+    if errs: msg += "\n⚠️ 실패(봇에 '채널 관리' 권한이 있는지 확인): " + " / ".join(errs[:4])
+    try: await layout_order(g)
+    except Exception: pass
+    await it.followup.send(msg, ephemeral=True)
 
 
 @bot.tree.command(name="관리", description="[관리자] 톡방 참여자·동맹원 추가·관리자 권한을 DB와 실시간으로 관리하는 페이지 링크")
