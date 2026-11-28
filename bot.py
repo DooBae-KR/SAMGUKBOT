@@ -731,23 +731,40 @@ def cat_lock(g, name):
 
 
 def find_cats(g, name):
-    """이름이 같은(앞뒤 공백·대소문자 무시) 카테고리들 — 위쪽(position) 순."""
+    """이름이 같은(앞뒤 공백·대소문자 무시) 카테고리들 — 위쪽(position) 순. 봇 캐시에 보이는 것만."""
     key = name.strip().lower()
     return sorted((c for c in g.categories if c.name.strip().lower() == key), key=lambda c: c.position)
 
 
+async def fetch_cats(g, name):
+    """REST로 서버의 전체 채널을 받아 같은 이름 카테고리를 찾는다. 봇이 '볼 수 없게' 숨겨진 카테고리도 포함 → (카테고리 목록(위쪽 순), {카테고리id: 하위 채널 목록})."""
+    key = name.strip().lower()
+    try: chs = await g.fetch_channels()
+    except Exception as e: log.warning("채널 목록 조회 실패 서버=%s: %r", g.id, e); chs = list(g.channels)
+    cats = sorted((c for c in chs if isinstance(c, discord.CategoryChannel) and c.name.strip().lower() == key), key=lambda c: c.position)
+    kids = {c.id: [x for x in chs if getattr(x, "category_id", None) == c.id] for c in cats}
+    return cats, kids
+
+
+def bot_view_ow(g):
+    """카테고리·채널을 숨겨도 봇 자신은 항상 보고 관리할 수 있게 하는 권한(이게 없으면 봇이 자기가 만든 카테고리를 못 찾아 계속 새로 만든다)."""
+    return {g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True, manage_permissions=True)} if g.me else {}
+
+
 async def dedupe_cats(g, names=None):
-    """같은 이름의 카테고리가 여러 개면 채널이 가장 많은 하나(동수면 위쪽)만 남기고, 나머지의 채널을 옮긴 뒤 빈 카테고리를 지운다."""
+    """같은 이름의 카테고리가 여러 개면(봇이 못 보는 숨김 카테고리 포함) 채널이 가장 많은 하나(동수면 위쪽)만 남기고, 나머지의 채널을 옮긴 뒤 지운다. → (삭제 수, 오류 목록)"""
     n, errs = 0, []
     for name in names or (GUIDE_CAT, MGMT_CAT, BOT_CAT, START_CAT):
         async with cat_lock(g, name):
-            cs = find_cats(g, name)
+            cs, kids = await fetch_cats(g, name)
             if len(cs) < 2: continue
-            keep = max(cs, key=lambda c: (len(c.channels), -c.position))
+            keep = max(cs, key=lambda c: (len(kids[c.id]), -c.position))
+            try: await keep.set_permissions(g.me, overwrite=bot_view_ow(g)[g.me], reason="봇이 이 카테고리를 볼 수 있게")
+            except Exception as e: log.warning("카테고리 봇 권한 설정 실패 서버=%s: %r", g.id, e)
             for d in cs:
-                if d is keep: continue
+                if d.id == keep.id: continue
                 try:
-                    for ch in list(d.channels): await ch.edit(category=keep, sync_permissions=False, reason="중복 카테고리 정리"); await asyncio.sleep(0.4)
+                    for ch in kids[d.id]: await ch.edit(category=keep, sync_permissions=False, reason="중복 카테고리 정리"); await asyncio.sleep(0.4)
                     await d.delete(reason="중복 카테고리 정리"); n += 1; await asyncio.sleep(0.4)
                 except Exception as e: log.warning("중복 카테고리 정리 실패 서버=%s 카테고리=%s: %r", g.id, d.id, e); errs.append(f"{name}: {type(e).__name__} {str(e)[:80]}")
     return n, errs
@@ -1413,8 +1430,9 @@ async def named_cat(g, name):
     """이름으로 카테고리를 찾고 없으면 만든다(기본은 숨김). 만들 수 없으면 '봇' 카테고리로 대신한다."""
     async with cat_lock(g, name):
         cat = (find_cats(g, name) or [None])[0]
+        if cat is None: cat = ((await fetch_cats(g, name))[0] or [None])[0]       # 봇 캐시에 안 보여도 이미 있으면 새로 만들지 않는다
         if cat is not None: return cat
-        try: return await g.create_category(name, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False)}, reason="채널 분류")
+        try: return await g.create_category(name, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False), **bot_view_ow(g)}, reason="채널 분류")
         except Exception as e: log.warning("'%s' 카테고리 생성 실패 서버=%s: %r", name, g.id, e)
     return await bot_cat(g)
 
@@ -6091,7 +6109,7 @@ async def cmd_cat_dedupe(it: discord.Interaction):
     if not it.guild: return await it.response.send_message("서버 안에서 사용해 주세요.", ephemeral=True)
     if not is_admin(it): return await it.response.send_message("권한이 없습니다.", ephemeral=True)
     await it.response.defer(ephemeral=True, thinking=True)
-    g = it.guild; before = {n: len(find_cats(g, n)) for n in (GUIDE_CAT, MGMT_CAT, BOT_CAT, START_CAT)}
+    g = it.guild; before = {n: len((await fetch_cats(g, n))[0]) for n in (GUIDE_CAT, MGMT_CAT, BOT_CAT, START_CAT)}
     n, errs = await dedupe_cats(g)
     dup = {k: v for k, v in before.items() if v > 1}
     if not dup: return await it.followup.send("중복된 카테고리가 없습니다. (공략·관리·봇·시작하기 기준)", ephemeral=True)
