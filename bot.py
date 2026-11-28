@@ -774,6 +774,7 @@ async def bot_cat(g):
     """서버 채널 목록 맨 아래에 있는 '봇' 카테고리(없으면 만든다). 명령어로그·후원 채널을 여기에 둔다. 만들 수 없으면 None."""
     async with cat_lock(g, BOT_CAT):
         cat = (find_cats(g, BOT_CAT) or [None])[0]
+        if cat is None: cat = ((await fetch_cats(g, BOT_CAT))[0] or [None])[0]
         try:
             if cat is None: cat = await g.create_category(BOT_CAT, reason="봇 채널 모음(최하단)")
             if cat.position != len(g.categories) - 1: await cat.edit(position=len(g.categories) - 1)
@@ -1000,8 +1001,9 @@ async def start_cat(g):
     """맨 위의 '시작하기' 카테고리(없으면 만든다)."""
     async with cat_lock(g, START_CAT):
         cat = (find_cats(g, START_CAT) or [None])[0]
+        if cat is None: cat = ((await fetch_cats(g, START_CAT))[0] or [None])[0]     # 봇 캐시에 안 보여도 이미 있으면 새로 만들지 않는다
         if cat is None:
-            ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)}
+            ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), **bot_view_ow(g)}
             try: cat = await g.create_category(START_CAT, overwrites=ow, position=0, reason="봇 시작 안내")
             except Exception:
                 try: cat = await g.create_category(START_CAT, position=0, reason="봇 시작 안내")
@@ -1459,8 +1461,9 @@ async def reco_channel(g, force=False):
     tok = _CTX.set(g.id)
     try: rec = dict(store_get("recoch", RECOCH_PATH, {}) or {})
     finally: _CTX.reset(tok)
-    ch = discord.utils.get(g.text_channels, name=RECOCH); cat = await named_cat(g, GUIDE_CAT)
-    if ch is None and rec.get("ch") and not force: return None
+    ch = discord.utils.get(g.text_channels, name=RECOCH)
+    if ch is None and rec.get("ch") and not force: return None      # 관리자가 지운 채널 → 다시 만들지 않으며, 빈 '공략' 카테고리도 만들지 않는다(배포마다 빈 카테고리가 생기던 원인)
+    cat = await named_cat(g, GUIDE_CAT)
     if ch is not None: await move_to(g, ch, cat); await reco_guide(g, ch); return ch
     try: ch = await g.create_text_channel(RECOCH, overwrites=verified_overwrites(g), topic="내 보유 장수에 맞는 시즌 추천 덱 — /추천", category=cat, reason="시즌 추천덱 채널")
     except Exception as e: log.warning("시즌추천덱 채널 생성 실패 서버=%s: %r", g.id, e); return None
@@ -1504,7 +1507,7 @@ async def reco_guide(g, ch):
 
 async def channels_setup(g, force=False):
     """분류된 안내 채널(관리: 인사정보·공성정보 / 공략: 시즌추천덱)을 준비하고 채널 목록 순서를 맞춘다."""
-    await dedupe_cats(g)                                            # 중복 카테고리가 있으면 합치고 삭제(실패는 로그에 남음)
+    if g.id == GUILD_ID: await dedupe_cats(g)                       # 중복 카테고리 자동 정리는 홈서버만(다른 서버는 관리자가 /카테고리정리로). 중복 '생성' 방지는 모든 서버 공통
     await hrinfo_channel(g, force=force); await siege_info_channel(g); await reco_channel(g, force=force)
     await layout_order(g)
 
