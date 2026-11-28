@@ -137,7 +137,7 @@ body>header .sub{color:#d5e7dc}
   .ops-layout main{min-width:0;padding:8px 0 40px}.ops-layout main>.wrap{padding:0}
 }
 @media(max-width:899px){body>header{padding-left:10px;padding-right:10px}.ops-layout nav button .pl{max-width:100%}}
-</style>
+.altb{display:inline-block;font-size:11px;font-weight:700;background:#fff1d6;color:#8a5a00;border-radius:6px;padding:0 5px;margin-right:5px}#rb tr.altr{background:#fffaf0}</style>
 <header><div class="wrap"><h1>연맹 인사 상황판</h1><p class="sub"><span id="meta"></span><span class="live" id="live"><i></i><span>시트 기준</span></span></p>
 <div class="adm" id="adm" hidden><b>명단 업데이트</b><label>명단 엑셀 <input type="file" id="fr" accept=".xlsx,.xls,.csv"></label><button class="btn" id="aprev" disabled>확인</button><button class="btn pri" id="aapply" disabled>적용</button><span id="amsg"></span><label style="flex-basis:100%;display:block">톡방 참여자 <span class="lead" style="margin:0">(스프레드시트 톡방참여자 탭의 닉네임 열을 복사해 붙여넣으세요)</span><textarea id="tk" rows="3" style="display:block;width:100%;margin-top:6px"></textarea></label><button class="btn" id="atk">톡방 적용</button><span id="tmsg" style="color:var(--mute)"></span></div></div></header>
 <div class="ops-layout"><nav aria-label="인사 상황판 메뉴"><div class="wrap" id="nav"></div></nav>
@@ -268,7 +268,12 @@ const COLS=[
  {h:'지역',s:d=>d.reg||'재기',f:d=>d.reg||'재기'},{h:'톡방',s:d=>d.t,f:d=>d.t?'참여':'비참여'},{h:'무훈 등급',s:d=>d.wrank||9999,f:d=>(d.wg?acTag2(d.wg):'')+(d.tok?' '+acTag2('토돼지'):'')},{h:'누적 무훈',s:d=>d.wv||0,f:d=>f(d.wv||0)},
  {h:'활동유형',s:d=>d.rk?d.rk.ty:'',f:d=>d.rk?d.rk.ty:''},{h:'이탈 위험',n:1,s:d=>d.rk&&d.rk.r!=null?d.rk.r:-1,f:d=>d.rk&&d.rk.r!=null?d.rk.r:''},
  {h:'공성위탁',s:d=>d.rk?d.rk.sg:0,f:d=>d.rk&&d.rk.sg?(d.rk.sg===2?'필요':'관찰'):''}].concat(CFG.spy?[{h:'간첩 의심',n:1,s:d=>d.rk&&d.rk.sp?d.rk.sp.s:-1,f:d=>d.rk&&d.rk.sp&&d.rk.sp.lv>=2?(d.rk.sp.lv===3?'간첩 의심 ':'주의 ')+d.rk.sp.s:''}]:[]);
-let M={ac:'',q:'',j:'',g:'',t:''};
+let RMSG='';
+let rosterView=()=>[];
+let M={ac:'',q:'',j:'',g:'',t:'',a:''};
+const ALTCOL=['닉네임','직위','직업','조','주간 무훈','주간 공헌','번영','지역','톡방'];
+const cellH=(c,d)=>d._alt?(c.h==='닉네임'?`<span class="altb">부</span><b>${d.n}</b> <span class="lead" style="margin:0">(${d.main})</span>${d.idle?' <b style="color:var(--bad,#c0392b)">미접</b>':''}`:ALTCOL.includes(c.h)?c.f(d):'<span class="lead" style="margin:0">—</span>'):c.f(d);
+const cellS=(c,d)=>d._alt?(ALTCOL.includes(c.h)?c.s(d):(c.n||c.h==='등급'?-1:'')):c.s(d);
 function tabRoster(){
   const opt=(l,a)=>`<option value="">${l}</option>`+a.map(x=>`<option>${x}</option>`).join('');
   const u=k=>[...new Set(D.map(d=>d[k]))];
@@ -277,21 +282,39 @@ function tabRoster(){
    <select id="fj">${opt('직업 전체',u('j'))}</select><select id="fg">${opt('조 전체',u('g'))}</select>
    <select id="fac">${opt('액티브 판정 전체',AC_ORDER)}</select>
    <select id="ft"><option value="">톡방 전체</option><option value="1">톡방 참여</option><option value="0">톡방 비참여</option></select>
+   <select id="fa"><option value="">본계+부계정</option><option value="no">본계만</option><option value="only">부계정만</option></select>
    <button class="btn" id="csv">CSV로 저장</button><span class="lead" style="margin:0" id="cn"></span></div><div class="tw"><table id="rtab"><thead><tr>${COLS.map((c,i)=>`<th class="${c.n?'n':''}" data-i="${i}">${c.h}</th>`).join('')}</tr></thead><tbody id="rb"></tbody></table></div>`;
-  const rows=[...D];let view=[],col=6,dir=-1;
+  const rows=[...D,...altRows().map(a=>({...a,_alt:1,ac:'',score:0,grade:''}))];let view=[],col=6,dir=-1;
   const render=()=>{
-    view=rows.filter(d=>(!M.q||d.n.toLowerCase().includes(M.q))&&(!M.j||d.j===M.j)&&(!M.g||d.g===M.g)&&(!M.ac||d.ac===M.ac)&&(M.t===''||String(d.t)===M.t));
-    view.sort((a,b)=>{const x=COLS[col].s(a),y=COLS[col].s(b);return (x>y?1:x<y?-1:0)*dir});
-    document.getElementById('rb').innerHTML=view.map(d=>`<tr>${COLS.map(c=>`<td class="${c.n?'n':''}">${c.f(d)}</td>`).join('')}</tr>`).join('');
-    document.getElementById('cn').textContent=`${view.length}명`;};
+    view=rows.filter(d=>(!M.q||d.n.toLowerCase().includes(M.q))&&(!M.j||d.j===M.j)&&(!M.g||d.g===M.g)&&(!M.ac||d.ac===M.ac)&&(M.t===''||String(d.t)===M.t)&&(M.a===''||(M.a==='no'?!d._alt:!!d._alt)));
+    view.sort((a,b)=>{const x=cellS(COLS[col],a),y=cellS(COLS[col],b);return (x>y?1:x<y?-1:0)*dir});
+    document.getElementById('rb').innerHTML=view.map((d,k)=>`<tr data-k="${k}"${d._alt?' class="altr"':''}>${COLS.map(c=>`<td class="${c.n?'n':''}">${cellH(c,d)}</td>`).join('')}</tr>`).join('');
+    const na=view.filter(d=>d._alt).length;document.getElementById('cn').textContent=`본계 ${view.length-na}명`+(na?` · 부계정 ${na}명`:'');};
+  rosterView=()=>view;
   document.querySelectorAll('#rtab th').forEach(th=>th.onclick=()=>{const i=+th.dataset.i;dir=col===i?-dir:(COLS[i].n||COLS[i].h==='등급'?-1:1);col=i;render()});
   const bind=(id,k,fn)=>document.getElementById(id).oninput=e=>{M[k]=fn?fn(e.target.value):e.target.value;render()};
-  bind('q','q',v=>v.trim().toLowerCase());bind('fj','j');bind('fg','g');bind('fac','ac');bind('ft','t');
+  bind('q','q',v=>v.trim().toLowerCase());bind('fa','a');bind('fj','j');bind('fg','g');bind('fac','ac');bind('ft','t');
   document.getElementById('csv').onclick=()=>{const strip=s=>String(s).replace(/<[^>]+>/g,'').replace(/,/g,'');
-    const body=view.map(d=>COLS.map(c=>strip(c.f(d))).join(',')).join('\n');
+    const body=view.map(d=>COLS.map(c=>strip(cellH(c,d))).join(',')).join('\n');
     const text='﻿'+COLS.map(c=>c.h).join(',')+'\n'+body;const blob=new Blob([text],{type:'text/csv'});if(typeof claude!=='undefined'&&claude.use){claude.use('downloads').then(dl=>{if(dl)dl.save({filename:'연맹_명단.csv',data:blob}).catch(()=>{})}).catch(()=>{})}else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='연맹_명단.csv';a.click()}};
   render();
 }
+
+// ---------- 명부 우클릭: 부계정 등록·해제 ----------
+(function(){
+  const m=document.createElement('div');m.id='ctxm';m.style.cssText='position:fixed;z-index:9000;display:none;min-width:190px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18);padding:6px;font:14px var(--sans)';document.body.appendChild(m);
+  const hide=()=>{m.style.display='none'};document.addEventListener('click',hide);document.addEventListener('scroll',hide,true);document.addEventListener('keydown',e=>{if(e.key==='Escape')hide()});
+  const run=async(body,ok)=>{try{const j=await regApi(body);alert(j.msg||'완료');if(String(j.msg||'').startsWith('✅')||ok)location.reload()}catch(e){alert('❌ '+e.message)}};
+  const item=(t,fn,off)=>{const b=document.createElement('button');b.textContent=t;b.disabled=!!off;b.style.cssText='display:block;width:100%;text-align:left;padding:9px 12px;border:0;background:none;border-radius:8px;font:inherit;color:'+(off?'#999':'inherit')+';cursor:'+(off?'default':'pointer');if(!off){b.onmouseenter=()=>b.style.background='#eef6ee';b.onmouseleave=()=>b.style.background='none';b.onclick=()=>{hide();fn()}}m.appendChild(b)};
+  document.addEventListener('contextmenu',e=>{const tr=e.target.closest&&e.target.closest('#rb tr');if(!tr||!CFG.tok)return;
+    const d=rosterView()[+tr.dataset.k];if(!d)return;e.preventDefault();m.innerHTML='';
+    const can=!!(CFG.reg&&CFG.reg.alt);
+    const h=document.createElement('div');h.style.cssText='padding:6px 12px;font-size:12px;color:var(--mute)';h.textContent=d._alt?`${d.n} (부계정 · 본계 ${d.main})`:d.n;m.appendChild(h);
+    if(d._alt){item('부계정 해제',()=>{if(confirm(`'${d.n}'을(를) '${d.main}'의 부계정에서 해제할까요?\n해제하면 명단·통계에 본계로 다시 잡힙니다.`))run({op:'alt_remove',name:d.n})},!can)}
+    else{item('부계정 등록…',()=>{const v=prompt(`'${d.n}'에 연결할 부계정 닉네임을 입력하세요.\n여러 개면 쉼표로 구분합니다.`);if(v&&v.trim())run({op:'alt_add',main:d.n,names:v})},!can)}
+    if(!can)item('권한 없음 (/부캐대리 허용 필요)',()=>{},true);
+    m.style.display='block';const w=m.offsetWidth,hh=m.offsetHeight;m.style.left=Math.min(e.clientX,innerWidth-w-8)+'px';m.style.top=Math.min(e.clientY,innerHeight-hh-8)+'px'});
+})();
 // ---------- 인사 이슈 ----------
 function tabIssues(){
   const A=CFG.act,I=[
@@ -490,7 +513,7 @@ async function initLive(){
 
 
 // ---------- 등록 탭 (동맹원 추가 · 부계정 등록) ----------
-let RMSG='';
+
 async function regApi(body){
   const r=await fetch('/api/hrreg?t='+encodeURIComponent(CFG.tok),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('오류 '+r.status));return j}

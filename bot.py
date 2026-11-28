@@ -2842,6 +2842,20 @@ async def web_hrreg(request):
             mc, mn, ok, bad = await asyncio.to_thread(al)
             msg = (f"✅ {mn}에 부캐 {len(ok)}명 연결: {', '.join(n for n, _ in ok)}" if ok else "연결된 부캐가 없습니다.") + ("\n⚠️ 제외: " + " / ".join(f"{n}({w})" for n, w in bad) if bad else "")
             if ok and g: await hr_notify(g, f"👥 **부계정 등록** — 본캐 **{mn}** ← {', '.join(n for n, _ in ok)} · 처리: {discord.utils.escape_markdown(who)} (인사 페이지)")
+        elif op == "alt_remove":
+            if not await asyncio.to_thread(lambda: (set_gid(gid), staff_ok_uid(gid, uid, "/부캐대리"))[1]): return web.json_response({"error": "부계정 해제 권한이 없습니다. 디스코드 관리자에게 문의하세요."}, status=403)
+            nm = re.sub(r"\s+", " ", str(body.get("name", ""))).strip()
+            if not nm: raise ValueError("해제할 부계정 닉네임을 알 수 없습니다.")
+            def rm():
+                set_gid(gid); by = roster_for(gid).by_uid
+                links = {r["alt_cid"]: r["main_cid"] for r in (_sb_req("GET", f"sam_emp_alt?guild_id=eq.{gid}&select=alt_cid,main_cid&limit=100000") or [])}
+                cs = [c for c, v in by.items() if v.get("name") == nm and c in links]
+                if not cs: raise ValueError(f"연결된 부계정이 아닙니다: {nm}")
+                if len(cs) > 1: raise ValueError(f"같은 닉네임의 부계정이 {len(cs)}명이라 디스코드 /부캐 로 해제해 주세요.")
+                _sb_req("DELETE", f"sam_emp_alt?guild_id=eq.{gid}&alt_cid=eq.{cs[0]}", prefer="return=minimal")
+                return (by.get(links[cs[0]]) or {}).get("name") or links[cs[0]]
+            mn = await asyncio.to_thread(rm); msg = f"✅ 부계정 해제: {nm} (본계 {mn}). 페이지를 새로 고치면 반영됩니다."
+            if g: await hr_notify(g, f"👤 **부계정 해제** — **{nm}** (본계 {mn}) · 처리: {discord.utils.escape_markdown(who)} (인사 페이지)")
         else: return web.json_response({"error": "알 수 없는 요청입니다."}, status=400)
     except ValueError as e: return web.json_response({"error": str(e)}, status=400)
     except Exception: log.exception("인사 페이지 등록 실패"); return web.json_response({"error": "처리 중 오류가 발생했습니다."}, status=500)
