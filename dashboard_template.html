@@ -238,12 +238,12 @@ function tabSummary(){
   document.getElementById('t0').innerHTML=`
   <h2 class="sec">오늘 확인할 일</h2><div class="tdc">${CFG.act?.warObserved?TD('🚨','#fde7e4','쟁 미참여 · 경고',`전쟁 판정일 무훈이 낮은 인원`,cn('쟁 미참여').length+cn('경고').length,2):''}${risk.length?TD('📉','#fff1d6','이탈 위험 높음','무훈·공헌이 모두 낮아요',risk.length,2):''}${TD('🧩','#e3f3e5','즉시 편성 대상','미편성 · 공헌 1만 이상',imm.length,2)}${D.some(d=>d.bk)?TD('🎖️','#fff4cf','전투 등급 대장','도감 기준 5부대 편성',gen.length,5):''}</div>
   <h2 class="sec">한눈에 보기</h2>
-  <div class="strip">${S(n,'전체 인원',D)}${S(cn('액티브').length,'액티브',cn('액티브'))}${S(cn('저조').length,'저조',cn('저조'))}${S(cn('경고').length,'경고',cn('경고'))}${S(cn('쟁 미참여').length,'쟁 미참여',cn('쟁 미참여'))}${S(tk.length,'톡방 참여',tk)}${S(D.filter(d=>d.tok).length,'토돼지',D.filter(d=>d.tok))}${S(f(CUT.c10),'무훈 상위 10% 기준 · 천하무쌍 '+CUT.n10+'명',D.filter(d=>d.tw))}${S(f(CUT.c30),'무훈 상위 30% 기준 · 액티브 '+CUT.n30+'명',D.filter(d=>d.tz))}${S(f(CUT.c50),'무훈 상위 50% 기준 · 쟁참여자 '+CUT.n50+'명',D.filter(d=>d.tj))}${S(un.length,'미편성',un)}</div>
+  <div class="strip">${S(n,'전체 인원',D)}<div class="stat altc" data-go="7" role="button" tabindex="0" style="cursor:pointer;background:#fff7e0!important" title="눌러서 부계정 목록 보기"><b>${altRows().length}</b><span>부계정 · 전체 인원에 불포함</span></div>${S(cn('액티브').length,'액티브',cn('액티브'))}${S(cn('저조').length,'저조',cn('저조'))}${S(cn('경고').length,'경고',cn('경고'))}${S(cn('쟁 미참여').length,'쟁 미참여',cn('쟁 미참여'))}${S(tk.length,'톡방 참여',tk)}${S(D.filter(d=>d.tok).length,'토돼지',D.filter(d=>d.tok))}${S(f(CUT.c10),'무훈 상위 10% 기준 · 천하무쌍 '+CUT.n10+'명',D.filter(d=>d.tw))}${S(f(CUT.c30),'무훈 상위 30% 기준 · 액티브 '+CUT.n30+'명',D.filter(d=>d.tz))}${S(f(CUT.c50),'무훈 상위 50% 기준 · 쟁참여자 '+CUT.n50+'명',D.filter(d=>d.tj))}${S(un.length,'미편성',un)}</div>
   <section class="blk"><h2>진영도</h2><p class="lead">네모 하나가 연맹원 한 명입니다. 묶는 기준을 바꿔 보고, 칸에 마우스를 올리면 누구인지 나옵니다. 각 묶음 안에서는 점수가 높은 사람이 앞에 옵니다.</p>
    <div class="seg" id="gseg">${Object.keys(groupers).map(k=>`<button data-g="${k}">${k}</button>`).join('')}</div><div class="waffle" id="wf"></div></section>
   <section><h2>직업</h2><p class="lead">직업별 인원입니다.</p>${jobs.map(([j,a],i)=>bar(j,a.length,mxj,PAL[i%PAL.length],W_(a))).join('')}</section>`;
   document.querySelectorAll('#gseg button').forEach(b=>b.onclick=()=>{GROUP=b.dataset.g;waffle()});
-  document.querySelectorAll('.td').forEach(b=>b.onclick=()=>show(+b.dataset.go));
+  document.querySelectorAll('.td').forEach(b=>b.onclick=()=>show(+b.dataset.go));document.querySelectorAll('.altc').forEach(b=>{b.onclick=()=>show(7);b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show(7)}}});
   waffle();
 }
 // ---------- 부계정 ----------
