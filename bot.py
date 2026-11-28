@@ -722,14 +722,46 @@ async def sync_members(guild: discord.Guild):
 BOT_CAT = "봇"
 
 
+_CAT_LOCKS = {}
+
+
+def cat_lock(g, name):
+    """같은 서버에서 같은 이름의 카테고리를 동시에 만들지 않도록 이름별 잠금(동시 실행으로 '공략' 등이 여러 개 생기는 것을 막는다)."""
+    return _CAT_LOCKS.setdefault((g.id, name), asyncio.Lock())
+
+
+def find_cats(g, name):
+    """이름이 같은(앞뒤 공백·대소문자 무시) 카테고리들 — 위쪽(position) 순."""
+    key = name.strip().lower()
+    return sorted((c for c in g.categories if c.name.strip().lower() == key), key=lambda c: c.position)
+
+
+async def dedupe_cats(g, names=None):
+    """같은 이름의 카테고리가 여러 개면 채널이 가장 많은 하나(동수면 위쪽)만 남기고, 나머지의 채널을 옮긴 뒤 빈 카테고리를 지운다."""
+    n = 0
+    for name in names or (GUIDE_CAT, MGMT_CAT, BOT_CAT, START_CAT):
+        async with cat_lock(g, name):
+            cs = find_cats(g, name)
+            if len(cs) < 2: continue
+            keep = max(cs, key=lambda c: (len(c.channels), -c.position))
+            for d in cs:
+                if d is keep: continue
+                try:
+                    for ch in list(d.channels): await ch.edit(category=keep, sync_permissions=False, reason="중복 카테고리 정리"); await asyncio.sleep(0.4)
+                    await d.delete(reason="중복 카테고리 정리"); n += 1; await asyncio.sleep(0.4)
+                except Exception as e: log.warning("중복 카테고리 정리 실패 서버=%s 카테고리=%s: %r", g.id, d.id, e)
+    return n
+
+
 async def bot_cat(g):
     """서버 채널 목록 맨 아래에 있는 '봇' 카테고리(없으면 만든다). 명령어로그·후원 채널을 여기에 둔다. 만들 수 없으면 None."""
-    cat = discord.utils.get(g.categories, name=BOT_CAT)
-    try:
-        if cat is None: cat = await g.create_category(BOT_CAT, reason="봇 채널 모음(최하단)")
-        if cat.position != len(g.categories) - 1: await cat.edit(position=len(g.categories) - 1)
-    except Exception as e: log.warning("'봇' 카테고리 준비 실패 서버=%s: %r", g.id, e); return cat if cat else None
-    return cat
+    async with cat_lock(g, BOT_CAT):
+        cat = (find_cats(g, BOT_CAT) or [None])[0]
+        try:
+            if cat is None: cat = await g.create_category(BOT_CAT, reason="봇 채널 모음(최하단)")
+            if cat.position != len(g.categories) - 1: await cat.edit(position=len(g.categories) - 1)
+        except Exception as e: log.warning("'봇' 카테고리 준비 실패 서버=%s: %r", g.id, e); return cat if cat else None
+        return cat
 
 
 async def to_bottom(g, ch):
@@ -949,14 +981,15 @@ START_CH, START_CAT = "필독사항!!", "시작하기"
 
 async def start_cat(g):
     """맨 위의 '시작하기' 카테고리(없으면 만든다)."""
-    cat = discord.utils.get(g.categories, name=START_CAT)
-    if cat is None:
-        ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)}
-        try: cat = await g.create_category(START_CAT, overwrites=ow, position=0, reason="봇 시작 안내")
-        except Exception:
-            try: cat = await g.create_category(START_CAT, position=0, reason="봇 시작 안내")
-            except Exception as e: log.warning("'시작하기' 카테고리 생성 실패 %s: %r", g.id, e); return None
-    return cat
+    async with cat_lock(g, START_CAT):
+        cat = (find_cats(g, START_CAT) or [None])[0]
+        if cat is None:
+            ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), g.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)}
+            try: cat = await g.create_category(START_CAT, overwrites=ow, position=0, reason="봇 시작 안내")
+            except Exception:
+                try: cat = await g.create_category(START_CAT, position=0, reason="봇 시작 안내")
+                except Exception as e: log.warning("'시작하기' 카테고리 생성 실패 %s: %r", g.id, e); return None
+        return cat
 
 
 async def start_post(g, force=False):
@@ -1378,10 +1411,12 @@ VERIFIED_ROLES = (MEMBER_ROLE, OFFICER_ROLE, RESERVE_ROLE)        # CID 인증�
 
 async def named_cat(g, name):
     """이름으로 카테고리를 찾고 없으면 만든다(기본은 숨김). 만들 수 없으면 '봇' 카테고리로 대신한다."""
-    cat = discord.utils.get(g.categories, name=name)
-    if cat is not None: return cat
-    try: return await g.create_category(name, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False)}, reason="채널 분류")
-    except Exception as e: log.warning("'%s' 카테고리 생성 실패 서버=%s: %r", name, g.id, e); return await bot_cat(g)
+    async with cat_lock(g, name):
+        cat = (find_cats(g, name) or [None])[0]
+        if cat is not None: return cat
+        try: return await g.create_category(name, overwrites={g.default_role: discord.PermissionOverwrite(view_channel=False)}, reason="채널 분류")
+        except Exception as e: log.warning("'%s' 카테고리 생성 실패 서버=%s: %r", name, g.id, e)
+    return await bot_cat(g)
 
 
 def verified_overwrites(g, send=False):
@@ -1451,6 +1486,7 @@ async def reco_guide(g, ch):
 
 async def channels_setup(g, force=False):
     """분류된 안내 채널(관리: 인사정보·공성정보 / 공략: 시즌추천덱)을 준비하고 채널 목록 순서를 맞춘다."""
+    await dedupe_cats(g)
     await hrinfo_channel(g, force=force); await siege_info_channel(g); await reco_channel(g, force=force)
     await layout_order(g)
 
@@ -1485,7 +1521,7 @@ HRINFO_PATH = DB_PATH.with_name("hrinfo.json")
 
 
 async def hrinfo_channel(g, force=False):
-    """#인사정보 — 간부 역할을 가진 사람과 관리자·봇만 볼 수 있는 채널. /인사는 여기서만 쓰게 한다. 관리자가 지우면 force 없이는 다시 만들지 않는다."""
+    """#인사정보 — 간부 역할을 가진 사람과 관리자·봇만 볼 수 있는 채널. 관리자가 지우면 force 없이는 다시 만들지 않는다."""
     me = g.me
     if me is None: return None
     tok = _CTX.set(g.id)
@@ -1495,7 +1531,7 @@ async def hrinfo_channel(g, force=False):
     if ch is None and rec.get("ch") and not force: return None
     if ch is not None: await move_to(g, ch, await named_cat(g, MGMT_CAT)); await hrinfo_guide(g, ch); return ch
     if ch is None:
-        topic = "간부 전용 — 여기서 /인사 를 입력하면 나에게만 보이는 인사데이터 링크가 나옵니다"; cat = await named_cat(g, MGMT_CAT)
+        topic = "간부 전용 — /인사 로 나에게만 보이는 인사데이터 링크를 받습니다 (명령어는 어느 채널에서든 쓸 수 있습니다)"; cat = await named_cat(g, MGMT_CAT)
         role = discord.utils.get(g.roles, name=OFFICER_ROLE)
         ow = {g.default_role: discord.PermissionOverwrite(view_channel=False), me: discord.PermissionOverwrite(view_channel=True, send_messages=True)}
         if role is not None: ow[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
@@ -1506,7 +1542,7 @@ async def hrinfo_channel(g, force=False):
                 try: await ch.set_permissions(g.default_role, view_channel=False)
                 except Exception as e3: log.warning("인사정보 채널 비공개 설정 실패(봇에 '역할 관리' 권한 필요) %s: %r", g.id, e3)
             except Exception as e2: log.warning("인사정보 채널 생성 실패 서버=%s 1차=%r 2차=%r", g.id, e1, e2); return None
-        try: await ch.send(f"📋 **인사정보**\n이 채널은 `{OFFICER_ROLE}` 역할을 가진 분만 볼 수 있습니다.\n\n이 채널에서는 `/인사` 명령어로 **동맹원의 상태를 체크**할 수 있습니다.\n결과는 **나에게만 보이는** 링크로 나오며, 다른 채널에서는 `/인사`가 열리지 않습니다.\n\n🛠️ 서버 관리자는 `/관리` 명령어에서 **`/인사`를 사용할 수 있는 간부를 설정**할 수 있습니다!")
+        try: await ch.send(f"📋 **인사정보**\n이 채널은 `{OFFICER_ROLE}` 역할을 가진 분만 볼 수 있습니다.\n\n`/인사` 명령어로 **동맹원의 상태를 체크**할 수 있습니다. 권한이 있으면 **어느 채널에서든** 쓸 수 있습니다.\n결과는 **나에게만 보이는** 링크로 나옵니다.\n\n🛠️ 서버 관리자는 `/관리` 명령어에서 **`/인사`를 사용할 수 있는 간부를 설정**할 수 있습니다!")
         except Exception: log.warning("인사정보 안내 글 실패 %s", g.id, exc_info=True)
         def sv():
             t = _CTX.set(g.id)
@@ -6061,8 +6097,6 @@ async def cmd_admin_page(it: discord.Interaction):
 @app_commands.describe(기준일="보고 싶은 날짜 예) 261102 (비우면 가장 최근 데이터)")
 async def hr_link(it: discord.Interaction, 기준일: str = ""):
     if not staff_ok(it, "/인사"): return await it.response.send_message(noperm_text(it), ephemeral=True)
-    hc = discord.utils.get(it.guild.text_channels, name=HRINFO_CH) if it.guild else None
-    if hc is not None and it.channel_id != hc.id: return await it.response.send_message(f"`/인사`는 간부 전용 {hc.mention} 채널에서 사용해 주세요.", ephemeral=True)
     if not roster.members: return await it.response.send_message("명단 데이터를 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", ephemeral=True)
     gid = cur_gid(); want = None
     if 기준일.strip():
